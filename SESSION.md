@@ -141,6 +141,13 @@
 - **🧾 row 예시 블록 11곳** — 주요 테이블 하단에 파란 코드 블록(`.rowex` CSS 신설)으로 실제 row 형태 JSON 예시. 회색 전달 JSON과 시각적 구분. **NVDA 단일 시나리오(2026-07-10)로 전 테이블 연결** — 07 예시의 src_news_at=13:30Z가 뉴스 signal 예시의 cycle_ts와 같은 값 (눈 대조 가능). 대상: universe·daily_pick·technical·macro·disclosure·disclosure_signal·news·news_signal·strategist·verdict·review 2종.
 - strategist created_at 설명 정합 수정 — "최신 판단 선택은 (ticker, cycle_ts DESC)".
 
+### 07-12 (6) — v2.6 외부 편집 반입 (사용자 작업 · Claude 검증 후 커밋 `1b2faa3` · 태그 v2.6)
+
+- **🔐 #security 보안 로드맵 신설** — LLM 특화 위협 7종(프롬프트 인젝션⭐·데이터 오염·출력 이상값·시크릿·DB 접근·오발주 킬스위치·감사 추적) + 1차/2차/실전 전 게이트 로드맵. 어필 문구: "LLM 출력이 검증 없이 돈에 닿는 경로 0개".
+- **#20 착수 실행 전략 카드 (🔴 착수 전 결정 · 오픈)** — ①정본의 코드화(schema.sql·schemas.py/ontology.py·yaml 3파일 = 기계가 읽는 정본) ②리네임 한 PR → 담당별 PR 분할(계약 단일화 후) ③NVDA row 예시 → E2E 픽스처로 완주 강제 발화.
+- payload 예시 signal_consensus 3→2 정합 수정. changelog 수정자 표기 = 문성혁(본인)으로 정리.
+- ⚠️ **#20 채택 시 후속 수정 2건 필요** (아직 제안 상태라 미수정): ① #conv "반쪽 마이그레이션 금지 — 한 PR" 문구를 PR 분할 방식으로 갱신 ② 히어로 "이 문서가 이긴다" → 정본 코드화 후엔 역할 조정.
+
 ### 07-12 (5) — 📜 변경 이력 섹션 신설 (`#changelog`)
 
 - 문서 맨 끝에 **버전별 변경 이력 표** (v2.0 최초 통합 ~ v2.5 현재, 날짜·수정자·요약). 히어로 배지 v2.0 → **v2.5 · 변경 이력 링크**, 목차 항목 추가.
