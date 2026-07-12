@@ -6,7 +6,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-<title>Quantinue 통합 설계서 v3.0 — 팀 여름이었다</title>
+<title>Quantinue 통합 설계서 v3.1 — 팀 여름이었다</title>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <style>
   :root{
@@ -196,7 +196,7 @@
 
 <!-- ══════════════════════ HERO ══════════════════════ -->
 <header class="hero">
-  <span class="b">⭐ 정본 (2026-07-11 승격)</span> <span class="b">통합본 v3.0 · <a href="#changelog">변경 이력</a></span> <span class="b">팀 여름이었다</span>
+  <span class="b">⭐ 정본 (2026-07-11 승격)</span> <span class="b">통합본 v3.1 · <a href="#changelog">변경 이력</a></span> <span class="b">팀 여름이었다</span>
   <p class="small" style="margin:6px 0 0">본 문서가 Quantinue의 <b>단일 정본</b>이다. docs/ 하위 원본 문서 7종(특히 collector_agent 4종)은 구버전·참고용 — 서술이 어긋나면 <b>항상 이 문서가 이긴다</b>. 착수 후 <b>기계 계약(스키마·ENUM·문턱값·주기)의 정본은 코드 3파일</b>(<a href="#ai">#20</a> 확정) — 본 문서는 “왜 그렇게 됐는지”(결정·근거·이력)의 정본.</p>
   <h1>🌊 Quantinue <span class="nowrap-phrase">통합 설계서</span></h1>
   <p>공시·뉴스·기술지표·매크로를 읽고 → AI가 매수를 제안하고 → AI가 반박하고 → 코드가 리스크를 계산해 → 가상매매(페이퍼)로 사고 → 5일 뒤 복기하는 <b>하루 한 사이클 자동매매 <span class="nowrap-phrase">파이프라인</span></b>. <span class="nowrap-phrase">이 문서</span> 하나로 01~11 전체 흐름·DB 스키마·에이전트 간 데이터 계약을 파악할 수 있게 팀 문서 7종을 통합·단순화했다.</p>
@@ -540,7 +540,6 @@ erDiagram
     TEXT event_type
     TIMESTAMPTZ filed_at
     TIMESTAMPTZ created_at
-    TIMESTAMPTZ updated_at
   }
   tb_news {
     BIGSERIAL id PK
@@ -549,7 +548,6 @@ erDiagram
     TEXT event_type
     TIMESTAMPTZ published_at
     TIMESTAMPTZ created_at
-    TIMESTAMPTZ updated_at
   }
   tb_disclosure_signal {
     BIGSERIAL tds_id PK "규칙 8"
@@ -627,9 +625,9 @@ erDiagram
     <tr><td class="c">2</td><td><code>tb_daily_pick</code> 🕐</td><td>오늘의 50</td><td>PK(trade_date, ticker) · FK(universe_as_of, ticker)→universe</td><td class="c">✅</td><td class="c">—</td><td>김지현</td><td>🟢</td></tr>
     <tr><td class="c">3</td><td><code>tb_technical</code> 🕐</td><td>50개 지표 (1:1)</td><td>PK(trade_date, ticker) · FK→daily_pick</td><td class="c">✅</td><td class="c">—</td><td>김지현</td><td>🟢</td></tr>
     <tr><td class="c">4</td><td><code>tb_macro</code> 🕐</td><td>시장 국면 (1시간 1행)</td><td>PK(as_of — cycle_ts 역할의 슬롯 시각, 규칙 8 위반 아님)</td><td class="c">✅</td><td class="c">—</td><td>김지현</td><td>🟢</td></tr>
-    <tr class="hl-chg"><td class="c">5</td><td><code>tb_disclosure</code> 🕐</td><td><b>공시 원본 — 공시 1건 = 1행</b></td><td>PK(id) · UNIQUE(filing_no)</td><td class="c">✅</td><td class="c">✅ (백테스트 사후기입)</td><td>정창욱</td><td><span class="b b-chg">🔄 역할 변경</span> 집계→원본</td></tr>
+    <tr class="hl-chg"><td class="c">5</td><td><code>tb_disclosure</code> 🕐</td><td><b>공시 원본 — 공시 1건 = 1행</b></td><td>PK(id) · UNIQUE(filing_no)</td><td class="c">✅</td><td class="c">—</td><td>정창욱</td><td><span class="b b-chg">🔄 역할 변경</span> 집계→원본 · 사후기입 5컬럼 삭제(07-12) → <b>완전 불변 원장</b></td></tr>
     <tr class="hl-new"><td class="c">5′</td><td><code>tb_disclosure_signal</code> 🕐</td><td><b>공시 집계 스냅샷 — 종목당 사이클 1행 → 07·08 전달</b></td><td>PK(tds_id) · UNIQUE(ticker, cycle_ts) · FK(trade_date, ticker)→daily_pick</td><td class="c">✅ 기록용 (구 collected_at)</td><td class="c">—</td><td>정창욱</td><td><span class="b b-new">🆕 신규 추가됨</span></td></tr>
-    <tr class="hl-chg"><td class="c">6</td><td><code>tb_news</code> 🕐</td><td><b>뉴스 원본 — 기사 1건 = 1행</b></td><td>PK(id) · UNIQUE(news_key, ticker) <span class="b b-chg">🔄 #17</span></td><td class="c">✅</td><td class="c">✅ (백테스트 사후기입)</td><td>정창욱</td><td><span class="b b-chg">🔄 역할 변경</span> 집계→원본</td></tr>
+    <tr class="hl-chg"><td class="c">6</td><td><code>tb_news</code> 🕐</td><td><b>뉴스 원본 — 기사 1건 = 1행</b></td><td>PK(id) · UNIQUE(news_key, ticker) <span class="b b-chg">🔄 #17</span></td><td class="c">✅</td><td class="c">—</td><td>정창욱</td><td><span class="b b-chg">🔄 역할 변경</span> 집계→원본 · 사후기입 5컬럼 삭제(07-12) → <b>완전 불변 원장</b></td></tr>
     <tr class="hl-new"><td class="c">6′</td><td><code>tb_news_signal</code> 🕐</td><td><b>뉴스 집계 스냅샷 — 종목당 사이클 1행 → 07·08 전달</b></td><td>PK(tns_id) · UNIQUE(ticker, cycle_ts) · FK(trade_date, ticker)→daily_pick</td><td class="c">✅ 기록용 (구 collected_at)</td><td class="c">—</td><td>정창욱</td><td><span class="b b-new">🆕 신규 추가됨</span></td></tr>
     <tr><td class="c">7</td><td><code>tb_strategist_signals</code></td><td>매수/보류 판단 (append)</td><td>PK(id=signal_id) · UNIQUE(ticker, cycle_ts, inv_type) 🆕 · FK(trade_date,ticker)→daily_pick · src_*_at→신호 3종</td><td class="c">✅</td><td class="c">—</td><td>이은미</td><td><span class="b b-chg">🔄</span> cycle_id 폐기 → src_*_at FK</td></tr>
     <tr><td class="c">8</td><td><code>tb_critic_verdict</code></td><td>반박 판정 (매수당 정확히 0~1행)</td><td>PK(id) · FK+<b>UNIQUE</b>(signal_id)→signals 🆕 (#17 — 1 signal 1판정·재실행 멱등)</td><td class="c">✅</td><td class="c">—</td><td>김미연</td><td><span class="b b-chg">🔄</span> cycle_id 제거 · source/skipped_rules 신설</td></tr>
@@ -883,11 +881,7 @@ erDiagram
     <tr><td>keywords</td><td>TEXT[]</td><td class="c"></td><td>핵심 키워드 5개</td><td>🟢</td></tr>
     <tr><td>permission</td><td>TEXT</td><td class="c"></td><td>매매권한 6단계(BLOCK_ALL~TRADE_ELIGIBLE) — is_hard_blocked의 원천</td><td><span class="b b-new">🆕</span> (창욱 내부값 정식화)</td></tr>
     <tr><td>created_at</td><td>TIMESTAMPTZ</td><td class="c"></td><td>수집·분석해 행을 쓴 시각</td><td>🟢</td></tr>
-    <tr><td>return_1d</td><td>NUMERIC</td><td class="c"></td><td>백테스트 사후 기입 — filed_at 기준 +1거래일 수익률(%)</td><td><span class="b b-new">🆕</span></td></tr>
-    <tr><td>return_3d</td><td>NUMERIC</td><td class="c"></td><td>〃 +3거래일 수익률(%)</td><td><span class="b b-new">🆕</span></td></tr>
-    <tr><td>return_5d</td><td>NUMERIC</td><td class="c"></td><td>〃 +5거래일 수익률(%)</td><td><span class="b b-new">🆕</span></td></tr>
-    <tr><td>outcome</td><td>TEXT</td><td class="c"></td><td>방향 적중 여부 — hit / miss (백테스트 사후 기입)</td><td><span class="b b-new">🆕</span></td></tr>
-    <tr><td>updated_at</td><td>TIMESTAMPTZ</td><td class="c"></td><td>백테스트 사후 기입 시각</td><td><span class="b b-new">🆕 신규 추가됨</span></td></tr>
+    <tr class="hl-del"><td class="c" colspan="2"><s>return_1d · return_3d · return_5d · outcome · updated_at</s></td><td class="c"></td><td>삭제 확정 5필드 <span class="keep">(2026-07-12 · 정창욱)</span> — collector 원안의 “사건 사후 채점”용이었으나 ①수집기가 자기 재료를 채점하는 <b>역할 침범</b>(채점은 11 회고·백테스트의 일) ②원본 행에 미래 결과가 살면 <b>look-ahead 혼입 위험</b>(#16 지적) ③1차에 아무도 안 채움. 이로써 원본 원장은 <b>완전 불변(INSERT만)</b></td><td><span class="keep"><span class="b b-chg">🔄 삭제 (AI #16 부분 해소)</span></span></td></tr>
   </table></div>
   <div class="rowex"><div class="rt">🧾 row 예시 — 공시 1건 = 1행 (원본 원장) <span style="font-weight:400">(전달 JSON 아님 · 참고용 가짜 데이터 — NVDA 시나리오로 전 테이블 연결)</span></div><pre><code>{
   "id": 3187, "ticker": "NVDA", "trade_date": "2026-07-10",
@@ -902,9 +896,7 @@ erDiagram
   "summary": "NVIDIA가 XYZ Robotics 인수를 공식 발표. 인수가 주당 $45(전일 종가 대비 프리미엄 30%), 총 $12B 전액 현금. 이사회 승인 완료, 규제 심사 통과 시 4분기 마감 예정. 로보틱스 제품군 강화 목적.",
   "keywords": ["acquisition","robotics","premium","cash","8-K"],
   "permission": "TRADE_ELIGIBLE",
-  "created_at": "2026-07-10T13:02:15Z",   // 22:00 KST 수집 사이클이 저장한 실제 시각
-  "return_1d": null, "return_3d": null, "return_5d": null,  // 백테스트 사후 기입(2차 · #16)
-  "outcome": null, "updated_at": null
+  "created_at": "2026-07-10T13:02:15Z"   // 22:00 KST 수집 사이클이 저장한 실제 시각
 }</code></pre></div>
 
 
@@ -1050,11 +1042,7 @@ erDiagram
     <tr><td>keywords</td><td>TEXT[]</td><td class="c"></td><td>기사별 키워드</td><td>🟢</td></tr>
     <tr><td>permission</td><td>TEXT</td><td class="c"></td><td>매매권한 6단계 — is_hard_blocked의 원천</td><td><span class="b b-new">🆕 정식화</span></td></tr>
     <tr><td>created_at</td><td>TIMESTAMPTZ</td><td class="c"></td><td>수집·분석해 행을 쓴 시각</td><td>🟢</td></tr>
-    <tr><td>return_1d</td><td>NUMERIC</td><td class="c"></td><td>백테스트 사후 기입 — published_at 기준 +1거래일 수익률(%)</td><td><span class="b b-new">🆕</span></td></tr>
-    <tr><td>return_3d</td><td>NUMERIC</td><td class="c"></td><td>〃 +3거래일 수익률(%)</td><td><span class="b b-new">🆕</span></td></tr>
-    <tr><td>return_5d</td><td>NUMERIC</td><td class="c"></td><td>〃 +5거래일 수익률(%)</td><td><span class="b b-new">🆕</span></td></tr>
-    <tr><td>outcome</td><td>TEXT</td><td class="c"></td><td>방향 적중 여부 — hit / miss (백테스트 사후 기입)</td><td><span class="b b-new">🆕</span></td></tr>
-    <tr><td>updated_at</td><td>TIMESTAMPTZ</td><td class="c"></td><td>백테스트 사후 기입 시각</td><td><span class="b b-new">🆕 신규 추가됨</span></td></tr>
+    <tr class="hl-del"><td class="c" colspan="2"><s>return_1d · return_3d · return_5d · outcome · updated_at</s></td><td class="c"></td><td>삭제 확정 5필드 <span class="keep">(2026-07-12 · 정창욱)</span> — collector 원안의 “사건 사후 채점”용이었으나 ①수집기가 자기 재료를 채점하는 <b>역할 침범</b>(채점은 11 회고·백테스트의 일) ②원본 행에 미래 결과가 살면 <b>look-ahead 혼입 위험</b>(#16 지적) ③1차에 아무도 안 채움. 이로써 원본 원장은 <b>완전 불변(INSERT만)</b></td><td><span class="keep"><span class="b b-chg">🔄 삭제 (AI #16 부분 해소)</span></span></td></tr>
   </table></div>
   <div class="rowex"><div class="rt">🧾 row 예시 — 기사 1건 = 1행 (원본 원장) <span style="font-weight:400">(전달 JSON 아님 · 참고용 가짜 데이터 — NVDA 시나리오로 전 테이블 연결)</span></div><pre><code>{
   "id": 55231,                             // signal의 rep_news_id가 가리킴
@@ -1072,8 +1060,7 @@ erDiagram
   "summary": "로이터 단독 보도 — NVIDIA가 XYZ Robotics를 $12B에 인수하는 계약을 체결. 프리미엄 30%, 전액 현금. 경영진은 4분기 마감을 목표로 제시.",
   "keywords": ["acquisition","robotics","12B","deal","nvidia"],
   "permission": "TRADE_ELIGIBLE",
-  "created_at": "2026-07-10T13:30:41Z",   // 22:30 KST 수집 사이클
-  "return_1d": null, "return_3d": null, "return_5d": null, "outcome": null, "updated_at": null
+  "created_at": "2026-07-10T13:30:41Z"   // 22:30 KST 수집 사이클
 }</code></pre></div>
 
 
@@ -1722,6 +1709,7 @@ flowchart LR
     <div class="ai-row"><div class="ai-k">제안</div><div class="ai-v">1차는 연결 확인에 필요한 <code>signal_id</code>→<code>order_id</code>→<code>fill_id</code>와 판단·제출·체결 시각만 빠짐없이 남긴다. 모델·프롬프트 버전, 원문 snapshot, 백테스트 미래정보 차단은 단일 파이프라인 완주 후 2차 첫 작업으로 고정한다.</div></div>
     <div class="ai-row"><div class="ai-k">1차<br>범위</div><div class="ai-v">단일 계좌·정상 전량 체결 1건이므로 <code>tb_review</code>는 signal당 1행을 유지하고, 매수 기준가는 Alpaca 부모 주문의 <code>filled_avg_price</code>를 사용한다. 부분 체결 이벤트·중간 fill 원장은 2차다.</div></div>
     <div class="ai-row"><div class="ai-k">2차<br>이관</div><div class="ai-v">각 판단에 <code>model_id</code>·<code>prompt_version</code>·<code>policy_version</code>·<code>input_hash</code>와 LLM이 읽은 원문 발췌/파싱 payload를 저장한다. 사후 수익률·outcome은 별도 평가 테이블로 분리하고 <code>available_at &lt;= decision_at</code>을 강제한다. 5계좌 확장 시 <b>signal_review</b>와 <b>account/order_review</b>를 분리하며, 장기 보관·파티셔닝은 #9와 함께 최적화한다.</div></div>
+    <div class="ai-res">↳ 🔄 <b>부분 해소 (2026-07-12 · 정창욱)</b> — 지적된 look-ahead 위험의 원천인 <b>원본 테이블(tb_news·tb_disclosure)의 사후 기입 5컬럼(return_1d/3d/5d·outcome·updated_at)을 v3.1에서 삭제.</b> collector 원안 계승분이었으나 ①수집기가 자기 재료를 채점하는 역할 침범(채점은 11 회고·백테스트의 일) ②미래정보 혼입 위험 ③1차 무사용 — 으로 제거 확정. 원본 원장은 이제 <b>완전 불변(INSERT만)</b>. 사건 단위 채점이 2차에 필요해지면 별도 평가 테이블로 하되 <b>필요성 자체를 그때 재검토</b>. 나머지 항목(모델·프롬프트 버전·available_at 규칙)은 계속 2차 전 필수.</div>
   </div>
 
   <div class="ai-item done" data-status="done" data-residual="verdict-unique">
@@ -1818,7 +1806,8 @@ flowchart LR
   <div class="danger"><b>✍️ 편집 규칙 (사람이든 AI든 예외 없음)</b> — 이 문서를 수정하면 <b>반드시 아래 표 맨 위에 한 줄 추가</b>한다: 버전 +0.1 · 날짜 · 수정자 · 무엇을 왜 바꿨는지 1~3줄. 히어로의 버전 배지도 같이 올린다. “어떤 게 최신 계약인지”를 이 표가 보증한다 — 줄이 없으면 그 수정은 없던 일로 간주. <span class="small">Git 커밋·태그가 실제 diff와 배포 이력을 보증하고, 이 표는 사람이 읽는 변경 요약을 담당한다.</span></div>
   <div class="twrap"><table><caption class="sr-only">📜 변경 이력 — 이 문서의 형상관리 🆕 07-12 신설</caption>
     <tr><th scope="col" class="c">버전</th><th scope="col">날짜</th><th scope="col">수정자</th><th scope="col">변경 요약</th></tr>
-    <tr class="hl-new"><td class="c"><b>v3.0</b></td><td>2026-07-12</td><td>Codex</td><td><b>폰트 우선순위 정비</b> — Apple system font를 기본으로 사용하고, <code>Noto Sans KR</code>를 CDN의 2차 한글 fallback으로 추가(<code>display=swap</code>).</td></tr>
+    <tr class="hl-new"><td class="c"><b>v3.1</b></td><td>2026-07-12</td><td>정창욱 + Claude</td><td><b>원본 원장 사후 기입 5컬럼 삭제</b>(tb_news·tb_disclosure의 return_1d/3d/5d·outcome·updated_at) — 수집기의 역할 침범 + #16 look-ahead 위험 + 1차 무사용으로 제거, <b>원본 원장 = 완전 불변(INSERT만)</b> 확정. 스키마 표(삭제 기록 행)·row 예시·총람·ERD 반영, #16 카드 부분 해소 표기</td></tr>
+    <tr><td class="c"><b>v3.0</b></td><td>2026-07-12</td><td>Codex</td><td><b>폰트 우선순위 정비</b> — Apple system font를 기본으로 사용하고, <code>Noto Sans KR</code>를 CDN의 2차 한글 fallback으로 추가(<code>display=swap</code>).</td></tr>
     <tr><td class="c"><b>v2.9</b></td><td>2026-07-12</td><td>Codex</td><td><b>읽기 경험·접근성 개선</b> — 현재 상태 요약판 신설 · 완료 AI 카드의 과거 논의 기본 접기 + 상태 필터 · 모바일 고정 버튼을 상단 sticky 목차 바로가기로 변경 · 핵심 표 모바일 카드화 · 표 caption/scope·랜드마크·앵커 포커스·가로 스크롤 안내 보강.</td></tr>
     <tr class="hl-new"><td class="c"><b>v2.8</b></td><td>2026-07-12</td><td>문성혁 + Claude</td><td><b>0번 섹션 “무엇이 달라졌는가” 신설(#diff0)</b> — 원본(Official_Document.html) 대비 달라진 9개 영역을 “원본에서는 → 지금은 → 왜 → 상세 위치” 표로 정리(원본만 아는 팀원의 갭 메우기용) · .gitignore에 수동 백업 사본 제외 패턴 추가</td></tr>
     <tr><td class="c"><b>v2.7</b></td><td>2026-07-12</td><td>문성혁 + Claude</td><td><b>#20 확정 확인</b>(⛔ 착수 시 필수 실행 — 지금 당장 개발은 아님, 개발 시작일에 정본 3파일 PR부터) · 채택 후속 정합 2건: <b>#conv “한 PR” 문구 → #20 방식(정본 3파일 → 담당별 분할 + “전원 교체 전 구 계약 코드 실행 금지”)으로 대체</b> · 히어로 정본 문구에 착수 후 역할 분담 명시(기계 계약=코드 3파일 / 본 문서=결정·이력 정본)</td></tr>

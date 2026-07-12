@@ -115,6 +115,12 @@
 7. 🆕 **(07-12) 문서를 수정하면 반드시 `#changelog` 표 맨 위에 한 줄 추가** — 버전 +0.1 · 날짜 · 수정자 · 1~3줄 요약, 히어로 버전 배지도 같이 갱신. 줄이 없으면 그 수정은 없던 일로 간주.
 8. 변경 이력의 버전마다 Git 커밋 1개와 같은 버전 태그를 남긴다. 변경 이력은 사람이 읽는 요약, Git은 실제 diff의 정본이다.
 
+### 07-12 (9) — v3.1: 원본 원장 사후 기입 5컬럼 삭제 (태그 v3.1)
+
+- **tb_news·tb_disclosure에서 return_1d/3d/5d·outcome·updated_at 삭제** — collector 원안(가중치 낮음) 계승분이었으나 ①수집기가 자기 재료를 채점 = 역할 침범(채점은 11 회고·백테스트의 일) ②#16 look-ahead 위험의 원천 ③1차 무사용. **원본 원장 = 완전 불변(INSERT만)** 확정.
+- 반영: 스키마 표(hl-del 삭제 기록 행)·row 예시·총람(사후기입 표기 제거)·ERD mermaid·#16 카드 부분 해소 밴드. 사건 단위 채점은 2차에 별도 평가 테이블로 하되 **필요성 자체를 그때 재검토**.
+- 참고: 정본 파일명 = `docs/quantinue-integrated-design.html` (07-12 영문화) · 원격 = github.com/jaymunsh/quantinue-doc.
+
 ### 07-12 (8) — v3.0 폰트 우선순위 정비
 
 - 본문 기본 글꼴을 Apple system font(`-apple-system`·`BlinkMacSystemFont`·`Apple SD Gothic Neo`)로 변경.
