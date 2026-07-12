@@ -10,7 +10,7 @@
 - 프로젝트: **Quantinue** — 팀 "여름이었다"의 주식 자동매매 파이프라인 (01 유니버스 → 11 회고, 전부 페이퍼 트레이딩, 1차 MVP = 공격형 단일).
 - 내(AI) 역할: **누가 들어도 이해하기 쉽게 설명하는 PM** — 팀 문서 7종을 통합·단순화·재설계.
 - 원본 문서 (보존됨, 수정 안 함):
-  - `docs/Official_Document.html` — 김지현(PM) 작성 정본. **가중치 최우선 기준**.
+  - `docs/Official_Document.html` — 김지현(PM) 작성 역사적 뼈대. 현재 사람용 계약·결정 이력의 정본은 통합 설계서이며, 착수 후 기계 계약은 코드 3파일이 담당.
   - `docs/collector_agent/` 4종 — 정창욱(공시·뉴스 수집). 문서끼리 신·구 스키마 혼재(모순 있음).
   - `docs/strategist_agent/strategist_agent.html` — 이은미 v3.8.
   - `docs/critic_agent/` PDF 2종 — 김미연.
@@ -22,6 +22,7 @@
 | 파일 | 내용 |
 |---|---|
 | **`docs/Quantinue_통합설계서_v2.html`** | ⭐ 정본 통합 설계서. 이것만 보면 프로젝트 전체 파악 가능하도록 작성. Mermaid 3개(전체 흐름·ERD·릴레이) — **CDN 로드라 인터넷 필요** |
+| `DESIGN.md` | 통합 설계서의 색·타입·레이아웃·컴포넌트·접근성 계약 |
 | `SESSION.md` | 이 파일 |
 
 문서 구조 (섹션 id): `#conv` 공통 컨벤션 → `#big` 전체 흐름 → `#erd` ERD → `#mvp` 1차vs2차 → `#s01`~`#s11` 컴포넌트별 → `#relay` 데이터 릴레이 → `#issues` 협의 현황판 → `#llm` AI 모델·요금 → `#ai` AI 추천 제안.
@@ -36,17 +37,17 @@
 
 ### 공통 컨벤션 8규칙 (2026-07-11 원샷 확정 — `#conv` 섹션이 정본)
 1. Boolean = `BOOLEAN` 타입 + `is_`(상태)/`has_`(보유·존재) 접두. INT 0/1 금지.
-2. ENUM = 영어 소문자 snake_case. **단 Postgres 네이티브 ENUM 타입은 안 씀** — 물리는 TEXT, 검증 1차 책임은 백엔드(Pydantic Literal), event_type만 참조 테이블 FK.
+2. ENUM = 영어 소문자 snake_case. **Postgres 네이티브 ENUM·참조 테이블 FK는 쓰지 않음** — 물리는 TEXT, 검증 1차 책임은 백엔드(Pydantic Literal). `event_type` 허용값 정본은 `ontology.py`.
 3. `*_at` = TIMESTAMPTZ(UTC 저장·표시만 KST), `*_date` = DATE.
 4. **모든 점수 0~1 · NUMERIC(4,3) 소수 3자리 — 예외 없음** (tb_macro.risk_score도 0~1, regime 경계 0.30/0.70).
 5. 전달 JSON 필드명 = DB 컬럼명 (개명 금지).
-6. 원본=자연 명사 / 집계 전달=`_signal` 접미 / 코드 마스터=참조 테이블 / 뷰=`v_` 접두.
+6. 원본=자연 명사 / 집계 전달=`_signal` 접미 / 뷰=`v_` 접두.
 7. 신호 테이블은 **append 불변** (update 금지) — 최신 상태는 뷰/(ticker, cycle_ts DESC) 인덱스로.
 8. 🆕 **PK 규칙 (07-11 오후 확정)** — created_at 등 시각 컬럼 PK 금지(순수 기록용). ticker 단독 PK 금지. 사이클 append 테이블 = **대리키 PK(테이블 약어+_id: tns_id·tds_id) + UNIQUE(ticker, cycle_ts)** (cycle_ts=계획 슬롯 시각, ON CONFLICT DO NOTHING 멱등). 일봉 테이블(universe·daily_pick·technical)은 (날짜, ticker) 자연 복합 PK 유지.
 
 ### 원샷 리네임 매핑 (구 이름 폐기 — `#conv` 매핑표가 정본)
 `hard_block→is_hard_blocked` · `agree→is_agreed` · `hit→is_hit` · `dropped→is_dropped` · `side 매수/보류→buy/hold` · `inv_type 공격형→aggressive` · `bucket 한글→trend_leader/volume_surge/high_52w_breakout/pullback/squeeze_breakout/backfill` · `TIMESTAMP→TIMESTAMPTZ` · `risk_score 0~100→0~1`
-⚠️ **반쪽 마이그레이션 금지** — 스키마·코드·POLICY·픽스처·프롬프트를 한 PR에서 동시에. (trend "상승"vs"up" 버그 재발 방지)
+⚠️ **반쪽 마이그레이션 금지** — #20 순서가 정본: 먼저 스키마·Pydantic/ontology·config 3파일로 계약을 단일화하고, 이후 담당별 PR로 코드·POLICY·픽스처·프롬프트를 교체한다. 전원 교체 완료 전 구 계약 코드 실행 금지. (trend "상승"vs"up" 버그 재발 방지)
 
 ### 기타 확정
 - ~~tb_event_type 참조 테이블~~ → **폐기 (07-11 오후 · AI 제안 #12 대안 채택)** — event_type도 다른 ENUM처럼 **TEXT (ENUM)**. 정본 = ontology.py Literal + 문서 05 허용값 12종 표(내용은 유지 — 방향경향·발생원 제외 그대로). 마이그레이션·seed·기동 정합 검증 불필요.
@@ -108,10 +109,20 @@
 1. 신규 내용 = `🆕 신규 추가됨` 배지, 크게 바뀐 것 = `🔄 변경됨` 배지 + 비고란에 사유. 구 이름은 "구 xxx"로 병기.
 2. AI 제안 해결 시: 취소선(`<s>`) + 아래 `<tr class="hl-new"><td colspan="7">↳ ✅ 해결...</td></tr>` 행.
 3. **스키마 표는 1행 = 1컬럼** 유지.
-4. 컨벤션 7규칙·리네임 매핑표(`#conv`)가 어휘의 정본 — 여기와 어긋나는 표기를 만들지 말 것.
+4. 컨벤션 8규칙·리네임 매핑표(`#conv`)가 어휘의 정본 — 여기와 어긋나는 표기를 만들지 말 것.
 5. Mermaid erDiagram은 속성을 **줄당 1개**로 (한 줄에 여러 속성 넣으면 렌더러가 죽음 — 실제로 겪음).
 6. 파일 인코딩 UTF-8. 로컬에서 열 때 Mermaid는 인터넷 필요(jsdelivr CDN).
 7. 🆕 **(07-12) 문서를 수정하면 반드시 `#changelog` 표 맨 위에 한 줄 추가** — 버전 +0.1 · 날짜 · 수정자 · 1~3줄 요약, 히어로 버전 배지도 같이 갱신. 줄이 없으면 그 수정은 없던 일로 간주.
+8. 변경 이력의 버전마다 Git 커밋 1개와 같은 버전 태그를 남긴다. 변경 이력은 사람이 읽는 요약, Git은 실제 diff의 정본이다.
+
+### 07-12 (7) — v2.9 읽기 경험·접근성 개선
+
+- `DESIGN.md` 신설 — 기존 GitHub 계열 시각 언어와 상태·반응형·접근성 계약을 명문화.
+- 문서 상단에 **현재 상태 요약판** 추가 — 조건부 GO, 착수 게이트 4건, 단일 행복 경로 목표, #20 실행 순서를 먼저 확인.
+- AI 제안은 **확인 필요 5건 / 완료·기록 15건** 필터로 분리. 완료 카드의 최종 결론을 먼저 노출하고 과거 제안·근거·대안은 기본 접기.
+- 모바일 고정 플로팅 목차를 상단 sticky 바로가기로 교체. 핵심 비교·현황·보안·변경 표는 720px 이하 세로 카드로 전환하고 나머지 대형 표에는 스크롤 안내·키보드 접근성 추가.
+- `<header>`·`<main>`·본문 skip link·목적지 제목 포커스·표 caption/scope·Mermaid 접근성 이름을 보강. 현재 정본과 역사적 원본의 역할 문구를 통일.
+- 릴리스 규칙: 커밋 1개 + 태그 `v2.9`.
 
 ### 07-11 오후 세션 3차 작업 (AI 제안 일괄 확정 — PM 재논의)
 
