@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "active_work_id": "quantinue-live-progress",
+  "active_work_id": null,
   "works": {
     "quantinue-mvp-implementation": {
       "work_id": "quantinue-mvp-implementation",
@@ -23,7 +23,7 @@
       "active_plan": ".omo/plans/quantinue-live-progress.md",
       "plan_name": "quantinue-live-progress",
       "session_ids": ["codex:root"],
-      "status": "active",
+      "status": "complete",
       "worktree_path": null
     }
   }

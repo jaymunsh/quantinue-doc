@@ -39,10 +39,10 @@
 
 ## Final verification wave
 
-- [ ] F1. Goal/constraint review
-- [ ] F2. Code-quality review
-- [ ] F3. Hands-on lifecycle QA
-- [ ] F4. Security/context review and three-hypothesis runtime audit
+- [x] F1. Goal/constraint review
+- [x] F2. Code-quality review
+- [x] F3. Hands-on lifecycle QA
+- [x] F4. Security/context review and three-hypothesis runtime audit
 
 ## Success criteria
 
