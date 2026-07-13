@@ -6,7 +6,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-<title>Quantinue 통합 설계서 v3.5 — 팀 여름이었다</title>
+<title>Quantinue 통합 설계서 v3.6 — 팀 여름이었다</title>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <style>
   :root{
@@ -196,7 +196,7 @@
 
 <!-- ══════════════════════ HERO ══════════════════════ -->
 <header class="hero">
-  <span class="b">⭐ 정본 (2026-07-11 승격)</span> <span class="b">통합본 v3.5 · <a href="#changelog">변경 이력</a></span> <span class="b">팀 여름이었다</span>
+  <span class="b">⭐ 정본 (2026-07-11 승격)</span> <span class="b">통합본 v3.6 · <a href="#changelog">변경 이력</a></span> <span class="b">팀 여름이었다</span>
   <p class="small" style="margin:6px 0 0">본 문서가 Quantinue의 <b>단일 정본</b>이다. docs/ 하위 원본 문서 7종(특히 collector_agent 4종)은 구버전·참고용 — 서술이 어긋나면 <b>항상 이 문서가 이긴다</b>. 착수 후 <b>기계 계약(스키마·ENUM·문턱값·주기)의 정본은 코드 3파일</b>(<a href="#ai">#20</a> 확정) — 본 문서는 “왜 그렇게 됐는지”(결정·근거·이력)의 정본.</p>
   <h1>🌊 Quantinue <span class="nowrap-phrase">통합 설계서</span></h1>
   <p>공시·뉴스·기술지표·매크로를 읽고 → AI가 매수를 제안하고 → AI가 반박하고 → 코드가 리스크를 계산해 → 가상매매(페이퍼)로 사고 → 5일 뒤 복기하는 <b>하루 한 사이클 자동매매 <span class="nowrap-phrase">파이프라인</span></b>. <span class="nowrap-phrase">이 문서</span> 하나로 01~11 전체 흐름·DB 스키마·에이전트 간 데이터 계약을 파악할 수 있게 팀 문서 7종을 통합·단순화했다.</p>
@@ -1125,7 +1125,7 @@ erDiagram
   <p class="small muted">눈금 감: 0.35 = 루머 수준 · 0.63 = 중형 · 0.7+ = 대형 단독. (peak의 정의 자체는 협의 #7 미결 — 본 설명은 코드 현행 기준)</p>
   <div class="note" id="rep-note"><b>🏆 “대표 기사(rep)”란 — 생성이 아니라 선발이다</b> <span class="b b-new">🆕 07-13 (#22 Q8)</span><br>
   집계 점수(C그룹)는 숫자뿐이라 “그래서 <b>무슨 일</b>인데?”를 전하지 못한다. 그래서 오늘 그 종목 기사들 중 <b>1건을 뽑아, 그 기사의 얼굴 필드들(제목·언론사·발행시각·링크·event_type·reason)을 signal 행의 B그룹에 그대로 복사</b>한다 — 새로 만들어내는(생성) 게 아니라 이미 tb_news에 저장된 기사 중 <b>선발</b>이며, <code>rep_news_id</code>가 그 기사의 tb_news.id를 가리킨다.<br>
-  <b>선발 기준 = importance × 신뢰무게(w) 최상위 1건</b> — w = 확신도(H .9/M .6/L .3) × 확인계수(확정 1.0 / 소문 0.5) × 매체신뢰. 즉 “크고(importance) 믿을 만한(w)” 기사가 이긴다 — 위 예시에선 로이터 특종이 블로그 4건을 제치고 대표.<br>
+  <b>선발 기준 = importance × 신뢰무게(w) 최상위 1건</b> — w = 확신도(H .9/M .6/L .3) × 확인계수(확정 1.0 / 소문 0.5) × 매체신뢰. 즉 “크고(importance) 믿을 만한(w)” 기사가 이긴다 — 위 예시에선 로이터 특종이 블로그 4건을 제치고 대표. <b>동률이면(통신사 전재 등) published_at 최신 → 그래도 동률이면 tb_news.id 큰 것</b> <span class="b b-new">🆕 07-13 (#22 Q8 후속)</span> — 규칙 내용보다 <b>결정론성이 계약</b>이다: 재집계할 때마다 같은 대표가 뽑혀야 멱등·재현이 성립(공시 집계의 “동률이면 filed_at 최신”과 대칭).<br>
   <b>용도 3가지</b>: ① GPT·사람이 읽는 “이 신호의 얼굴”(news_title·summary) ② <b>Critic ⑤신선도의 기준 시각</b> — signal의 published_at은 대표 기사의 발행 시각 ③ 원본 역추적 진입점(rep_news_id → 건별 reason·전체 기사 목록).<br><br>
   <b>몇 건을 뽑나 — 정확히 1건. 배열(여러 건) 비채택 확정</b> <span class="b b-new">🆕 07-13 (#22 Q9)</span> — “숫자는 전원 투표, 얼굴만 대표 1명”: 정보는 이미 4중 보완된다(C그룹 = 전체 기사 집계 · top_evidence = 상위 3건 헤드라인 · summary = 종합 · 원본 = 전체 목록). 배열로 바꾸면 ⓐ published_at이 배열이 돼 <b>Critic ⑤신선도의 기준 시각이 모호</b>해지고(시각 계약 #7은 단일 시각 전제) ⓑ event_type 배열은 게이트·하드리스크 검사에 “어느 사건 기준?” 분기를 퍼뜨린다 — 희귀 케이스 대비 수지 불일치. <b>알려진 한계</b>: 한 종목에 서로 다른 대형 사건 2개가 같은 날 터지면 event_type은 대표 사건 하나만 실림(두 번째는 summary·top_evidence로 전달). <b>진짜 필요해지면 정답은 배열이 아니라 사건 단위 행 분해</b>(종목×사건당 1행) — 뒤집기 트리거: 회고에서 “복수 사건 동시 발생” 빈도가 실측으로 유의미할 때(2차).</div>
 
@@ -1916,7 +1916,8 @@ flowchart LR
   <div class="danger"><b>✍️ 편집 규칙 (사람이든 AI든 예외 없음)</b> — 이 문서를 수정하면 <b>반드시 아래 표 맨 위에 한 줄 추가</b>한다: 버전 +0.1 · 날짜 · 수정자 · 무엇을 왜 바꿨는지 1~3줄. 히어로의 버전 배지도 같이 올린다. “어떤 게 최신 계약인지”를 이 표가 보증한다 — 줄이 없으면 그 수정은 없던 일로 간주. <span class="small">Git 커밋·태그가 실제 diff와 배포 이력을 보증하고, 이 표는 사람이 읽는 변경 요약을 담당한다.</span></div>
   <div class="twrap"><table><caption class="sr-only">📜 변경 이력 — 이 문서의 형상관리 🆕 07-12 신설</caption>
     <tr><th scope="col" class="c">버전</th><th scope="col">날짜</th><th scope="col">수정자</th><th scope="col">변경 요약</th></tr>
-    <tr class="hl-new"><td class="c"><b>v3.5</b></td><td>2026-07-13</td><td>문성혁 + Claude</td><td><b>#22 Q9 — 대표 기사 배열 비채택 확정</b>: 1건 유지(정보는 전체 집계·top_evidence 3건·summary·원본 역추적 4중 보완) · 배열은 Critic ⑤ 기준 시각·게이트 단일 event_type 전제를 깨므로 비채택 · 알려진 한계(복수 사건 동시 발생) 명시 · 뒤집기 트리거 = 회고 실측 후 <b>사건 단위 행 분해</b>(배열 아님, 2차)</td></tr>
+    <tr class="hl-new"><td class="c"><b>v3.6</b></td><td>2026-07-13</td><td>문성혁 + Claude</td><td><b>뉴스 대표 선발 동률 규칙 확정</b>(#22 Q8 후속) — importance×w 동률 시 published_at 최신 → id 큰 것. 공시(“filed_at 최신”)와 대칭 · 핵심 계약은 결정론성(재집계마다 같은 대표 = 멱등·재현)</td></tr>
+    <tr><td class="c"><b>v3.5</b></td><td>2026-07-13</td><td>문성혁 + Claude</td><td><b>#22 Q9 — 대표 기사 배열 비채택 확정</b>: 1건 유지(정보는 전체 집계·top_evidence 3건·summary·원본 역추적 4중 보완) · 배열은 Critic ⑤ 기준 시각·게이트 단일 event_type 전제를 깨므로 비채택 · 알려진 한계(복수 사건 동시 발생) 명시 · 뒤집기 트리거 = 회고 실측 후 <b>사건 단위 행 분해</b>(배열 아님, 2차)</td></tr>
     <tr><td class="c"><b>v3.4</b></td><td>2026-07-13</td><td>문성혁 + Claude</td><td><b>#22 2차 보강 (Q7·Q8 추가, 총 8건)</b> — #22 카드를 질문 원문+답 Q&amp;A 형식으로 재구성 · importance vs peak <b>숫자 예시</b>(5건 시나리오 계산)와 해석 3조합 표 · 신뢰 3축 <b>시나리오 4건 표</b>(같은 로이터 기사도 셋이 갈라짐) · <b>⏱ _signal 생성 시점</b>(같은 사이클 배치의 마지막 단계 — 원본은 증분, signal은 매 사이클 무조건 재집계) · <b>🏆 대표 기사 = 생성이 아니라 선발</b>(importance×신뢰무게 최상위 1건, 용도 3가지) · s07 읽는 법 ① 상세화(없으면 생기는 3중고)</td></tr>
     <tr><td class="c"><b>v3.3</b></td><td>2026-07-13</td><td>문성혁 + Claude</td><td><b>#22 Strategist Q&amp;A 6건 — 신호 계약 설명 보강</b>: 📐 점수 눈금 가이드 신설(0~1 기준점 — LLM 프롬프트 채점 기준의 정본) · 🔍 신뢰 3축 구분표(grade/trust/confidence — 3축 유지 확정) · importance vs peak 읽는 법 3가지 · <b>disclosure_ref 매칭 규칙 확정</b>(ticker+event_type+±72h, 다음 사이클 자동 갱신 — upd_dt 불필요) · 📖 “07이 신호를 읽는 법” 4항(접시/영수증·최신 행 SQL·cycle_ts 용도 4·ref 타이밍)</td></tr>
     <tr><td class="c"><b>v3.2</b></td><td>2026-07-13</td><td>문성혁 + Claude</td><td><b>#21 공시/뉴스 개편</b> — collector 계승 전수 감사 8건 반영: 공시 집계 규칙 신설 · 뉴스 본문 계약(제목+스니펫, 크롤링 없음)·news_key 정규화 · signal에서 sentiment 라벨·keywords 삭제(공시 18·뉴스 26컬럼) · permission 3단계(block/block_buy/trade_eligible)·grade 소문자화(규칙 2) · risk_score 소비자 명시 · <b>filed_at·published_at 전달 JSON 추가</b>(Critic ⑤ 재료) · reason “한 줄” 폐기→1~3문장</td></tr>
