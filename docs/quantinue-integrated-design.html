@@ -6,7 +6,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-<title>Quantinue 통합 설계서 v3.7 — 팀 여름이었다</title>
+<title>Quantinue 통합 설계서 v3.8 — 팀 여름이었다</title>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <style>
   :root{
@@ -196,7 +196,7 @@
 
 <!-- ══════════════════════ HERO ══════════════════════ -->
 <header class="hero">
-  <span class="b">⭐ 정본 (2026-07-11 승격)</span> <span class="b">통합본 v3.7 · <a href="#changelog">변경 이력</a></span> <span class="b">팀 여름이었다</span>
+  <span class="b">⭐ 정본 (2026-07-11 승격)</span> <span class="b">통합본 v3.8 · <a href="#changelog">변경 이력</a></span> <span class="b">팀 여름이었다</span>
   <p class="small" style="margin:6px 0 0">본 문서가 Quantinue의 <b>단일 정본</b>이다. docs/ 하위 원본 문서 7종(특히 collector_agent 4종)은 구버전·참고용 — 서술이 어긋나면 <b>항상 이 문서가 이긴다</b>. 착수 후 <b>기계 계약(스키마·ENUM·문턱값·주기)의 정본은 코드 3파일</b>(<a href="#ai">#20</a> 확정) — 본 문서는 “왜 그렇게 됐는지”(결정·근거·이력)의 정본.</p>
   <h1>🌊 Quantinue <span class="nowrap-phrase">통합 설계서</span></h1>
   <p>공시·뉴스·기술지표·매크로를 읽고 → AI가 매수를 제안하고 → AI가 반박하고 → 코드가 리스크를 계산해 → 가상매매(페이퍼)로 사고 → 5일 뒤 복기하는 <b>하루 한 사이클 자동매매 <span class="nowrap-phrase">파이프라인</span></b>. <span class="nowrap-phrase">이 문서</span> 하나로 01~11 전체 흐름·DB 스키마·에이전트 간 데이터 계약을 파악할 수 있게 팀 문서 7종을 통합·단순화했다.</p>
@@ -888,7 +888,7 @@ erDiagram
     <tr><td>importance</td><td>NUMERIC 0~1</td><td class="c"></td><td>이 공시 1건이 얼마나 큰일인가</td><td>🟢</td></tr>
     <tr><td>risk_score</td><td>NUMERIC 0~1</td><td class="c"></td><td>이 공시 1건의 하방 위험도</td><td>🟢</td></tr>
     <tr><td>confidence</td><td>NUMERIC 0~1</td><td class="c"></td><td>LLM 분석 확신도 (Form 4는 코드 스코어링)</td><td>🟢</td></tr>
-    <tr><td>reason</td><td>TEXT</td><td class="c"></td><td>sentiment_score 점수 근거 — <b>1~3문장</b>(“한 줄” 강제 폐기 · #21). reason=왜 이 점수인가 / summary=무슨 일인가</td><td>🟢</td></tr>
+    <tr class="hl-chg"><td>reason</td><td>JSONB</td><td class="c"></td><td><b>점수별 근거 객체</b> — 키 {<code>sentiment_score</code>·<code>importance</code>·<code>risk_score</code>·<code>confidence</code>}, 각 값은 “왜 그 점수인가” 1~3문장(<b>LLM이 생성</b>). reason=왜 이 점수 / summary=무슨 일</td><td><span class="b b-chg">🔄 07-15 JSONB 분해 (#23 · #3 재개정)</span></td></tr>
     <tr><td>summary</td><td>TEXT</td><td class="c"></td><td>공시 내용 3~4줄 요약</td><td>🟢</td></tr>
     <tr><td>keywords</td><td>TEXT[]</td><td class="c"></td><td>핵심 키워드 5개 — <b>사람 검색·표시용</b>(파이프라인 소비 없음 · #21 명시)</td><td>🟢</td></tr>
     <tr><td>permission</td><td>TEXT</td><td class="c"></td><td>매매권한 — <code>block</code>(사전 drop) / <code>block_buy</code>(분석하되 매수 차단 = is_hard_blocked 원천) / <code>trade_eligible</code>(정상)</td><td><span class="b b-chg">🔄 07-13 #21 — 구 6단계(값 목록조차 미문서화)를 3단계 소문자로 재정의(규칙 2)</span></td></tr>
@@ -904,7 +904,12 @@ erDiagram
   "event_type": "ma",
   "sentiment_score": 0.820, "importance": 0.800, "risk_score": 0.350,
   "confidence": 0.900,
-  "reason": "대형 인수 공식 발표, 프리미엄 30%",
+  "reason": {                              // 🆕 점수별 근거 객체 (#23) — LLM 생성
+    "sentiment_score": "대형 인수를 프리미엄 30% 전액 현금으로 — 명백한 강호재 (0.82)",
+    "importance": "시총 상위 기업의 $12B 인수 = 주가 흔들 대형 (0.80)",
+    "risk_score": "규제 심사 통과 조건 잔존 — 경미 (0.35)",
+    "confidence": "8-K 원문에 금액·조건 명시 — High (0.90)"
+  },
   "summary": "NVIDIA가 XYZ Robotics 인수를 공식 발표. 인수가 주당 $45(전일 종가 대비 프리미엄 30%), 총 $12B 전액 현금. 이사회 승인 완료, 규제 심사 통과 시 4분기 마감 예정. 로보틱스 제품군 강화 목적.",
   "keywords": ["acquisition","robotics","premium","cash","8-K"],
   "permission": "trade_eligible",
@@ -921,10 +926,12 @@ erDiagram
     <tr><td>importance · risk_score</td><td>각각 <b>최댓값</b></td><td>공시는 건수가 적고 전부 공식 — 평균은 “가장 큰일”을 희석한다</td></tr>
     <tr><td>confidence</td><td>단순 평균</td><td>분석 확신의 대푯값</td></tr>
     <tr><td>is_hard_blocked / hard_block_reason</td><td>어느 1건이라도 true면 <b>true</b> / 그 건의 사유 채택</td><td>차단은 OR — 기존 확정 유지</td></tr>
+    <tr class="hl-new"><td>reason (점수별 객체)</td><td><b>대표 공시의 건별 reason + 집계 방식 주석을 코드가 조립</b> (LLM 재호출 없음)</td><td>점수가 코드 집계값이라 근거도 코드가 — Form 4 템플릿(#11)과 같은 패턴 · #23</td></tr>
+    <tr class="hl-new"><td>disclosure_count · top_evidence</td><td>건수 카운트 · <b>importance 상위 3건</b> <code>"{form_type}: {filing_title}"</code>(부족분 null)</td><td>뉴스(news_count·top_evidence)와 대칭 — 공시도 n건일 수 있음(#23). 정렬은 신뢰 축 없어 importance 순</td></tr>
     <tr><td>summary</td><td>대표 공시 요약 + <b>“외 N건(event_type 나열)” 코드 조립</b></td><td>LLM 추가 호출 없이 그날 전체 파악</td></tr>
   </table></div>
 
-  <h3>ERD — tb_disclosure_signal 🕐 집계 스냅샷 · 종목당 사이클 1행 <span class="b b-new">🆕 신규 추가됨</span> (기존 18필드 계승 + 규칙 8 키 2필드 − 정리 2컬럼(#21) = <b>18</b>)</h3>
+  <h3>ERD — tb_disclosure_signal 🕐 집계 스냅샷 · 종목당 사이클 1행 <span class="b b-new">🆕 신규 추가됨</span> (기존 18필드 − 정리 2(#21) + 규칙 8 키 2 + #23 2컬럼[disclosure_count·top_evidence] = <b>20</b>)</h3>
   <p class="small muted">매 1시간, 50종목 각각 “오늘 공시 전체”를 한 행으로 집계해 50행 append(덮어쓰기 ❌ 시계열 누적). 공시 없는 종목도 has_signal=false으로 행 생성 → 항상 50행/사이클 균일. 07은 종목별 <b>최신 행</b>을 읽는다. 점수의 눈금은 <a href="#score-guide">📐 눈금 가이드</a>.</p>
   <div class="twrap"><table><caption class="sr-only">ERD — tb_disclosure_signal 🕐 집계 스냅샷 · 종목당 사이클 1행 🆕 신규 추가됨 (기존 tb_disclosure 확정 18필드 계승 + 규칙 8 키 2필드 = 20)</caption>
     <tr><th scope="col" class="c">#</th><th scope="col">컬럼</th><th scope="col">타입</th><th scope="col" class="c">키</th><th scope="col">설명</th><th scope="col">비고</th></tr>
@@ -934,19 +941,21 @@ erDiagram
     <tr class="hl-chg"><td class="c">4</td><td><b>created_at</b></td><td>TIMESTAMPTZ</td><td class="c"></td><td>이 행이 DB에 저장된 시각 (<b>구 collected_at</b>) — <b>순수 기록용, 어떤 키에도 안 들어감</b>(규칙 8)</td><td><span class="b b-chg">🔄 이름 통일 + 키에서 제외</span></td></tr>
     <tr><td class="c">5</td><td>trade_date</td><td>DATE</td><td class="c">🔗</td><td>분석 기준 거래일 (구 as_of)</td><td><span class="b b-chg">🔄</span></td></tr>
     <tr><td class="c">6</td><td>has_signal</td><td>BOOLEAN</td><td class="c"></td><td>오늘 볼 공시 있음(true)/없음(false) — false면 아래 전부 null. 07은 true인 행만 판단에 사용</td><td><span class="b b-chg">🔄 BOOLEAN화 (컨벤션 1)</span></td></tr>
-    <tr><td class="c">7</td><td>filing_title</td><td>TEXT</td><td class="c"></td><td>대표 공시 제목 (표시·추적용)</td><td>🟢</td></tr>
-    <tr class="hl-new"><td class="c">8</td><td>filing_no</td><td>TEXT</td><td class="c">🔗</td><td>대표 공시 accession → <b>tb_disclosure.filing_no</b> — 원본 역추적이 FK로 성립</td><td><span class="b b-new">🆕 FK 신설</span></td></tr>
-    <tr><td class="c">9</td><td>filed_at</td><td>TIMESTAMPTZ</td><td class="c"></td><td>대표 공시 제출 시각 — look-ahead 방지</td><td>🟢</td></tr>
-    <tr><td class="c">10</td><td>event_type</td><td>TEXT (ENUM)</td><td class="c"></td><td>⭐ 사건 종류 — Strategist 핵심 판단재료 · 허용 12종(<a href="#s05">허용값 표</a> 정본): <code>earnings</code>·<code>guidance_change</code>·<code>ma</code>·<code>capital_raise</code>·<code>buyback</code>·<code>management_change</code>·<code>insider_trade</code>·<code>product_deal</code>·<code>analyst_rating</code>·<code>regulation_legal</code>·<code>delisting_halt</code>(하드리스크)·<code>other</code></td><td><span class="b b-chg">🔄 07-11 TEXT ENUM 확정 (#12)</span></td></tr>
-    <tr><td class="c">11</td><td>importance</td><td>NUMERIC 0~1</td><td class="c"></td><td>⭐ 얼마나 큰일인가 (1=주가 흔들 대형)</td><td>🟢 · 07 문턱 ≥ 0.25</td></tr>
-    <tr><td class="c">12</td><td>risk_score</td><td>NUMERIC 0~1</td><td class="c"></td><td>위험도 (호재/악재와 별개 축) — <b>소비자: 07 GPT 프롬프트 컨텍스트</b>(문턱·게이트 미사용 · #21 명시)</td><td>🟢</td></tr>
+    <tr class="hl-new"><td class="c">7</td><td>disclosure_count</td><td>INT</td><td class="c"></td><td>오늘 집계된 공시 건수 (뉴스 news_count와 대칭)</td><td><span class="b b-new">🆕 07-15 (#23)</span></td></tr>
+    <tr><td class="c">8</td><td>filing_title</td><td>TEXT</td><td class="c"></td><td>대표 공시 제목 (표시·추적용)</td><td>🟢</td></tr>
+    <tr class="hl-new"><td class="c">9</td><td>filing_no</td><td>TEXT</td><td class="c">🔗</td><td>대표 공시 accession → <b>tb_disclosure.filing_no</b> — 원본 역추적이 FK로 성립</td><td><span class="b b-new">🆕 FK 신설</span></td></tr>
+    <tr><td class="c">10</td><td>filed_at</td><td>TIMESTAMPTZ</td><td class="c"></td><td>대표 공시 제출 시각 — look-ahead 방지</td><td>🟢</td></tr>
+    <tr><td class="c">11</td><td>event_type</td><td>TEXT (ENUM)</td><td class="c"></td><td>⭐ 사건 종류 — Strategist 핵심 판단재료 · 허용 12종(<a href="#s05">허용값 표</a> 정본): <code>earnings</code>·<code>guidance_change</code>·<code>ma</code>·<code>capital_raise</code>·<code>buyback</code>·<code>management_change</code>·<code>insider_trade</code>·<code>product_deal</code>·<code>analyst_rating</code>·<code>regulation_legal</code>·<code>delisting_halt</code>(하드리스크)·<code>other</code></td><td><span class="b b-chg">🔄 07-11 TEXT ENUM 확정 (#12)</span></td></tr>
+    <tr><td class="c">12</td><td>importance</td><td>NUMERIC 0~1</td><td class="c"></td><td>⭐ 얼마나 큰일인가 (1=주가 흔들 대형)</td><td>🟢 · 07 문턱 ≥ 0.25</td></tr>
+    <tr><td class="c">13</td><td>risk_score</td><td>NUMERIC 0~1</td><td class="c"></td><td>위험도 (호재/악재와 별개 축) — <b>소비자: 07 GPT 프롬프트 컨텍스트</b>(문턱·게이트 미사용 · #21 명시)</td><td>🟢</td></tr>
     <tr class="hl-del"><td class="c">—</td><td><s>sentiment</s></td><td></td><td class="c"></td><td>삭제 (07-13 · #21) — 점수 파생 중복(라벨↔점수 어긋날 위험)·소비자 0. 표시가 필요하면 표시층에서 점수→라벨 파생</td><td><span class="b b-chg">🔄 삭제</span></td></tr>
-    <tr><td class="c">13</td><td>sentiment_score</td><td>NUMERIC 0~1</td><td class="c"></td><td>⭐ 호재↔악재 강도 (1=강호재 · 0.5=중립 · 0=강악재)</td><td>🟢 · 07 문턱 ≥ 0.70</td></tr>
-    <tr><td class="c">14</td><td>reason</td><td>TEXT</td><td class="c"></td><td>sentiment_score 근거 — <b>1~3문장</b>(“한 줄” 강제 폐기 · #21) · 집계 시 <b>대표 공시의 reason 채택</b> (예: “실적 +22%, 가이던스 상향”)</td><td>🟢 단일 reason 확정 (07-11 · AI 제안 #3) — 점수별 근거는 원본(tb_disclosure)의 건별 reason으로 역추적</td></tr>
-    <tr><td class="c">15</td><td>is_hard_blocked</td><td>BOOLEAN</td><td class="c"></td><td>🛡️ 매수 즉시 차단 (파산·상폐·대규모 희석) — 구 hard_block</td><td><span class="b b-chg">🔄 is_ 리네임 (컨벤션 1)</span></td></tr>
-    <tr><td class="c">16</td><td>hard_block_reason</td><td>TEXT</td><td class="c"></td><td>🛡️ 차단 사유</td><td>🟢</td></tr>
-    <tr><td class="c">17</td><td>confidence</td><td>NUMERIC 0~1</td><td class="c"></td><td>LLM 분석 확신도</td><td>🟢</td></tr>
-    <tr><td class="c">18</td><td>summary</td><td>TEXT</td><td class="c"></td><td>3~4줄 요약 (사람이 읽는 컨텍스트)</td><td>🟢</td></tr>
+    <tr><td class="c">14</td><td>sentiment_score</td><td>NUMERIC 0~1</td><td class="c"></td><td>⭐ 호재↔악재 강도 (1=강호재 · 0.5=중립 · 0=강악재)</td><td>🟢 · 07 문턱 ≥ 0.70</td></tr>
+    <tr class="hl-chg"><td class="c">15</td><td>reason</td><td>JSONB</td><td class="c"></td><td><b>점수별 근거 객체</b> {<code>sentiment_score</code>·<code>importance</code>·<code>risk_score</code>·<code>confidence</code>} — <b>집계 reason은 LLM 재호출 없이 코드가 조립</b>(대표 공시의 건별 근거 + 집계 방식 주석). Form 4 템플릿(<a href="#ai">#11</a>)과 같은 패턴</td><td><span class="b b-chg">🔄 07-15 JSONB (#23) — #3 재개정(단일→점수별, 소비자 이은미 요청)</span></td></tr>
+    <tr><td class="c">16</td><td>is_hard_blocked</td><td>BOOLEAN</td><td class="c"></td><td>🛡️ 매수 즉시 차단 (파산·상폐·대규모 희석) — 구 hard_block</td><td><span class="b b-chg">🔄 is_ 리네임 (컨벤션 1)</span></td></tr>
+    <tr><td class="c">17</td><td>hard_block_reason</td><td>TEXT</td><td class="c"></td><td>🛡️ 차단 사유</td><td>🟢</td></tr>
+    <tr><td class="c">18</td><td>confidence</td><td>NUMERIC 0~1</td><td class="c"></td><td>LLM 분석 확신도</td><td>🟢</td></tr>
+    <tr><td class="c">19</td><td>summary</td><td>TEXT</td><td class="c"></td><td>3~4줄 요약 (사람이 읽는 컨텍스트)</td><td>🟢</td></tr>
+    <tr class="hl-new"><td class="c">20</td><td>top_evidence</td><td>TEXT[] 고정3</td><td class="c"></td><td>근거가 된 대표 공시 3건 <code>"{form_type}: {filing_title}"</code>(부족분 null) — <b>정렬은 importance 순</b>(공시는 신뢰 축 없음 → 뉴스 top_evidence와 유일한 차이)</td><td><span class="b b-new">🆕 07-15 (#23)</span></td></tr>
     <tr class="hl-del"><td class="c">—</td><td><s>keywords</s></td><td></td><td class="c"></td><td>삭제 (07-13 · #21) — 전달·문턱·프롬프트 어디에도 안 실리는 소비자 0 컬럼. 건별 keywords는 원본(tb_disclosure)에 유지</td><td><span class="b b-chg">🔄 삭제</span></td></tr>
     <tr class="hl-del"><td class="c">—</td><td>company_name · category · confirmed_score · fact_check · verdict · ref</td><td></td><td class="c"></td><td>삭제 확정 6필드 <span class="keep">(창욱 동의 2026-07-07)</span></td><td><span class="keep">🟢 JOIN 중복·정보량 0</span></td></tr>
   </table></div>
@@ -961,12 +970,19 @@ erDiagram
   "filing_no": "0001-24-000123",           // → tb_disclosure 원본 역추적
   "filed_at": "2026-07-10T12:40:00Z",
   "event_type": "ma",
+  "disclosure_count": 1,                   // 🆕 오늘 공시 건수 (#23)
   "importance": 0.800, "risk_score": 0.350,
   "sentiment_score": 0.820,
-  "reason": "대형 인수 공식 발표, 프리미엄 30%",
+  "reason": {                              // 🆕 코드 조립 — LLM 재호출 없음 (#23)
+    "sentiment_score": "대표 공시(0001-24-000123) 근거 채택 — 오늘 공시 1건",
+    "importance": "최댓값 채택(1건) — 대형 인수 (0.80)",
+    "risk_score": "최댓값 채택 — 규제 심사 조건 (0.35)",
+    "confidence": "1건 단순평균 (0.90)"
+  },
   "is_hard_blocked": false, "hard_block_reason": null,
   "confidence": 0.900,
-  "summary": "오늘 공시 1건 — XYZ Robotics 인수 발표(8-K). 프리미엄 30% 전액 현금, 4분기 마감 목표. 하드리스크 항목 없음."
+  "summary": "오늘 공시 1건 — XYZ Robotics 인수 발표(8-K). 프리미엄 30% 전액 현금, 4분기 마감 목표. 하드리스크 항목 없음.",
+  "top_evidence": ["8-K: NVIDIA to Acquire XYZ Robotics", null, null]   // 🆕 importance 순 (#23)
 }</code></pre></div>
 
 
@@ -992,19 +1008,26 @@ erDiagram
   </table></div>
 
   <h3>📦 07·08에게 전달하는 응답 JSON (pack_disclosure_signal)</h3>
-  <p class="small muted">저장(18컬럼 — #21 정리 반영)과 전달(11필드)은 별개 층 — 전달은 판단에 필요한 것만 압축한다. 필드명은 저장 컬럼과 동일(개명 없음).</p>
+  <p class="small muted">저장(20컬럼 — #23 반영)과 전달(13필드)은 별개 층 — 전달은 판단에 필요한 것만 압축한다. 필드명은 저장 컬럼과 동일(개명 없음). reason은 점수별 근거 객체(JSONB).</p>
 <pre><code>// 예시 ① 8-K 인수 호재
 {
   "has_signal": true,
   "event_type": "ma",
   "filed_at": "2026-07-10T12:40:00Z",   // 🆕 발생 시각 — Critic ⑤신선도 기준 (#21 전달 추가)
+  "disclosure_count": 1,                // 🆕 오늘 공시 건수 (#23)
   "importance": 0.80,
   "sentiment_score": 0.85,
   "risk_score": 0.10,
   "confidence": 0.90,
-  "reason": "An all-cash strategic buy at scale is clearly bullish.",
+  "reason": {                           // 🆕 점수별 근거 객체 (#23)
+    "sentiment_score": "All-cash strategic buy at scale — clearly bullish (0.85)",
+    "importance": "$2.1B acquisition of a listed firm — large (0.80)",
+    "risk_score": "Regulatory approval pending — minor (0.10)",
+    "confidence": "8-K states amount and terms — high (0.90)"
+  },
   "is_hard_blocked": false,
   "summary": "Microsoft agreed to acquire a cybersecurity firm for $2.1B in cash.",
+  "top_evidence": ["8-K: Microsoft to acquire cybersecurity firm", null, null],  // 🆕 (#23)
   "filing_no": "0001-24-000123"        // 🆕 원본 역추적 — Critic 검증용
 }
 
@@ -1063,7 +1086,7 @@ erDiagram
     <tr><td>source_trust</td><td>NUMERIC 0~1</td><td class="c"></td><td>LLM이 내용까지 보고 매긴 출처 신뢰 (기사 단위)</td><td>🟢</td></tr>
     <tr><td>confidence</td><td>NUMERIC 0~1</td><td class="c"></td><td>LLM 분석 확신도 (certainty_level: High .9 / Med .6 / Low .3)</td><td>🟢</td></tr>
     <tr><td>is_confirmed</td><td>BOOLEAN</td><td class="c"></td><td>확정 사실(true) / 소문(false — 가중치 0.5) — <b>컬럼 삭제된 confirmed_score와 달리 기사 단위 내부 가중치 재료로만 사용</b></td><td><span class="b b-chg">🔄 BOOLEAN화</span></td></tr>
-    <tr><td>reason</td><td>TEXT</td><td class="c"></td><td>기사별 점수 근거 — <b>1~3문장</b>(“한 줄” 강제 폐기 · #21)</td><td>🟢</td></tr>
+    <tr class="hl-chg"><td>reason</td><td>JSONB</td><td class="c"></td><td><b>점수별 근거 객체</b>(기사 1건 기준) — 키 {<code>sentiment_score</code>·<code>importance</code>·<code>risk_score</code>·<code>source_trust</code>·<code>confidence</code>}, 각 값 1~3문장(<b>LLM 생성</b>)</td><td><span class="b b-chg">🔄 07-15 JSONB 분해 (#23)</span></td></tr>
     <tr><td>summary</td><td>TEXT</td><td class="c"></td><td>기사별 요약</td><td>🟢</td></tr>
     <tr><td>keywords</td><td>TEXT[]</td><td class="c"></td><td>기사별 키워드 — <b>사람 검색·표시용</b>(파이프라인 소비 없음 · #21 명시)</td><td>🟢</td></tr>
     <tr><td>permission</td><td>TEXT</td><td class="c"></td><td>매매권한 — <code>block</code> / <code>block_buy</code> / <code>trade_eligible</code> (공시와 동일 3단계)</td><td><span class="b b-chg">🔄 07-13 #21 — 3단계 소문자 재정의(규칙 2)</span></td></tr>
@@ -1082,7 +1105,13 @@ erDiagram
   "event_type": "ma",
   "sentiment_score": 0.800, "importance": 0.850, "risk_score": 0.300,
   "source_trust": 0.880, "confidence": 0.900, "is_confirmed": true,
-  "reason": "1급 매체의 인수 확정 보도",
+  "reason": {                              // 🆕 점수별 근거 객체 (#23) — LLM 생성
+    "sentiment_score": "1급 매체의 인수 확정 보도 — 강호재 (0.80)",
+    "importance": "$12B 대형 인수 (0.85)",
+    "risk_score": "확정 계약이라 하방 위험 낮음 (0.30)",
+    "source_trust": "로이터 공식 발표 인용 — High (0.88)",
+    "confidence": "금액·조건 구체적 — High (0.90)"
+  },
   "summary": "로이터 단독 보도 — NVIDIA가 XYZ Robotics를 $12B에 인수하는 계약을 체결. 프리미엄 30%, 전액 현금. 경영진은 4분기 마감을 목표로 제시.",
   "keywords": ["acquisition","robotics","12B","deal","nvidia"],
   "permission": "trade_eligible",
@@ -1149,7 +1178,7 @@ erDiagram
     <tr><td class="c">11</td><td>ref</td><td>TEXT</td><td class="c"></td><td>대표 기사 원문 링크</td><td>🟢</td></tr>
     <tr><td class="c">12</td><td>event_type</td><td>TEXT (ENUM)</td><td class="c"></td><td>⭐ 사건 종류 — 공시와 허용값 공유 · 허용 12종(<a href="#s05">허용값 표</a> 정본): <code>earnings</code>·<code>guidance_change</code>·<code>ma</code>·<code>capital_raise</code>·<code>buyback</code>·<code>management_change</code>·<code>insider_trade</code>·<code>product_deal</code>·<code>analyst_rating</code>·<code>regulation_legal</code>·<code>delisting_halt</code>(하드리스크)·<code>other</code></td><td><span class="b b-chg">🔄 07-11 TEXT ENUM 확정 (#12)</span></td></tr>
     <tr><td class="c">13</td><td>disclosure_ref</td><td>TEXT</td><td class="c">🔗</td><td>이 사건에 대응하는 공식 공시가 있으면 그 filing_no, 없으면 null — <b>뉴스↔공시 교차확인</b> (Critic ①가짜합의의 [A] 강한 판정 근거). <b>매칭 규칙(07-13 확정 · #22)</b>: 같은 ticker + 같은 event_type + |filed_at − published_at| ≤ 72h인 공시 중 최신 filing_no — 집계 때마다 재계산. <b>뉴스가 공시보다 먼저면 그 사이클엔 null이 정상</b> — 다음 사이클의 새 스냅샷이 자동으로 채워 옴(append 불변이라 행 업데이트·upd_dt 없음 → <a href="#s07">07 읽는 법 ④</a>)</td><td>🟢 신설 확정 · 스케줄러가 집계 시 주입 · <span class="b b-chg">🔄 07-13 매칭 규칙 명시</span></td></tr>
-    <tr><td class="c">14</td><td>reason</td><td>TEXT</td><td class="c"></td><td>sentiment_score 근거 — <b>1~3문장</b>(“한 줄” 강제 폐기 · #21) · 2건+이면 배치 종합 LLM이 작성</td><td>🟢</td></tr>
+    <tr class="hl-chg"><td class="c">14</td><td>reason</td><td>JSONB</td><td class="c"></td><td><b>점수별 근거 객체</b> {<code>sentiment_score</code>·<code>importance</code>·<code>risk_score</code>·<code>source_trust</code>·<code>confidence</code>} — <b>코드가 조립</b>(대표 기사의 건별 근거 + 집계 방식 주석 · LLM 재호출 0)</td><td><span class="b b-chg">🔄 07-15 JSONB (#23)</span></td></tr>
     <tr><td class="c">15</td><td>summary</td><td>TEXT</td><td class="c"></td><td>3~4줄 요약 — 2건 이상이면 배치 종합 LLM, 1건이면 대표 기사 요약</td><td>🟢</td></tr>
     <tr class="hl-del"><td class="c">—</td><td><s>keywords</s></td><td></td><td class="c"></td><td>삭제 (07-13 · #21) — 소비자 0. 건별 keywords는 원본(tb_news)에 유지</td><td><span class="b b-chg">🔄 삭제</span></td></tr>
     <tr><td class="c" colspan="6" style="background:#eff2f5"><b>C. 전체 기사 신뢰가중 집계 — 기사 무게 w = 확신도(H .9/M .6/L .3) × 확인계수(확정 1.0/소문 0.5) × 매체신뢰</b></td></tr>
@@ -1183,7 +1212,13 @@ erDiagram
   "ref": "https://www.reuters.com/markets/deals/nvidia-xyz-robotics-12b-2026-07-10/",
   "event_type": "ma",
   "disclosure_ref": "0001-24-000123",      // 공시 교차확인 — Critic ①의 [A] 근거
-  "reason": "인수 확정 보도 + 실적 서프라이즈 동반",
+  "reason": {                              // 🆕 코드 조립 — LLM 재호출 없음 (#23)
+    "sentiment_score": "대표 기사(rep 55231) 근거 채택 — 3건 가중평균 (0.78)",
+    "importance": "3건 신뢰가중 평균 (0.78)",
+    "risk_score": "3건 신뢰가중 평균 (0.31)",
+    "source_trust": "allow 2 · gray 1 가중평균 (0.88)",
+    "confidence": "3건 단순평균 (0.76)"
+  },
   "summary": "기사 3건 종합 — 인수 확정 보도(로이터·블룸버그)와 실적 서프라이즈가 겹침. 저신뢰 1건은 가중평균에서 희석. 방향성 일치, 하드리스크 없음.",
   "news_count": 3,
   "importance": 0.780, "peak_importance": 0.850, "risk_score": 0.310,
@@ -1208,7 +1243,13 @@ erDiagram
   "source_trust": 0.84,
   "grade_score": 0.95,
   "disclosure_ref": null,            // 🆕 전달에 포함 — Critic ①가짜합의 [A] 판정용
-  "reason": "Clearly positive but dampened by moderate certainty.",
+  "reason": {                        // 🆕 점수별 근거 객체 (#23)
+    "sentiment_score": "Positive but dampened by moderate certainty (0.64)",
+    "importance": "Multi-year supply deal — mid (0.63)",
+    "risk_score": "Low downside (0.06)",
+    "source_trust": "Reuters-led, weighted (0.84)",
+    "confidence": "Mixed certainty across sources (0.71)"
+  },
   "is_hard_blocked": false,
   "summary": "NVIDIA signed a multi-year GPU supply agreement with a major cloud provider."
 }
@@ -1670,6 +1711,7 @@ flowchart LR
     <div class="ai-row"><div class="ai-k">왜</div><div class="ai-v"><s>공식 18/25필드가 팀 합의본이고, 분해 reason의 소비자(GPT 프롬프트)는 단일 reason으로도 충분. 분해하면 07·08 파싱 코드가 전부 바뀐다</s></div></div>
     <div class="ai-row"><div class="ai-k">대안</div><div class="ai-v"><s>분해안 채택 시: 컬럼 20/29개로 확장 + 본 문서 05·06 표 갱신</s></div></div>
     <div class="ai-res">↳ ✅ <b>해결 (2026-07-11)</b> — <b>집계 테이블은 단일 reason 확정.</b> 수집/전달 분리 재개편으로 <b>기사·공시 1건마다의 reason이 원본 테이블(tb_news·tb_disclosure)에 그대로 남으므로</b>, 점수별 분해 reason은 원본 역추적(rep_news_id·filing_no)으로 대체된다 — 별도 컬럼 불필요.</div>
+    <div class="ai-res" style="border-left-color:#8250df"><b>🔄 재개정 (2026-07-15 · <a href="#ai">#23</a>)</b> — 당시 기각 근거가 “소비자(GPT 프롬프트)는 단일 reason으로 충분”이었는데, <b>그 소비자 본인(Strategist 이은미)이 점수별 근거를 요청</b>했다 → 번복 정당. 단 창욱 원안(컬럼 5개 분해·29컬럼)이 아니라 <b>reason 1컬럼을 JSONB 객체로 확장</b>(키=점수 컬럼명)으로 받아 스키마 팽창은 피함. 집계 레벨 reason은 LLM 재호출 없이 코드 조립. 상세 → #23.</div>
   </div>
   <div class="ai-item done" data-status="done">
     <div class="ai-head"><span class="ai-no">4</span><b>출처등급 정책</b><span class="sp"><span class="ai-who">👤 정창욱</span><span class="b b-ok">✅ 해결</span></span></div>
@@ -1876,7 +1918,16 @@ flowchart LR
       A. <b>비채택 확정 — 1건 유지.</b> 정보는 이미 4중 보완(전체 집계·top_evidence 3건·summary 종합·원본 역추적)이고, 배열은 Critic ⑤의 기준 시각과 게이트의 단일 event_type 전제를 깬다. 복수 사건이 실측으로 잦아지면 그때의 정답은 배열이 아니라 <b>사건 단위 행 분해</b>(2차) → <a href="#rep-note">🏆 상세</a>.</div>
   </div>
 
-  <p class="small muted">본 문서는 Official_Document.html(2026-07-10 14:45)을 역사적 뼈대로 삼아 collector 4종·strategist v3.8·critic PDF 2종을 통합해 2026-07-11 생성됨. 현재 사람용 계약·결정 이력의 정본은 본 통합 문서이며, 원본 문서들은 docs/ 하위 각 폴더에 보존.</p>
+    <div class="ai-item done" data-status="done">
+    <div class="ai-head"><span class="ai-no">23</span><b>공시/뉴스 2차 개편 — 점수별 reason · 공시 count/top_evidence (Strategist 요청)</b><span class="sp"><span class="ai-who">👥 이은미 ↔ 문성혁</span><span class="b b-ok">✅ 반영 (07-15)</span></span></div>
+    <div class="ai-row"><div class="ai-k">요청</div><div class="ai-v">Strategist(이은미) — ① reason이 sentiment_score 근거만 담는데, <b>importance·risk_score·source_trust·confidence의 근거도 점수별로 따로</b> 받고 싶다(공시·뉴스, 없는 컬럼 제외). ② 공시도 하루 n건일 수 있으니 뉴스의 <b>news_count·top_evidence 대칭 컬럼</b>을 공시에도.</div></div>
+    <div class="ai-row"><div class="ai-k">① 점수별<br>reason</div><div class="ai-v"><b>수용 — reason 컬럼을 JSONB 객체로 확장</b>(컬럼 분해 아님 — 창욱 원안 29컬럼의 팽창 회피). 키 = 점수 컬럼명 그대로(규칙 5): 뉴스 {sentiment_score·importance·risk_score·source_trust·confidence} / 공시 {…source_trust 제외}. <b>값 출처 2층</b>: 원본(기사·공시 1건)은 <b>LLM 출력 스키마에 점수별 근거 추가 생성</b>(출력 +200토큰/건 ≈ 하루 &lt;$0.3) · 집계(signal)는 <b>LLM 재호출 없이 코드가 조립</b>(기여 건 근거 + 집계 방식 주석 — Form 4 템플릿 #11과 같은 패턴, 환각·비용 차단).</div></div>
+    <div class="ai-row"><div class="ai-k">② 공시<br>count/evidence</div><div class="ai-v"><b>수용</b> — <code>disclosure_count</code>(INT · 뉴스 news_count 대칭) + <code>top_evidence</code>(TEXT[] 고정3 · <code>"{form_type}: {filing_title}"</code>). <b>뉴스와 유일한 차이: 정렬 기준</b> — 뉴스는 신뢰순인데 공시는 신뢰 축이 없어(전부 SEC 공식) <b>importance 순</b>. 공시 signal 18→<b>20컬럼</b>, 공시 전달 11→<b>13필드</b>.</div></div>
+    <div class="ai-row"><div class="ai-k">⚠️ 구현<br>반영 필요</div><div class="ai-v"><b>이미 착수된 코드가 있어 반영이 필요하다</b>(담당 정창욱 · 05·06): <code>db/schema.sql</code>의 <code>reason TEXT → JSONB</code>(tb_disclosure·tb_news·양 signal 4곳) · <code>tb_disclosure_signal</code>에 <code>disclosure_count INT</code>·<code>top_evidence TEXT[]</code> 추가 · <code>schemas.py</code> Pydantic 모델(reason: dict) · 05·06 집계 코드의 reason 조립. <b>본 문서(정본)가 선행 확정, 코드는 이 계약으로 따라온다</b>(#20 순서).</div></div>
+    <div class="ai-res">↳ ✅ <b>반영 완료 (2026-07-15 · 문서)</b> — <a href="#s05">05</a>·<a href="#s06">06</a> 스키마 표(reason JSONB·공시 2컬럼 추가·재번호)·집계 규칙 표·pack JSON·row 예시 전부 반영. <b>#3(reason 분해)의 재개정</b>으로 기록(소비자 본인 요청이라 번복 정당). 07은 reason을 객체째 GPT 프롬프트에 주입.</div>
+  </div>
+
+<p class="small muted">본 문서는 Official_Document.html(2026-07-10 14:45)을 역사적 뼈대로 삼아 collector 4종·strategist v3.8·critic PDF 2종을 통합해 2026-07-11 생성됨. 현재 사람용 계약·결정 이력의 정본은 본 통합 문서이며, 원본 문서들은 docs/ 하위 각 폴더에 보존.</p>
 </section>
 
 <!-- ══════════════════════ 보안 로드맵 ══════════════════════ -->
@@ -1917,7 +1968,8 @@ flowchart LR
   <div class="danger"><b>✍️ 편집 규칙 (사람이든 AI든 예외 없음)</b> — 이 문서를 수정하면 <b>반드시 아래 표 맨 위에 한 줄 추가</b>한다: 버전 +0.1 · 날짜 · 수정자 · 무엇을 왜 바꿨는지 1~3줄. 히어로의 버전 배지도 같이 올린다. “어떤 게 최신 계약인지”를 이 표가 보증한다 — 줄이 없으면 그 수정은 없던 일로 간주. <span class="small">Git 커밋·태그가 실제 diff와 배포 이력을 보증하고, 이 표는 사람이 읽는 변경 요약을 담당한다.</span></div>
   <div class="twrap"><table><caption class="sr-only">📜 변경 이력 — 이 문서의 형상관리 🆕 07-12 신설</caption>
     <tr><th scope="col" class="c">버전</th><th scope="col">날짜</th><th scope="col">수정자</th><th scope="col">변경 요약</th></tr>
-    <tr class="hl-new"><td class="c"><b>v3.7</b></td><td>2026-07-13</td><td>문성혁 + Codex</td><td><b>importance·peak_importance 운영 판단 가이드 명문화</b> — peak는 큰 단일 촉매 경보, importance는 전체 흐름의 뒷받침으로 역할을 분리. 두 값이 모두 기준을 넘을 때만 강한 후보로 검토하며, peak 단독은 재확인 후 보류·importance 단독은 우선순위 하향·둘 다 낮으면 제외. 기존 점수 산출·스키마·하드 게이트는 변경 없음.</td></tr>
+    <tr class="hl-new"><td class="c"><b>v3.8</b></td><td>2026-07-15</td><td>문성혁 + Claude</td><td><b>#23 공시/뉴스 2차 개편 (Strategist 요청)</b> — ① <b>reason을 JSONB 점수별 근거 객체로 확장</b>(원본=LLM 생성 · 집계=코드 조립·LLM 재호출 0) 4곳 · <b>#3 재개정</b>(소비자 본인 요청) ② 공시 <b>disclosure_count·top_evidence 추가</b>(뉴스 대칭 · 정렬만 importance 순) — 공시 signal 18→20컬럼·전달 11→13필드 · 스키마 표·집계 규칙·pack JSON·row 예시 반영 · 구현 반영(schema.sql·schemas.py)은 정창욱 후속</td></tr>
+    <tr><td class="c"><b>v3.7</b></td><td>2026-07-13</td><td>문성혁 + Codex</td><td><b>importance·peak_importance 운영 판단 가이드 명문화</b> — peak는 큰 단일 촉매 경보, importance는 전체 흐름의 뒷받침으로 역할을 분리. 두 값이 모두 기준을 넘을 때만 강한 후보로 검토하며, peak 단독은 재확인 후 보류·importance 단독은 우선순위 하향·둘 다 낮으면 제외. 기존 점수 산출·스키마·하드 게이트는 변경 없음.</td></tr>
     <tr class="hl-new"><td class="c"><b>v3.6</b></td><td>2026-07-13</td><td>문성혁 + Claude</td><td><b>뉴스 대표 선발 동률 규칙 확정</b>(#22 Q8 후속) — importance×w 동률 시 published_at 최신 → id 큰 것. 공시(“filed_at 최신”)와 대칭 · 핵심 계약은 결정론성(재집계마다 같은 대표 = 멱등·재현)</td></tr>
     <tr><td class="c"><b>v3.5</b></td><td>2026-07-13</td><td>문성혁 + Claude</td><td><b>#22 Q9 — 대표 기사 배열 비채택 확정</b>: 1건 유지(정보는 전체 집계·top_evidence 3건·summary·원본 역추적 4중 보완) · 배열은 Critic ⑤ 기준 시각·게이트 단일 event_type 전제를 깨므로 비채택 · 알려진 한계(복수 사건 동시 발생) 명시 · 뒤집기 트리거 = 회고 실측 후 <b>사건 단위 행 분해</b>(배열 아님, 2차)</td></tr>
     <tr><td class="c"><b>v3.4</b></td><td>2026-07-13</td><td>문성혁 + Claude</td><td><b>#22 2차 보강 (Q7·Q8 추가, 총 8건)</b> — #22 카드를 질문 원문+답 Q&amp;A 형식으로 재구성 · importance vs peak <b>숫자 예시</b>(5건 시나리오 계산)와 해석 3조합 표 · 신뢰 3축 <b>시나리오 4건 표</b>(같은 로이터 기사도 셋이 갈라짐) · <b>⏱ _signal 생성 시점</b>(같은 사이클 배치의 마지막 단계 — 원본은 증분, signal은 매 사이클 무조건 재집계) · <b>🏆 대표 기사 = 생성이 아니라 선발</b>(importance×신뢰무게 최상위 1건, 용도 3가지) · s07 읽는 법 ① 상세화(없으면 생기는 3중고)</td></tr>
