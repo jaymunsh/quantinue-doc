@@ -187,7 +187,22 @@
   th{background:var(--surface-2);font-family:var(--mono);font-size:11.5px;font-weight:700;
     letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft);white-space:nowrap}
   tr:last-child td{border-bottom:none}
-  td .mono,td code{font-size:12.5px}
+  td .mono,td code,td.mono{font-size:12.5px}
+
+  /* 접이식 스키마 명세 */
+  details.schema{border:1px solid var(--line);border-radius:var(--radius-sm);margin:10px 0;background:var(--surface)}
+  details.schema summary{cursor:pointer;padding:11px 16px;font-size:14px;font-weight:600;
+    display:flex;gap:10px;align-items:center;list-style:none;border-radius:var(--radius-sm)}
+  details.schema summary::-webkit-details-marker{display:none}
+  details.schema summary::before{content:"▸";color:var(--teal);font-family:var(--mono);font-size:12px}
+  details.schema[open] summary::before{content:"▾"}
+  details.schema summary:hover{background:var(--surface-2)}
+  details.schema summary .sd{font-weight:400;color:var(--ink-soft);font-size:13px}
+  details.schema summary .cnt{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink-faint);white-space:nowrap}
+  details.schema .twrap{margin:0 14px 14px;border-radius:8px}
+  details.schema table{font-size:13px}
+  details.schema td:first-child{font-family:var(--mono);font-size:12.5px;white-space:nowrap;color:var(--teal)}
+  details.schema td:nth-child(2){font-family:var(--mono);font-size:11.5px;color:var(--ink-soft)}
 
   /* AI 추천 제안 카드 */
   .ai-card{border:1px solid var(--line);border-radius:var(--radius);padding:0;margin:16px 0;overflow:hidden}
@@ -587,18 +602,296 @@ erDiagram
         <tr><td class="mono">order_submissions</td><td>주문 제출 claim·멱등</td><td class="mono">client_order_id</td></tr>
       </table></div>
 
+      <h3>테이블별 컬럼 명세 <span class="b b-gray">접이식 · 코드 정본 schema.sql 기준</span></h3>
+      <p>클릭하면 펼쳐진다. <span class="b b-hold">M2</span> = 2차에서 변경·추가 예정(아래 변경표 참조). 증거성 테이블들이 공유하는 계보 컬럼은 맨 위에 한 번만 정의.</p>
+
+      <details class="schema"><summary><code>🧬 계보 공통 10컬럼</code><span class="sd">증거성 테이블 공통 — 재현·감사 추적</span><span class="cnt">공통</span></summary>
+        <div class="twrap"><table>
+          <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
+          <tr><td>source</td><td>TEXT NOT NULL</td><td>데이터 출처 (fixture·sec·rss 등)</td></tr>
+          <tr><td>source_ref</td><td>TEXT NOT NULL</td><td>출처 상세 참조 (URL·경로)</td></tr>
+          <tr><td>captured_at</td><td>TIMESTAMPTZ NOT NULL</td><td>수집 시각</td></tr>
+          <tr><td>evidence_id</td><td>TEXT NOT NULL</td><td>증거 고유 id (run:역할:종류)</td></tr>
+          <tr><td>parent_evidence_ids</td><td>JSONB DEFAULT '[]'</td><td>상위 증거 연결 (계보 그래프)</td></tr>
+          <tr><td>model_provider</td><td>TEXT NOT NULL</td><td>LLM 제공자 (mock·openai·local)</td></tr>
+          <tr><td>model_name</td><td>TEXT</td><td>모델명</td></tr>
+          <tr><td>prompt_version</td><td>TEXT</td><td>프롬프트 버전</td></tr>
+          <tr><td>policy_version</td><td>TEXT</td><td>정책(config) 버전</td></tr>
+          <tr><td>input_hash</td><td>TEXT (sha256 hex)</td><td>입력 해시 — 같은 입력 재현 검증</td></tr>
+        </table></div>
+      </details>
+
+      <details class="schema"><summary><code>tb_universe</code><span class="sd">주1회 감시망 스냅샷</span><span class="cnt">5컬럼</span></summary>
+        <div class="twrap"><table>
+          <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
+          <tr><td>as_of_date</td><td>DATE · PK</td><td>스냅샷 주차 날짜 — 매주 앨범처럼 누적(생존편향 방지)</td></tr>
+          <tr><td>ticker</td><td>TEXT · PK</td><td>종목 코드</td></tr>
+          <tr><td>company_name</td><td>TEXT NOT NULL</td><td>회사명</td></tr>
+          <tr><td>market_cap</td><td>BIGINT ≥ 0</td><td>시가총액 (선정 기준)</td></tr>
+          <tr><td>created_at</td><td>TIMESTAMPTZ DEFAULT now()</td><td>DB 저장 시각 (기록용)</td></tr>
+        </table></div>
+      </details>
+
+      <details class="schema"><summary><code>tb_daily_pick</code><span class="sd">오늘의 후보 (버킷·랭크)</span><span class="cnt">8컬럼</span></summary>
+        <div class="twrap"><table>
+          <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
+          <tr><td>trade_date</td><td>DATE · PK</td><td>거래일 (뉴욕 영업일)</td></tr>
+          <tr><td>ticker</td><td>TEXT · PK</td><td>종목 — FK(universe_as_of, ticker)</td></tr>
+          <tr><td>universe_as_of</td><td>DATE NOT NULL</td><td>몇 주차 유니버스 출신인지</td></tr>
+          <tr><td>bucket</td><td>TEXT ENUM 6종</td><td>trend_leader·volume_surge·high_52w_breakout·pullback·squeeze_breakout·backfill</td></tr>
+          <tr><td>rank</td><td>INT 1~50</td><td>당일 순위</td></tr>
+          <tr><td>sector</td><td>TEXT NOT NULL</td><td>섹터</td></tr>
+          <tr><td>score</td><td>NUMERIC</td><td>버킷 스코어 (픽 게이트 0.70)</td></tr>
+          <tr><td>created_at</td><td>TIMESTAMPTZ DEFAULT now()</td><td>기록 시각</td></tr>
+        </table></div>
+      </details>
+
+      <details class="schema"><summary><code>tb_technical</code><span class="sd">기술지표 (LLM 미사용)</span><span class="cnt">16컬럼</span></summary>
+        <div class="twrap"><table>
+          <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
+          <tr><td>trade_date · ticker</td><td>DATE·TEXT · 복합 PK</td><td>FK → tb_daily_pick</td></tr>
+          <tr><td>close</td><td>NUMERIC &gt; 0</td><td>종가</td></tr>
+          <tr><td>rs_20</td><td>NUMERIC</td><td>20일 상대강도</td></tr>
+          <tr><td>vol_ratio</td><td>NUMERIC</td><td>거래량 비율 (평균 대비)</td></tr>
+          <tr><td>ret_5d · ret_20d</td><td>NUMERIC</td><td>5·20일 수익률 (late_entry 컷 재료)</td></tr>
+          <tr><td>atr_pct</td><td>NUMERIC</td><td>변동폭(ATR) 비율</td></tr>
+          <tr><td>high_252_ratio</td><td>NUMERIC</td><td>52주 고가 대비 현재가</td></tr>
+          <tr><td>rsi · macd</td><td>NUMERIC</td><td>모멘텀 지표</td></tr>
+          <tr><td>ma20 · ma50</td><td>NUMERIC</td><td>이동평균</td></tr>
+          <tr><td>trend</td><td>TEXT ENUM</td><td>up·mixed·down·no_data</td></tr>
+          <tr><td>ml_probs</td><td>JSONB DEFAULT '{}'</td><td>ML 확률 (확장용)</td></tr>
+          <tr><td>created_at</td><td>TIMESTAMPTZ</td><td>기록 시각</td></tr>
+        </table></div>
+      </details>
+
+      <details class="schema"><summary><code>tb_macro</code><span class="sd">시장 국면</span><span class="cnt">9컬럼</span></summary>
+        <div class="twrap"><table>
+          <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
+          <tr><td>as_of</td><td>TIMESTAMPTZ · PK</td><td>사이클 슬롯 시각 (cycle_ts 역할 — 규칙 8 위반 아님)</td></tr>
+          <tr><td>regime</td><td>TEXT ENUM</td><td>risk_on·neutral·risk_off (경계 0.30/0.70)</td></tr>
+          <tr><td>risk_score</td><td>NUMERIC 0~1</td><td>위험 점수 — 07 감점표의 입력</td></tr>
+          <tr><td>vix</td><td>NUMERIC</td><td>변동성 지수</td></tr>
+          <tr><td>nasdaq_ret · sp500_ret</td><td>NUMERIC</td><td>지수 수익률</td></tr>
+          <tr><td>rate · dollar</td><td>NUMERIC</td><td>금리 · 달러 인덱스</td></tr>
+          <tr><td>created_at</td><td>TIMESTAMPTZ</td><td>기록 시각</td></tr>
+        </table></div>
+      </details>
+
+      <details class="schema"><summary><code>tb_disclosure</code><span class="sd">공시 원본 원장 (1건=1행 · 불변)</span><span class="cnt">28컬럼</span></summary>
+        <div class="twrap"><table>
+          <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
+          <tr><td>id</td><td>BIGSERIAL · PK</td><td>대리키</td></tr>
+          <tr><td>ticker · trade_date</td><td>TEXT·DATE</td><td>FK → tb_daily_pick</td></tr>
+          <tr><td>filing_no</td><td>TEXT UNIQUE</td><td>공시 고유번호 — 역추적 키</td></tr>
+          <tr><td>form_type</td><td>TEXT NOT NULL</td><td>공시 종류 (8-K·10-Q·Form 4…)</td></tr>
+          <tr><td>filing_title</td><td>TEXT NOT NULL</td><td>공시 제목</td></tr>
+          <tr><td>filed_at</td><td>TIMESTAMPTZ NOT NULL</td><td>공시 발생 시각 (사건 시각)</td></tr>
+          <tr><td>event_type</td><td>TEXT NOT NULL</td><td>사건 분류 — 정본 ontology.py</td></tr>
+          <tr><td>sentiment_score · importance · risk_score · confidence</td><td>NUMERIC 0~1</td><td>LLM 채점 4종 (점수 눈금 가이드 기준)</td></tr>
+          <tr><td>reason</td><td>TEXT <span class="b b-hold">M2→JSONB</span></td><td>점수별 근거 객체 {sentiment_score, importance, risk_score, confidence}</td></tr>
+          <tr><td>summary</td><td>TEXT NOT NULL</td><td>무슨 일인지 요약 (reason=왜 이 점수)</td></tr>
+          <tr><td>keywords</td><td>TEXT[] DEFAULT '{}'</td><td>검색용 키워드</td></tr>
+          <tr><td>permission</td><td>TEXT ENUM</td><td>block·block_buy·trade_eligible</td></tr>
+          <tr><td>계보 공통 10</td><td>—</td><td>🧬 참조</td></tr>
+          <tr><td>created_at</td><td>TIMESTAMPTZ</td><td>기록 시각</td></tr>
+        </table></div>
+      </details>
+
+      <details class="schema"><summary><code>tb_disclosure_signal</code><span class="sd">공시 집계 (종목·사이클 1행 · append)</span><span class="cnt">26컬럼 <span class="b b-hold">M2 +2</span></span></summary>
+        <div class="twrap"><table>
+          <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
+          <tr><td>tds_id</td><td>BIGSERIAL · PK</td><td>대리키 (규칙 8)</td></tr>
+          <tr><td>cycle_ts</td><td>TIMESTAMPTZ NOT NULL</td><td>슬롯 시각 — UNIQUE(ticker, cycle_ts) 멱등</td></tr>
+          <tr><td>ticker · trade_date</td><td>TEXT·DATE</td><td>FK → tb_daily_pick</td></tr>
+          <tr><td>has_signal</td><td>BOOLEAN NOT NULL</td><td>이 사이클에 공시 신호가 있는가</td></tr>
+          <tr><td>filing_title · filing_no · filed_at · event_type</td><td>— (null 허용)</td><td>대표 공시의 얼굴 필드 · filing_no FK → 원본</td></tr>
+          <tr><td>importance · risk_score · sentiment_score · confidence</td><td>NUMERIC 0~1</td><td>집계 점수 (대표=최상위·강악재 최솟값 규칙)</td></tr>
+          <tr><td>reason</td><td>TEXT <span class="b b-hold">M2→JSONB</span></td><td>집계 근거 — 코드 조립(LLM 재호출 0)</td></tr>
+          <tr><td>is_hard_blocked · hard_block_reason</td><td>BOOLEAN·TEXT</td><td>하드 차단 여부·사유</td></tr>
+          <tr><td>summary</td><td>TEXT</td><td>"○○ 외 N건" 코드 조립</td></tr>
+          <tr><td>disclosure_count</td><td><span class="b b-hold">M2 신규</span> SMALLINT</td><td>이 사이클 집계된 공시 건수</td></tr>
+          <tr><td>top_evidence</td><td><span class="b b-hold">M2 신규</span> TEXT[]</td><td>importance 상위 근거 (뉴스 대칭)</td></tr>
+          <tr><td>계보 공통 10</td><td>—</td><td>🧬 참조</td></tr>
+          <tr><td>created_at</td><td>TIMESTAMPTZ</td><td>기록 시각</td></tr>
+        </table></div>
+      </details>
+
+      <details class="schema"><summary><code>tb_news</code><span class="sd">뉴스 원본 원장 (1건=1행 · 불변)</span><span class="cnt">31컬럼</span></summary>
+        <div class="twrap"><table>
+          <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
+          <tr><td>id</td><td>BIGSERIAL · PK</td><td>대리키 — 대표 기사 동률 최종 타이브레이커</td></tr>
+          <tr><td>ticker · trade_date</td><td>TEXT·DATE</td><td>FK → tb_daily_pick · UNIQUE(news_key, ticker)</td></tr>
+          <tr><td>news_key</td><td>TEXT NOT NULL</td><td>정규화 URL 키 (중복 수집 방지)</td></tr>
+          <tr><td>title · source · url</td><td>TEXT NOT NULL</td><td>제목·매체·링크</td></tr>
+          <tr><td>published_at</td><td>TIMESTAMPTZ NOT NULL</td><td>기사 발행 시각 (사건 시각)</td></tr>
+          <tr><td>grade</td><td>TEXT ENUM</td><td>allow·gray·block — 출처등급 (block=LLM 도달 전 drop)</td></tr>
+          <tr><td>is_dropped · drop_reason</td><td>BOOLEAN·TEXT</td><td>사전 차단 여부·사유 (기록은 보존)</td></tr>
+          <tr><td>event_type</td><td>TEXT</td><td>사건 분류</td></tr>
+          <tr><td>sentiment_score · importance · risk_score · source_trust · confidence</td><td>NUMERIC 0~1</td><td>LLM 채점 5종 (source_trust=내용 기반 신뢰)</td></tr>
+          <tr><td>is_confirmed</td><td>BOOLEAN</td><td>확정 사실 vs 소문 (신뢰무게 확인계수)</td></tr>
+          <tr><td>reason</td><td>TEXT <span class="b b-hold">M2→JSONB</span></td><td>점수별 근거 객체 (+source_trust 키)</td></tr>
+          <tr><td>summary · keywords · permission</td><td>—</td><td>요약·검색 키워드·허용 단계</td></tr>
+          <tr><td>계보 공통 10</td><td>—</td><td>🧬 참조 (source는 매체명 겸용)</td></tr>
+          <tr><td>created_at</td><td>TIMESTAMPTZ</td><td>기록 시각</td></tr>
+        </table></div>
+      </details>
+
+      <details class="schema"><summary><code>tb_news_signal</code><span class="sd">뉴스 집계 (종목·사이클 1행 · append)</span><span class="cnt">34컬럼</span></summary>
+        <div class="twrap"><table>
+          <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
+          <tr><td>tns_id</td><td>BIGSERIAL · PK</td><td>대리키 · UNIQUE(ticker, cycle_ts)</td></tr>
+          <tr><td>cycle_ts · ticker · trade_date</td><td>—</td><td>슬롯·종목·거래일</td></tr>
+          <tr><td>has_signal</td><td>BOOLEAN NOT NULL</td><td>이 사이클 뉴스 신호 유무</td></tr>
+          <tr><td>rep_news_id</td><td>BIGINT FK → tb_news</td><td><b>대표 기사</b> 역추적 (관련성 필터 → importance×신뢰무게 최상위 1건)</td></tr>
+          <tr><td>news_title · source · published_at · ref</td><td>—</td><td>대표 기사의 얼굴 필드</td></tr>
+          <tr><td>event_type · disclosure_ref</td><td>TEXT · FK filing_no</td><td>사건 분류 · 연관 공시 매칭(±72h 규칙)</td></tr>
+          <tr><td>news_count</td><td>INT ≥ 0</td><td>집계된 기사 수</td></tr>
+          <tr><td>importance</td><td>NUMERIC 0~1</td><td>신뢰가중 평균 (대세)</td></tr>
+          <tr><td>peak_importance</td><td>NUMERIC 0~1</td><td>신뢰 검증분 최댓값 (한 방) — 해석은 v3.7 가이드</td></tr>
+          <tr><td>risk_score · sentiment_score · confidence</td><td>NUMERIC 0~1</td><td>집계 점수</td></tr>
+          <tr><td>source_trust · grade_score</td><td>NUMERIC 0~1</td><td>신뢰 2축 (내용 기반 · 매체 등급 기반) — 07 게이트 0.55의 입력</td></tr>
+          <tr><td>is_hard_blocked · hard_block_reason</td><td>BOOLEAN·TEXT</td><td>하드 차단</td></tr>
+          <tr><td>reason · summary</td><td>TEXT <span class="b b-hold">M2 reason→JSONB</span></td><td>집계 근거(코드 조립)·요약</td></tr>
+          <tr><td>top_evidence</td><td>TEXT[] DEFAULT '{}'</td><td>상위 근거 기사 3건</td></tr>
+          <tr><td>계보 공통 10</td><td>—</td><td>🧬 참조</td></tr>
+          <tr><td>created_at</td><td>TIMESTAMPTZ</td><td>기록 시각</td></tr>
+        </table></div>
+      </details>
+
+      <details class="schema"><summary><code>tb_strategist_signals</code><span class="sd">전략 판단 (07)</span><span class="cnt">29컬럼</span></summary>
+        <div class="twrap"><table>
+          <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
+          <tr><td>id</td><td>BIGSERIAL · PK</td><td>대리키 · UNIQUE(ticker, cycle_ts, inv_type)</td></tr>
+          <tr><td>trade_date · ticker · cycle_ts</td><td>—</td><td>거래일·종목·슬롯</td></tr>
+          <tr><td>src_disclosure_at · src_news_at · src_macro_at</td><td>TIMESTAMPTZ · 복합 FK</td><td>읽은 신호 스냅샷의 cycle_ts 복사 (시점 참조 — 신선도 계산·눈 대조)</td></tr>
+          <tr><td>inv_type</td><td>TEXT ENUM</td><td>aggressive·conservative</td></tr>
+          <tr><td>side</td><td>TEXT ENUM <span class="b b-hold">M2 +sell</span></td><td>buy·hold·sell</td></tr>
+          <tr><td>conviction</td><td>NUMERIC 0~1</td><td>확신도 — 매수 문턱(성향별 0.65/0.75)·과신 0.90</td></tr>
+          <tr><td>signal_consensus</td><td>SMALLINT 0~3</td><td>신호 동의 수 (설명용 — 게이트 아님)</td></tr>
+          <tr><td>summary · bull_case · key_risk · risk_rebuttal</td><td>TEXT</td><td>판단 서사 — key_risk는 buy면 필수(Critic 통과 조건)</td></tr>
+          <tr><td>counter_scenarios · evidence · sizing_hint</td><td>JSONB</td><td>반대 시나리오·근거·비중 힌트</td></tr>
+          <tr><td>persona_notes</td><td>TEXT</td><td>성향 페르소나 메모</td></tr>
+          <tr><td>decision_close · current_price · day_high · day_low · close_prev</td><td>NUMERIC</td><td>판단 시점 시세 <b>박제</b>(snapshot) — 08 검증·회고 기준가</td></tr>
+          <tr><td>volume · turnover · high_52w · low_52w</td><td>—</td><td>거래·가격 맥락</td></tr>
+          <tr><td>created_at</td><td>TIMESTAMPTZ</td><td>기록 시각</td></tr>
+        </table></div>
+      </details>
+
+      <details class="schema"><summary><code>tb_critic_verdict</code><span class="sd">반박 판정 (08)</span><span class="cnt">11컬럼</span></summary>
+        <div class="twrap"><table>
+          <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
+          <tr><td>id</td><td>BIGSERIAL · PK</td><td>대리키</td></tr>
+          <tr><td>signal_id</td><td>BIGINT UNIQUE FK</td><td>판단당 판정 1개 (UNIQUE)</td></tr>
+          <tr><td>ticker</td><td>TEXT NOT NULL</td><td>종목</td></tr>
+          <tr><td>decision</td><td>TEXT ENUM</td><td>pass·reject·hold</td></tr>
+          <tr><td>is_agreed</td><td>BOOLEAN</td><td>전략과 동의 여부</td></tr>
+          <tr><td>category · objection</td><td>TEXT</td><td>반박 분류·내용</td></tr>
+          <tr><td>confidence</td><td>NUMERIC 0~1</td><td>판정 확신 (승인 문턱 0.70 · 과신 시 0.80)</td></tr>
+          <tr><td>decided_layer</td><td>TEXT ENUM</td><td>quality_gate·hard_rule·llm·gate — 어느 층에서 결정됐나</td></tr>
+          <tr><td>source</td><td>TEXT ENUM</td><td>fresh·cache·cooldown</td></tr>
+          <tr><td>skipped_rules</td><td>JSONB DEFAULT '[]'</td><td>건너뛴 규칙 기록</td></tr>
+        </table></div>
+      </details>
+
+      <details class="schema"><summary><code>tb_account</code><span class="sd">계좌</span><span class="cnt">9컬럼 <span class="b b-hold">M2 +3</span></span></summary>
+        <div class="twrap"><table>
+          <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
+          <tr><td>id</td><td>BIGSERIAL · PK</td><td>대리키</td></tr>
+          <tr><td>broker_account_id</td><td>TEXT UNIQUE</td><td>브로커/시뮬 계좌 id</td></tr>
+          <tr><td>currency</td><td>TEXT DEFAULT 'USD'</td><td>통화</td></tr>
+          <tr><td>cash · equity · buying_power</td><td>NUMERIC ≥ 0</td><td>현금·평가액·주문가능금액</td></tr>
+          <tr><td>is_paper</td><td>BOOLEAN DEFAULT true</td><td>페이퍼 여부 (2차는 전부 true)</td></tr>
+          <tr><td>user_id</td><td><span class="b b-hold">M2 신규</span> FK tb_user</td><td>1유저=1계좌 (UNIQUE)</td></tr>
+          <tr><td>inv_type</td><td><span class="b b-hold">M2 신규</span> TEXT ENUM</td><td>계좌 성향</td></tr>
+          <tr><td>status</td><td><span class="b b-hold">M2 신규</span> TEXT ENUM</td><td>active·paused·closed</td></tr>
+          <tr><td>created_at · updated_at</td><td>TIMESTAMPTZ</td><td>upsert 테이블이라 updated_at 있음</td></tr>
+        </table></div>
+      </details>
+
+      <details class="schema"><summary><code>tb_order</code><span class="sd">주문 (브래킷)</span><span class="cnt">17컬럼</span></summary>
+        <div class="twrap"><table>
+          <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
+          <tr><td>id</td><td>BIGSERIAL · PK</td><td>대리키 · UNIQUE(account_id, signal_id)</td></tr>
+          <tr><td>signal_id · account_id</td><td>BIGINT FK</td><td>어느 판단·어느 계좌의 주문인지 (재현 연결)</td></tr>
+          <tr><td>ticker · quantity</td><td>TEXT · INT &gt; 0</td><td>종목·수량</td></tr>
+          <tr><td>entry_price · stop_price · take_profit_price</td><td>NUMERIC · CHECK stop&lt;entry&lt;take</td><td>브래킷 3가격 (SL −15% · TP +20%)</td></tr>
+          <tr><td>order_type</td><td>TEXT = 'bracket'</td><td>1차는 브래킷만</td></tr>
+          <tr><td>status</td><td>TEXT ENUM</td><td>planned·submitted·filled·failed·canceled</td></tr>
+          <tr><td>idempotency_key</td><td>TEXT UNIQUE</td><td>중복 주문 차단 멱등키</td></tr>
+          <tr><td>broker_order_id</td><td>TEXT UNIQUE</td><td>브로커 측 주문 id</td></tr>
+          <tr><td>parent_order_id · stop_leg_order_id · take_profit_leg_order_id</td><td>TEXT</td><td>브래킷 leg 추적</td></tr>
+          <tr><td>created_at · updated_at</td><td>TIMESTAMPTZ</td><td>상태 갱신 테이블</td></tr>
+        </table></div>
+      </details>
+
+      <details class="schema"><summary><code>tb_fill</code><span class="sd">체결</span><span class="cnt">8컬럼</span></summary>
+        <div class="twrap"><table>
+          <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
+          <tr><td>id</td><td>BIGSERIAL · PK</td><td>대리키</td></tr>
+          <tr><td>order_id</td><td>BIGINT FK</td><td>주문 연결 (signal→order→fill 재현 사슬)</td></tr>
+          <tr><td>side</td><td>TEXT ENUM</td><td>buy·sell</td></tr>
+          <tr><td>quantity · price</td><td>INT·NUMERIC &gt; 0</td><td>체결 수량·가격</td></tr>
+          <tr><td>filled_at</td><td>TIMESTAMPTZ NOT NULL</td><td>체결 시각</td></tr>
+          <tr><td>broker_fill_id</td><td>TEXT UNIQUE</td><td>브로커 체결 id (중복 수신 방지)</td></tr>
+          <tr><td>created_at</td><td>TIMESTAMPTZ</td><td>기록 시각</td></tr>
+        </table></div>
+      </details>
+
+      <details class="schema"><summary><code>tb_review_price_snapshots</code><span class="sd">T+1~5 종가 스냅샷</span><span class="cnt">17컬럼</span></summary>
+        <div class="twrap"><table>
+          <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
+          <tr><td>signal_id · day_offset</td><td>복합 PK · offset 1~5</td><td>판단별 T+1~5 하루 1행</td></tr>
+          <tr><td>price_date · close</td><td>DATE·NUMERIC &gt; 0</td><td>기준일·종가</td></tr>
+          <tr><td>source</td><td>TEXT ENUM</td><td>fixture·market_data</td></tr>
+          <tr><td>observed_at · confidence</td><td>—</td><td>관측 시각·신뢰</td></tr>
+          <tr><td>계보 공통 10</td><td>— (model_* null 허용)</td><td>🧬 참조</td></tr>
+          <tr><td>created_at · updated_at</td><td>TIMESTAMPTZ</td><td>upsert</td></tr>
+        </table></div>
+      </details>
+
+      <details class="schema"><summary><code>tb_review</code><span class="sd">회고 결과·lesson (11)</span><span class="cnt">9컬럼</span></summary>
+        <div class="twrap"><table>
+          <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
+          <tr><td>signal_id</td><td>BIGINT · PK FK</td><td>판단당 회고 1개</td></tr>
+          <tr><td>ret_1d · ret_3d · ret_5d</td><td>NUMERIC</td><td>기준가(decision_close) 대비 수익률</td></tr>
+          <tr><td>is_hit</td><td>BOOLEAN NOT NULL</td><td>판단 적중 여부</td></tr>
+          <tr><td>max_drawdown</td><td>NUMERIC ≤ 0</td><td>보유 중 최대 낙폭</td></tr>
+          <tr><td>lesson</td><td>TEXT NOT NULL</td><td><b>교훈 1~2문장</b> — 07 프롬프트로 되먹임(메모리)</td></tr>
+          <tr><td>created_at · updated_at</td><td>TIMESTAMPTZ</td><td>upsert</td></tr>
+        </table></div>
+      </details>
+
+      <details class="schema"><summary><code>운영 로그 4테이블</code><span class="sd">pipeline_runs · stage_attempts · checkpoints · order_submissions</span><span class="cnt">실행 기록</span></summary>
+        <div class="twrap"><table>
+          <tr><th>테이블</th><th>핵심 컬럼</th><th>설명</th></tr>
+          <tr><td>pipeline_runs</td><td>run_id PK · idempotency_key UNIQUE · ticker · cycle_ts · status · started/finished_at</td><td>실행 1회 = 1행. 도메인 FK 부모 아님(순수 로그)</td></tr>
+          <tr><td>pipeline_stage_attempts</td><td>run_id FK · component · attempt_no · status · error_code/message</td><td>역할별 시도·재시도·실패 기록</td></tr>
+          <tr><td>pipeline_checkpoints</td><td>run_id FK · component · payload · payload_hash</td><td>실패 지점부터 재개용 저장점</td></tr>
+          <tr><td>order_submissions</td><td>client_order_id UNIQUE · state · owner_token · claimed_at · stale_after</td><td>주문 제출 claim — 동시 중복 제출 차단</td></tr>
+        </table></div>
+      </details>
+
+      <details class="schema"><summary><code>2차 신규 3테이블</code><span class="sd">tb_user · tb_llm_usage · tb_benchmark_price</span><span class="cnt"><span class="b b-hold">M2 예정</span></span></summary>
+        <div class="twrap"><table>
+          <tr><th>테이블</th><th>컬럼 (예정)</th><th>설명</th></tr>
+          <tr><td>tb_user</td><td>user_id PK · login_id UNIQUE · display_name · role(admin·user) · otp_secret · is_active · created_at</td><td>계정 — 관리자가 생성, 셀프 가입 없음</td></tr>
+          <tr><td>tb_llm_usage</td><td>id PK · called_at · task · model · prompt_tokens · completion_tokens · est_cost_usd · run_id</td><td>LLM 호출 기록 — 비용 대시보드·일일 예산 가드</td></tr>
+          <tr><td>tb_benchmark_price</td><td>(price_date, ticker) PK · close</td><td>SPY 일봉 — 상대 성과 기준</td></tr>
+        </table></div>
+      </details>
+
       <h3>2차(MVP-2) 스키마 변경 <span class="b b-teal">M2에서 일괄 계약화</span></h3>
       <p>아래 변경은 코드 3파일(schema.sql·schemas.py/ontology.py·pipeline.yaml)에 <b>먼저</b> 반영한 뒤 구현이 따라온다(착수 순서 규칙).</p>
       <div class="twrap"><table>
         <tr><th>구분</th><th>변경</th><th>이유</th></tr>
-        <tr><td class="b b-ai">신규</td><td class="mono">tb_user</td><td>로그인·권한(admin/user)·OTP — 관리자가 생성</td></tr>
-        <tr><td class="b b-ai">신규</td><td class="mono">tb_llm_usage</td><td>LLM 호출·토큰·추정비용 기록 → 관리자 대시보드·예산 가드</td></tr>
-        <tr><td class="b b-ai">신규</td><td class="mono">tb_benchmark_price</td><td>SPY 일봉 — 계좌·판단 성과의 상대 비교(R7-6)</td></tr>
-        <tr><td class="b b-hold">변경</td><td class="mono">tb_account</td><td><code>+user_id</code>·<code>+inv_type</code>·<code>+status</code> — 유저 연결·성향·상태(active/paused/closed)</td></tr>
-        <tr><td class="b b-hold">변경</td><td>reason <span class="mono">TEXT→JSONB</span> ×4</td><td>점수별 근거 객체(#23) — 유저 "거래 이유" 원천. 공시·뉴스 원본·집계 4곳</td></tr>
-        <tr><td class="b b-hold">변경</td><td class="mono">tb_disclosure_signal +2</td><td><code>disclosure_count</code>·<code>top_evidence</code> — 뉴스 집계와 대칭</td></tr>
-        <tr><td class="b b-hold">변경</td><td class="mono">side +sell</td><td>전략이 매도도 판단(R7-1 보유 재평가) — <code>buy·hold·sell</code></td></tr>
-        <tr><td class="b b-hold">변경</td><td>규칙 4 완화</td><td>점수 <code>NUMERIC(4,3)</code> → <code>NUMERIC + CHECK(0~1)</code> (범위만 강제)</td></tr>
+        <tr><td><span class="b b-ai">신규</span></td><td class="mono">tb_user</td><td>로그인·권한(admin/user)·OTP — 관리자가 생성</td></tr>
+        <tr><td><span class="b b-ai">신규</span></td><td class="mono">tb_llm_usage</td><td>LLM 호출·토큰·추정비용 기록 → 관리자 대시보드·예산 가드</td></tr>
+        <tr><td><span class="b b-ai">신규</span></td><td class="mono">tb_benchmark_price</td><td>SPY 일봉 — 계좌·판단 성과의 상대 비교(R7-6)</td></tr>
+        <tr><td><span class="b b-hold">변경</span></td><td class="mono">tb_account</td><td><code>+user_id</code>·<code>+inv_type</code>·<code>+status</code> — 유저 연결·성향·상태(active/paused/closed)</td></tr>
+        <tr><td><span class="b b-hold">변경</span></td><td>reason <span class="mono">TEXT→JSONB</span> ×4</td><td>점수별 근거 객체(#23) — 유저 "거래 이유" 원천. 공시·뉴스 원본·집계 4곳</td></tr>
+        <tr><td><span class="b b-hold">변경</span></td><td class="mono">tb_disclosure_signal +2</td><td><code>disclosure_count</code>·<code>top_evidence</code> — 뉴스 집계와 대칭</td></tr>
+        <tr><td><span class="b b-hold">변경</span></td><td class="mono">side +sell</td><td>전략이 매도도 판단(R7-1 보유 재평가) — <code>buy·hold·sell</code></td></tr>
+        <tr><td><span class="b b-hold">변경</span></td><td>규칙 4 완화</td><td>점수 <code>NUMERIC(4,3)</code> → <code>NUMERIC + CHECK(0~1)</code> (범위만 강제)</td></tr>
       </table></div>
     </section>
 
