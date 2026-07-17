@@ -891,23 +891,34 @@ erDiagram
 </div>
 
 <script>
-  /* 좌측 내비 스크롤 활성 표시 */
+  /* 좌측 내비 스크롤 활성 표시 + 사이드바 자동 추적 */
   (function(){
     var links = Array.prototype.slice.call(document.querySelectorAll('.nav a[href^="#"]'));
-    var map = {};
-    links.forEach(function(a){ var id=a.getAttribute('href').slice(1); var el=document.getElementById(id); if(el) map[id]=a; });
-    var ids = Object.keys(map);
-    if(ids.length && 'IntersectionObserver' in window){
-      var io = new IntersectionObserver(function(entries){
-        entries.forEach(function(e){
-          if(e.isIntersecting){
-            links.forEach(function(a){a.classList.remove('active');});
-            var a = map[e.target.id]; if(a) a.classList.add('active');
-          }
-        });
-      }, {rootMargin:'-15% 0px -75% 0px', threshold:0});
-      ids.forEach(function(id){ var el=document.getElementById(id); if(el) io.observe(el); });
+    var rail = document.querySelector('.rail');
+    var targets = links.map(function(a){ return {a:a, el:document.getElementById(a.getAttribute('href').slice(1))}; })
+                       .filter(function(t){ return t.el; });
+    if(!targets.length) return;
+    var current=null, ticking=false;
+    function update(){
+      ticking=false;
+      var line=130, active=targets[0];              // 뷰포트 상단 130px 선을 지난 마지막 섹션 = 현재
+      for(var i=0;i<targets.length;i++){
+        if(targets[i].el.getBoundingClientRect().top <= line) active=targets[i];
+      }
+      if(active.a===current) return;
+      links.forEach(function(a){a.classList.remove('active');});
+      active.a.classList.add('active');
+      current=active.a;
+      if(rail && rail.scrollHeight > rail.clientHeight){   // 활성 항목을 사이드바 안에 유지
+        var r=active.a.getBoundingClientRect(), rr=rail.getBoundingClientRect();
+        if(r.top < rr.top+24) rail.scrollTop -= (rr.top+24 - r.top);
+        else if(r.bottom > rr.bottom-24) rail.scrollTop += (r.bottom - (rr.bottom-24));
+      }
     }
+    function onScroll(){ if(!ticking){ ticking=true; requestAnimationFrame(update); } }
+    window.addEventListener('scroll', onScroll, {passive:true});
+    window.addEventListener('resize', onScroll);
+    update();
   })();
 
   /* 다크모드 토글 */
