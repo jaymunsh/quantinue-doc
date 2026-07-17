@@ -63,6 +63,7 @@ Stage D 서비스        M9 관리자 ERP ──→ M10 유저 포털 ──→ 
 | reason TEXT→JSONB ×4 | tb_disclosure · tb_disclosure_signal · tb_news · tb_news_signal — 키=점수 컬럼명 {sentiment_score, importance, risk_score, (source_trust), confidence}. Pydantic `reason: dict[str, str]` |
 | tb_disclosure_signal +2 | `disclosure_count SMALLINT NOT NULL` · `top_evidence TEXT[] NOT NULL DEFAULT '{}'` (뉴스 대칭 · importance 순) |
 | side ENUM 확장 | tb_strategist_signals `side CHECK IN ('buy','hold','sell')` — 매도 판단 (M5) |
+| 07·08 계보 10 | tb_strategist_signals·tb_critic_verdict에 계보 컬럼(source·evidence_id·model_provider·model_name·prompt_version·policy_version·input_hash 등) 추가 — 재현 계약 #16 완성 (R10) |
 | inv_type 확장 | `CHECK IN ('aggressive','conservative')` — 안전형 영문명 **conservative 확정** |
 | 신규 tb_llm_usage | `id BIGSERIAL PK · called_at TIMESTAMPTZ · task TEXT · model TEXT · prompt_tokens INT · completion_tokens INT · est_cost_usd NUMERIC · run_id` — 비용 대시보드·예산 가드 데이터원 |
 | 신규 tb_user | `user_id BIGSERIAL PK · login_id TEXT UNIQUE · display_name TEXT · role TEXT CHECK ('admin','user') · otp_secret TEXT · is_active BOOLEAN · created_at` — 관리자가 생성 (셀프 가입 없음) |

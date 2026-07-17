@@ -277,7 +277,7 @@
       </div>
       <button class="theme-btn" id="themeBtn" type="button" aria-label="다크모드 전환">🌙</button>
     </div>
-    <span class="rail-ver">v4.1 · MVP-2</span>
+    <span class="rail-ver">v4.2 · MVP-2</span>
 
     <nav class="nav" aria-label="주요 섹션">
       <div class="nav-group">시작</div>
@@ -626,7 +626,7 @@ erDiagram
         <tr><td class="mono">order_type</td><td><span class="mono">bracket</span> 브래킷 — 진입+손절+익절 한 세트</td><td class="mono">tb_order</td></tr>
         <tr><td class="mono">order status</td><td><span class="mono">planned</span> 계획됨 · <span class="mono">submitted</span> 제출됨 · <span class="mono">filled</span> 체결됨 · <span class="mono">failed</span> 실패 · <span class="mono">canceled</span> 취소</td><td class="mono">tb_order</td></tr>
         <tr><td class="mono">snapshot source</td><td><span class="mono">fixture</span> 테스트 고정값 · <span class="mono">market_data</span> 실제 시세</td><td class="mono">tb_review_price_snapshots</td></tr>
-        <tr><td class="mono">model_provider</td><td><span class="mono">mock</span> 가짜 응답 (테스트) · <span class="mono">openai</span> OpenAI · <span class="mono">local</span> 로컬 LLM</td><td class="mono">tb_disclosure · tb_disclosure_signal · tb_news · tb_news_signal · tb_review_price_snapshots (계보 공통)</td></tr>
+        <tr><td class="mono">model_provider</td><td><span class="mono">mock</span> 가짜 응답 (테스트) · <span class="mono">openai</span> OpenAI · <span class="mono">local</span> 로컬 LLM</td><td class="mono">계보 공통 — 공시·뉴스(원본·집계) · tb_review_price_snapshots · tb_strategist_signals·tb_critic_verdict <span class="b b-hold">M2</span></td></tr>
         <tr><td class="mono">run status</td><td><span class="mono">pending</span> 대기 · <span class="mono">running</span> 실행 중 · <span class="mono">completed</span> 완료 · <span class="mono">failed</span> 실패 · <span class="mono">timed_out</span> 시간 초과</td><td class="mono">pipeline_runs</td></tr>
         <tr><td class="mono">attempt status</td><td><span class="mono">pending</span> 대기 · <span class="mono">running</span> 실행 중 · <span class="mono">retrying</span> 재시도 중 · <span class="mono">completed</span> 완료 · <span class="mono">failed</span> 실패 · <span class="mono">timed_out</span> 시간 초과</td><td class="mono">pipeline_stage_attempts</td></tr>
         <tr><td class="mono">submission state</td><td><span class="mono">claimed</span> 선점됨 — 중복 제출 차단 · <span class="mono">submitted</span> 제출됨 · <span class="mono">completed</span> 완료 · <span class="mono">failed</span> 실패</td><td class="mono">order_submissions</td></tr>
@@ -641,7 +641,7 @@ erDiagram
       <details class="schema"><summary><code>🧬 계보(provenance) 공통 컬럼이란</code><span class="sd">먼저 읽기 — 아래 표들의 "(계보)" 행이 이것</span><span class="cnt">설명</span></summary>
         <p style="margin:10px 16px 6px;font-size:13.5px;color:var(--ink-soft)"><b>계보 = 데이터의 "출생 기록"</b>이다. 마트 소고기에 산지·도축일·가공공장 라벨이 붙듯, LLM이 만든 점수마다 <b>원재료는 어디서 왔고(source·source_ref·captured_at) · 어떤 증거에서 파생됐고(evidence_id·parent_evidence_ids) · 누가 어떤 레시피로 만들었나(model_provider·model_name·prompt_version·policy_version·input_hash)</b>를 함께 기록한다. cycle_ts가 "시간표의 칸 번호"라면 계보는 "출생·제조 기록"으로, 서로 다른 것이다.</p>
         <p style="margin:0 16px 14px;font-size:13.5px;color:var(--ink-soft)">쓰임새 3가지 — ① 점수가 이상하면 원문 링크·당시 프롬프트 버전으로 <b>역추적</b> ② 회고 때 "판단이 틀린 게 전략 탓인가, 옛 프롬프트 탓인가" <b>구분</b> ③ model_provider=mock이면 테스트 가짜 점수임이 데이터에 박혀 있어 <b>통계 오염 방지</b>. 아래 각 표에서 <b>(계보)</b> 표시가 붙은 행이 이 10컬럼이다.</p>
-        <p style="margin:0 16px 14px;font-size:13.5px;color:var(--ink-soft)"><b>라이프사이클</b> — 별도 테이블이 아니라 <b>각 행에 내장</b>: 데이터와 같은 INSERT로 태어나(원자적 — 계보 없는 데이터 불가) → append 불변으로 얼어붙고 → 평상시엔 아무도 안 읽다가 역추적·회고·감사 때만 조회 → 행과 함께 영구 보존. 행 간 족보는 parent_evidence_ids가 그래프로 연결한다.</p>
+        <p style="margin:0 16px 14px;font-size:13.5px;color:var(--ink-soft)"><b>라이프사이클</b> — 별도 테이블이 아니라 <b>각 행에 내장</b> (LLM 산출 테이블 — 공시·뉴스 원본·집계 + 회고 스냅샷, <span class="b b-hold">M2</span>부터 전략·반박도 포함): 데이터와 같은 INSERT로 태어나(원자적 — 계보 없는 데이터 불가) → append 불변으로 얼어붙고 → 평상시엔 아무도 안 읽다가 역추적·회고·감사 때만 조회 → 행과 함께 영구 보존. 행 간 족보는 parent_evidence_ids가 그래프로 연결한다.</p>
               <div class="rowex"><div class="rt">🧾 row 예시 — DB에 실제로 앉는 한 줄 (참고용 가짜 데이터 · NVDA 시나리오)</div><pre>{
   "id": 44120,
   "ticker": "NVDA",
@@ -1066,7 +1066,7 @@ erDiagram
               </table></div>
             </details>
 
-      <details class="schema"><summary><code>tb_strategist_signals</code><span class="sd">전략 판단 (07)</span><span class="cnt">29컬럼</span></summary>
+      <details class="schema"><summary><code>tb_strategist_signals</code><span class="sd">전략 판단 (07)</span><span class="cnt">29컬럼 <span class="b b-hold">M2 +10 계보</span></span></summary>
               <div class="twrap"><table>
                 <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
                 <tr><td>id</td><td>BIGSERIAL · PK</td><td>대리키 — UNIQUE(ticker, cycle_ts, inv_type)</td></tr>
@@ -1097,6 +1097,16 @@ erDiagram
                 <tr><td>turnover</td><td>NUMERIC</td><td>거래대금</td></tr>
                 <tr><td>high_52w</td><td>NUMERIC</td><td>52주 고가</td></tr>
                 <tr><td>low_52w</td><td>NUMERIC</td><td>52주 저가</td></tr>
+          <tr><td>source</td><td>TEXT NOT NULL — <span class="b b-hold">M2</span></td><td>(계보) 판단 실행 컨텍스트 출처</td></tr>
+          <tr><td>source_ref</td><td>TEXT NOT NULL — <span class="b b-hold">M2</span></td><td>(계보) 실행 참조 (run_id 등)</td></tr>
+          <tr><td>captured_at</td><td>TIMESTAMPTZ NOT NULL — <span class="b b-hold">M2</span></td><td>(계보) 판단 생성 시각</td></tr>
+          <tr><td>evidence_id</td><td>TEXT NOT NULL — <span class="b b-hold">M2</span></td><td>(계보) 증거 고유 id</td></tr>
+          <tr><td>parent_evidence_ids</td><td>JSONB — <span class="b b-hold">M2</span></td><td>(계보) 읽은 신호 증거 연결 (증거 사슬)</td></tr>
+          <tr><td>model_provider</td><td>TEXT — ENUM mock·openai·local — <span class="b b-hold">M2</span></td><td>(계보) 이 판단을 만든 LLM 제공자</td></tr>
+          <tr><td>model_name</td><td>TEXT — <span class="b b-hold">M2</span></td><td>(계보) 모델명 (07만 상위 모델 가능)</td></tr>
+          <tr><td>prompt_version</td><td>TEXT — <span class="b b-hold">M2</span></td><td>(계보) 판단 프롬프트 버전 — 회고 귀책 구분의 핵심</td></tr>
+          <tr><td>policy_version</td><td>TEXT — <span class="b b-hold">M2</span></td><td>(계보) 게이트·문턱 config 버전</td></tr>
+          <tr><td>input_hash</td><td>TEXT — sha256 hex — <span class="b b-hold">M2</span></td><td>(계보) 입력 해시 — 같은 입력 재현 검증</td></tr>
                 <tr><td>created_at</td><td>TIMESTAMPTZ DEFAULT now()</td><td>기록 시각</td></tr>
               </table></div>
                     <div class="rowex"><div class="rt">🧾 row 예시 — DB에 실제로 앉는 한 줄 (참고용 가짜 데이터 · NVDA 시나리오 · src_*_at이 공시 13:00·뉴스 13:30 signal의 cycle_ts와 일치(눈 대조))</div><pre>{
@@ -1132,7 +1142,7 @@ erDiagram
 }</pre></div>
       </details>
 
-      <details class="schema"><summary><code>tb_critic_verdict</code><span class="sd">반박 판정 (08)</span><span class="cnt">12컬럼</span></summary>
+      <details class="schema"><summary><code>tb_critic_verdict</code><span class="sd">반박 판정 (08)</span><span class="cnt">12컬럼 <span class="b b-hold">M2 +10 계보</span></span></summary>
               <div class="twrap"><table>
                 <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
                 <tr><td>id</td><td>BIGSERIAL · PK</td><td>대리키</td></tr>
@@ -1146,6 +1156,16 @@ erDiagram
                 <tr><td>decided_layer</td><td>TEXT — ENUM quality_gate·hard_rule·llm·gate</td><td>어느 층에서 결정됐나</td></tr>
                 <tr><td>source</td><td>TEXT — ENUM fresh·cache·cooldown</td><td>판정 출처</td></tr>
                 <tr><td>skipped_rules</td><td>JSONB DEFAULT '[]'</td><td>건너뛴 규칙 기록</td></tr>
+          <tr><td>source</td><td>TEXT NOT NULL — <span class="b b-hold">M2</span></td><td>(계보) 판단 실행 컨텍스트 출처</td></tr>
+          <tr><td>source_ref</td><td>TEXT NOT NULL — <span class="b b-hold">M2</span></td><td>(계보) 실행 참조 (run_id 등)</td></tr>
+          <tr><td>captured_at</td><td>TIMESTAMPTZ NOT NULL — <span class="b b-hold">M2</span></td><td>(계보) 판단 생성 시각</td></tr>
+          <tr><td>evidence_id</td><td>TEXT NOT NULL — <span class="b b-hold">M2</span></td><td>(계보) 증거 고유 id</td></tr>
+          <tr><td>parent_evidence_ids</td><td>JSONB — <span class="b b-hold">M2</span></td><td>(계보) 읽은 신호 증거 연결 (증거 사슬)</td></tr>
+          <tr><td>model_provider</td><td>TEXT — ENUM mock·openai·local — <span class="b b-hold">M2</span></td><td>(계보) 이 판단을 만든 LLM 제공자</td></tr>
+          <tr><td>model_name</td><td>TEXT — <span class="b b-hold">M2</span></td><td>(계보) 모델명 (07만 상위 모델 가능)</td></tr>
+          <tr><td>prompt_version</td><td>TEXT — <span class="b b-hold">M2</span></td><td>(계보) 판단 프롬프트 버전 — 회고 귀책 구분의 핵심</td></tr>
+          <tr><td>policy_version</td><td>TEXT — <span class="b b-hold">M2</span></td><td>(계보) 게이트·문턱 config 버전</td></tr>
+          <tr><td>input_hash</td><td>TEXT — sha256 hex — <span class="b b-hold">M2</span></td><td>(계보) 입력 해시 — 같은 입력 재현 검증</td></tr>
                 <tr><td>created_at</td><td>TIMESTAMPTZ DEFAULT now()</td><td>기록 시각</td></tr>
               </table></div>
                     <div class="rowex"><div class="rt">🧾 row 예시 — DB에 실제로 앉는 한 줄 (참고용 가짜 데이터 · NVDA 시나리오)</div><pre>{
@@ -1466,6 +1486,7 @@ erDiagram
         <tr><td><span class="b b-hold">변경</span></td><td>reason <span class="mono">TEXT→JSONB</span> ×4</td><td>점수별 근거 객체(#23) — 유저 "거래 이유" 원천. 공시·뉴스 원본·집계 4곳</td></tr>
         <tr><td><span class="b b-hold">변경</span></td><td class="mono">tb_disclosure_signal +2</td><td><code>disclosure_count</code>·<code>top_evidence</code> — 뉴스 집계와 대칭</td></tr>
         <tr><td><span class="b b-hold">변경</span></td><td class="mono">side +sell</td><td>전략이 매도도 판단(R7-1 보유 재평가) — <code>buy·hold·sell</code></td></tr>
+        <tr><td><span class="b b-hold">변경</span></td><td class="mono">tb_strategist_signals · tb_critic_verdict +계보 10</td><td>07·08도 LLM 산출이므로 계보 추가 — 판단을 만든 모델·프롬프트·정책 버전 기록(재현 계약 #16 완성). 회고 귀책 구분의 핵심</td></tr>
         <tr><td><span class="b b-hold">변경</span></td><td>규칙 4 완화</td><td>점수 <code>NUMERIC(4,3)</code> → <code>NUMERIC + CHECK(0~1)</code> (범위만 강제)</td></tr>
       </table></div>
     </section>
@@ -1750,6 +1771,7 @@ erDiagram
       <p class="sec-intro">이 문서를 수정하면 표 맨 위에 한 줄 추가 + 버전 갱신 + git 커밋·태그.</p>
       <div class="twrap"><table>
         <tr><th>버전</th><th>날짜</th><th>수정자</th><th>변경 요약</th></tr>
+        <tr><td class="mono">v4.2</td><td class="mono">2026-07-18</td><td>문성혁 + Claude</td><td><b>R10 — 07·08 계보 추가</b>: tb_strategist_signals·tb_critic_verdict도 LLM 산출이므로 계보 10컬럼 추가(재현 계약 #16 완성 · M2). 스키마 명세·계보 설명 카드(라이프사이클·출생 기록 비유)·ENUM 사전 한국어 뜻 병기·M2 변경표 반영</td></tr>
         <tr><td class="mono">v4.1</td><td class="mono">2026-07-18</td><td>문성혁 + Claude</td><td><b>개발 착수 수준 상세화</b> — 테이블별 컬럼 명세 23개 접이식(1행=1컬럼 · schema.sql 정본) · <b>ENUM 사전</b> 신설(허용값 22종 전수) · <b>row 예시 19개</b>(NVDA 단일 시나리오 JSON — cycle_ts·src_*_at 눈 대조, reason JSONB 실형태) · 계보 공통 10컬럼 설명 카드 · 목차 스크롤 추적 · 배지 td 레이아웃 수정</td></tr>
         <tr><td class="mono">v4.0</td><td class="mono">2026-07-18</td><td>문성혁 + Claude</td><td>2차(MVP-2) 설계서 신규 — 디자인 전면 재설계(좌측 파이프라인 척추 목차·모노 계기판 타이포·다크모드), 뼈대 구축. 1차 정본은 <code>quantinue-integrated-design-mvp1.html</code>로 동결. <b>전 섹션 작성 완료</b> — 2차 확정사항(R1~R9)·컨벤션·전체흐름·데이터모델·파이프라인 01~11·방어선·계좌·화면·개발계획·AI제안·결정로그·보안·용어사전</td></tr>
       </table></div>
