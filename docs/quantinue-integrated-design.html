@@ -196,6 +196,11 @@
     color:var(--ink-faint);font-size:13.5px;font-family:var(--mono);background:repeating-linear-gradient(45deg,transparent,transparent 10px,var(--surface-2) 10px,var(--surface-2) 20px)}
   .todo::before{content:"◍ 내용 채우는 중 — ";color:var(--teal)}
 
+  /* Mermaid 다이어그램 */
+  .mermaid{background:#fbfcfd;border:1px solid var(--line);border-radius:var(--radius);
+    padding:22px;margin:18px 0;overflow-x:auto;text-align:center;line-height:1.4}
+  .mermaid-note{font-family:var(--mono);font-size:11.5px;color:var(--ink-faint);margin:-8px 0 16px}
+
   /* skip link */
   .skip{position:fixed;top:10px;left:10px;z-index:200;transform:translateY(-160%);
     background:var(--navy);color:#fff;border-radius:8px;padding:9px 14px;font-weight:700}
@@ -225,6 +230,8 @@
     .ai-card .ab .row{grid-template-columns:1fr}
   }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>document.addEventListener('DOMContentLoaded',function(){if(window.mermaid){mermaid.initialize({startOnLoad:false,theme:'neutral',securityLevel:'loose',flowchart:{useMaxWidth:true,curve:'basis'}});mermaid.run();}});</script>
 </head>
 <body>
 <a class="skip" href="#main">본문으로 건너뛰기</a>
@@ -394,8 +401,36 @@
     <section id="flow">
       <div class="sec-eyebrow">Overview</div>
       <h2>전체 흐름 한눈에</h2>
-      <p class="sec-intro">리서치(01~08)는 사이클당 1회 공용 실행, 계좌(09~10)는 성향별로 구독·실행, 11이 복기해 다음 판단으로 되돌린다.</p>
-      <div class="todo">01→11 파이프라인 다이어그램 + 리서치 공용/계좌 구독 구조 + 서비스 2면(관리자·유저) 도식</div>
+      <p class="sec-intro">공시·뉴스·지표·매크로를 읽어(01~06) → 전략이 매수/매도를 판단하고(07) → 반박이 검증하고(08) → 코드가 리스크를 계산해(09) → 페이퍼로 집행한 뒤(10) → 5영업일 후 복기(11)해 다음 판단으로 되돌린다.</p>
+      <div class="mermaid">
+flowchart TB
+  subgraph RES["리서치 · 사이클당 1회 공용 (01~08)"]
+    direction LR
+    U["01 유니버스<br/>2,000/주"] --> T["02 기술지표"]
+    T --> P["03 일일픽<br/>오늘의 50"]
+    P --> MAC["04 매크로"]
+    P --> DIS["05 공시"]
+    P --> NEW["06 뉴스"]
+    MAC --> STR["07 전략<br/>buy·hold·sell"]
+    DIS --> STR
+    NEW --> STR
+    STR --> CRI["08 반박<br/>Critic"]
+  end
+  subgraph ACC["계좌 · 성향별 구독 (09~10)"]
+    direction LR
+    RISK["09 리스크·비중<br/>성향·서킷브레이커"] --> ORD["10 주문·체결<br/>페이퍼 브래킷"]
+  end
+  CRI --> RISK
+  ORD --> REV["11 회고 · T+5<br/>lesson 생성"]
+  REV -. lesson 주입 .-> STR
+      </div>
+      <p class="mermaid-note">↑ 인터넷 연결 시 렌더링 (Mermaid CDN). 점선 = 회고가 다음 전략 판단으로 되돌아오는 피드백 루프.</p>
+
+      <div class="grid c3" style="margin-top:20px">
+        <div class="card" style="margin:0"><h3 style="margin-top:0">🔁 리서치는 공용</h3><p style="margin:0">01~08 신호 생성은 <b>사이클당 딱 1회</b>. 종목당 하나의 판단(전략·반박)을 만든다 — LLM 비용이 계좌 수와 무관하게 고정되는 핵심.</p></div>
+        <div class="card" style="margin:0"><h3 style="margin-top:0">💳 계좌는 구독</h3><p style="margin:0">각 계좌가 같은 신호를 <b>성향(공격형·안전형) 파라미터</b>로 09~10에서 다르게 실행한다. 같은 신호에 공격형은 매수, 안전형은 보류가 될 수 있다.</p></div>
+        <div class="card" style="margin:0"><h3 style="margin-top:0">🖥 서비스 2면</h3><p style="margin:0">이 파이프라인 위에 <b>관리자 ERP</b>(운영·계좌·비용·리포트)와 <b>유저 포털</b>(내 계좌·거래 이유·회고)이 얹힌다. 유저는 조회 전용.</p></div>
+      </div>
     </section>
 
     <!-- 스케줄 -->
@@ -448,8 +483,64 @@
     <section id="data">
       <div class="sec-eyebrow">Data model</div>
       <h2>데이터 모델 — ERD·스키마</h2>
-      <p class="sec-intro">원본 원장(1건=1행)과 집계 신호(종목당 사이클 1행)를 분리. 컨벤션 8규칙이 어휘의 정본.</p>
-      <div class="todo">ERD(Mermaid) + 테이블 총람 + 컨벤션 8규칙(규칙4 개정 반영) + MVP-2 신규 테이블(tb_user·tb_llm_usage·tb_benchmark_price 등)</div>
+      <p class="sec-intro">핵심 원칙 하나 — <b>원본 원장</b>(기사·공시 1건 = 1행, 불변)과 <b>집계 신호</b>(종목당 사이클 1행, <code>_signal</code>)를 분리한다. 전략(07)은 집계 신호만 읽고, 원본은 역추적·감사용으로 남는다.</p>
+      <div class="mermaid">
+erDiagram
+  tb_universe ||--o{ tb_daily_pick : "주1회 → 오늘의 50"
+  tb_daily_pick ||--|| tb_technical : "지표"
+  tb_disclosure ||--o{ tb_disclosure_signal : "원본 → 집계"
+  tb_news ||--o{ tb_news_signal : "원본 → 집계"
+  tb_daily_pick ||--o{ tb_strategist_signals : "판단 대상"
+  tb_macro ||--o{ tb_strategist_signals : "매크로 참조"
+  tb_disclosure_signal ||--o{ tb_strategist_signals : "src"
+  tb_news_signal ||--o{ tb_strategist_signals : "src"
+  tb_strategist_signals ||--o| tb_critic_verdict : "반박"
+  tb_user ||--|| tb_account : "1유저=1계좌"
+  tb_account ||--o{ tb_order : "계좌"
+  tb_strategist_signals ||--o{ tb_order : "주문"
+  tb_order ||--o{ tb_fill : "체결"
+  tb_strategist_signals ||--o{ tb_review_price_snapshots : "T+5 스냅샷"
+  tb_strategist_signals ||--o| tb_review : "회고·lesson"
+      </div>
+      <p class="mermaid-note">↑ 관계 중심 ERD (컬럼은 파이프라인 01~11 섹션의 스키마 표 참조). <code>||--o{</code> = 1:다, <code>||--||</code> = 1:1, <code>||--o|</code> = 1:0또는1.</p>
+
+      <h3>테이블 총람</h3>
+      <div class="twrap"><table>
+        <tr><th>그룹</th><th>테이블</th><th>역할</th><th>키</th></tr>
+        <tr><td rowspan="3">스크리닝<br>(일봉)</td><td class="mono">tb_universe</td><td>주1회 시총 상위 2,000 감시망</td><td class="mono">(as_of_date, ticker)</td></tr>
+        <tr><td class="mono">tb_daily_pick</td><td>매일 오늘의 50 (버킷·랭크)</td><td class="mono">(trade_date, ticker)</td></tr>
+        <tr><td class="mono">tb_technical</td><td>지표(RSI·MACD·MA·ATR·추세)</td><td class="mono">(trade_date, ticker)</td></tr>
+        <tr><td rowspan="5">수집·집계</td><td class="mono">tb_macro</td><td>시장 국면(regime·VIX·금리)</td><td class="mono">as_of</td></tr>
+        <tr><td class="mono">tb_disclosure</td><td>공시 <b>원본 원장</b> (1건=1행)</td><td class="mono">id · filing_no</td></tr>
+        <tr><td class="mono">tb_disclosure_signal</td><td>공시 <b>집계</b> (종목·사이클 1행)</td><td class="mono">tds_id · UNIQUE(ticker,cycle_ts)</td></tr>
+        <tr><td class="mono">tb_news</td><td>뉴스 <b>원본 원장</b> (1건=1행)</td><td class="mono">id · UNIQUE(news_key,ticker)</td></tr>
+        <tr><td class="mono">tb_news_signal</td><td>뉴스 <b>집계</b> (종목·사이클 1행)</td><td class="mono">tns_id · UNIQUE(ticker,cycle_ts)</td></tr>
+        <tr><td rowspan="5">판단·실행</td><td class="mono">tb_strategist_signals</td><td>전략 판단 (buy·hold·sell·확신도)</td><td class="mono">id · UNIQUE(ticker,cycle_ts,inv_type)</td></tr>
+        <tr><td class="mono">tb_critic_verdict</td><td>반박 판정 (pass·reject·hold)</td><td class="mono">id · UNIQUE(signal_id)</td></tr>
+        <tr><td class="mono">tb_account</td><td>계좌 (현금·평가·성향)</td><td class="mono">id · broker_account_id</td></tr>
+        <tr><td class="mono">tb_order</td><td>주문 (브래킷 SL/TP·멱등)</td><td class="mono">id · UNIQUE(account_id,signal_id)</td></tr>
+        <tr><td class="mono">tb_fill</td><td>체결 (수량·가격)</td><td class="mono">id · broker_fill_id</td></tr>
+        <tr><td rowspan="2">회고</td><td class="mono">tb_review_price_snapshots</td><td>T+1~5 종가 스냅샷</td><td class="mono">(signal_id, day_offset)</td></tr>
+        <tr><td class="mono">tb_review</td><td>회고 결과·lesson (수익률·적중)</td><td class="mono">signal_id</td></tr>
+        <tr><td rowspan="4">운영 로그</td><td class="mono">pipeline_runs</td><td>실행 이력 (도메인 FK 부모 아님)</td><td class="mono">run_id</td></tr>
+        <tr><td class="mono">pipeline_stage_attempts</td><td>단계별 시도·실패 로그</td><td class="mono">attempt_id</td></tr>
+        <tr><td class="mono">pipeline_checkpoints</td><td>재개용 체크포인트</td><td class="mono">checkpoint_id</td></tr>
+        <tr><td class="mono">order_submissions</td><td>주문 제출 claim·멱등</td><td class="mono">client_order_id</td></tr>
+      </table></div>
+
+      <h3>2차(MVP-2) 스키마 변경 <span class="b b-teal">M2에서 일괄 계약화</span></h3>
+      <p>아래 변경은 코드 3파일(schema.sql·schemas.py/ontology.py·pipeline.yaml)에 <b>먼저</b> 반영한 뒤 구현이 따라온다(착수 순서 규칙).</p>
+      <div class="twrap"><table>
+        <tr><th>구분</th><th>변경</th><th>이유</th></tr>
+        <tr><td class="b b-ai">신규</td><td class="mono">tb_user</td><td>로그인·권한(admin/user)·OTP — 관리자가 생성</td></tr>
+        <tr><td class="b b-ai">신규</td><td class="mono">tb_llm_usage</td><td>LLM 호출·토큰·추정비용 기록 → 관리자 대시보드·예산 가드</td></tr>
+        <tr><td class="b b-ai">신규</td><td class="mono">tb_benchmark_price</td><td>SPY 일봉 — 계좌·판단 성과의 상대 비교(R7-6)</td></tr>
+        <tr><td class="b b-hold">변경</td><td class="mono">tb_account</td><td><code>+user_id</code>·<code>+inv_type</code>·<code>+status</code> — 유저 연결·성향·상태(active/paused/closed)</td></tr>
+        <tr><td class="b b-hold">변경</td><td>reason <span class="mono">TEXT→JSONB</span> ×4</td><td>점수별 근거 객체(#23) — 유저 "거래 이유" 원천. 공시·뉴스 원본·집계 4곳</td></tr>
+        <tr><td class="b b-hold">변경</td><td class="mono">tb_disclosure_signal +2</td><td><code>disclosure_count</code>·<code>top_evidence</code> — 뉴스 집계와 대칭</td></tr>
+        <tr><td class="b b-hold">변경</td><td class="mono">side +sell</td><td>전략이 매도도 판단(R7-1 보유 재평가) — <code>buy·hold·sell</code></td></tr>
+        <tr><td class="b b-hold">변경</td><td>규칙 4 완화</td><td>점수 <code>NUMERIC(4,3)</code> → <code>NUMERIC + CHECK(0~1)</code> (범위만 강제)</td></tr>
+      </table></div>
     </section>
 
     <!-- 파이프라인 상세 -->
