@@ -639,7 +639,8 @@ erDiagram
       <p>클릭하면 펼쳐진다. 스키마 표는 <b>1행 = 1컬럼</b>, 각 표 아래엔 <b>🧾 row 예시(JSON)</b> — 전부 <b>NVDA 단일 시나리오</b>(07-20 인수 공시 → 매수 → 07-27 T+5 회고)로 값이 서로 이어져 cycle_ts·src_*_at을 눈으로 대조할 수 있다(참고용 가짜 데이터). <span class="b b-hold">M2</span> = 2차에서 변경·추가 예정.</p>
 
       <details class="schema"><summary><code>🧬 계보(provenance) 공통 컬럼이란</code><span class="sd">먼저 읽기 — 아래 표들의 "(계보)" 행이 이것</span><span class="cnt">설명</span></summary>
-        <p style="margin:10px 16px 14px;font-size:13.5px;color:var(--ink-soft)">공시·뉴스처럼 <b>LLM이 만든 데이터</b>에는 "이 값이 어디서 왔고, 어떤 모델·프롬프트·정책 버전으로 만들어졌나"를 함께 기록한다 — 나중에 <b>같은 입력으로 같은 결과를 재현</b>하고, 문제가 생기면 <b>거슬러 추적</b>하기 위해서다. 이 목적의 컬럼 10개(source · source_ref · captured_at · evidence_id · parent_evidence_ids · model_provider · model_name · prompt_version · policy_version · input_hash)가 여러 테이블에 반복 등장하며, 아래 각 표에서 <b>(계보)</b> 표시가 붙은 행이 그것이다.</p>
+        <p style="margin:10px 16px 6px;font-size:13.5px;color:var(--ink-soft)"><b>계보 = 데이터의 "출생 기록"</b>이다. 마트 소고기에 산지·도축일·가공공장 라벨이 붙듯, LLM이 만든 점수마다 <b>원재료는 어디서 왔고(source·source_ref·captured_at) · 어떤 증거에서 파생됐고(evidence_id·parent_evidence_ids) · 누가 어떤 레시피로 만들었나(model_provider·model_name·prompt_version·policy_version·input_hash)</b>를 함께 기록한다. cycle_ts가 "시간표의 칸 번호"라면 계보는 "출생·제조 기록"으로, 서로 다른 것이다.</p>
+        <p style="margin:0 16px 14px;font-size:13.5px;color:var(--ink-soft)">쓰임새 3가지 — ① 점수가 이상하면 원문 링크·당시 프롬프트 버전으로 <b>역추적</b> ② 회고 때 "판단이 틀린 게 전략 탓인가, 옛 프롬프트 탓인가" <b>구분</b> ③ model_provider=mock이면 테스트 가짜 점수임이 데이터에 박혀 있어 <b>통계 오염 방지</b>. 아래 각 표에서 <b>(계보)</b> 표시가 붙은 행이 이 10컬럼이다.</p>
               <div class="rowex"><div class="rt">🧾 row 예시 — DB에 실제로 앉는 한 줄 (참고용 가짜 데이터 · NVDA 시나리오)</div><pre>{
   "id": 44120,
   "ticker": "NVDA",
