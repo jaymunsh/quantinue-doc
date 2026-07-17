@@ -57,6 +57,7 @@
     transition:background .2s,color .2s}
   a{color:var(--teal);text-decoration:none}
   a:hover{text-decoration:underline}
+  .muted{color:var(--ink-faint)}
   h1,h2,h3,h4{line-height:1.28;letter-spacing:-.012em;font-weight:700}
   code,.mono{font-family:var(--mono)}
   code{background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:.06em .38em;font-size:.86em}
@@ -156,6 +157,12 @@
     font-family:var(--mono);font-weight:700;font-size:13px;color:var(--teal)}
   .rules li:last-child{border-bottom:none}
   .rules b{font-weight:700}
+
+  /* 파이프라인 입출력 스트립 */
+  .io{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}
+  .io span{font-family:var(--mono);font-size:11.5px;color:var(--ink-soft);
+    background:var(--surface-2);border:1px solid var(--line-soft);border-radius:6px;padding:4px 9px}
+  .io code{background:transparent;border:none;padding:0;color:var(--teal);font-size:inherit}
 
   /* 콜아웃 */
   .note{border-left:3px solid var(--info);background:var(--info-bg);border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:13px 16px;margin:16px 0;font-size:14.5px}
@@ -393,8 +400,42 @@
     <section id="glossary">
       <div class="sec-eyebrow">Glossary</div>
       <h2>용어 30초 사전</h2>
-      <p class="sec-intro">개발을 몰라도 이 문서를 읽을 수 있도록 — DB·개발·시장 용어를 한 줄씩.</p>
-      <div class="todo">DB(append·멱등·UNIQUE·JSONB·TIMESTAMPTZ)·개발(config·픽스처·payload)·시장(페이퍼·브래킷·손절익절·T+5·8-K/Form4) 3그룹</div>
+      <p class="sec-intro">개발을 몰라도 이 문서를 읽을 수 있도록 — 자주 나오는 용어를 한 줄씩.</p>
+      <div class="grid c3">
+        <div class="card" style="margin:0">
+          <h3 style="margin-top:0">🗄 데이터베이스</h3>
+          <table style="font-size:13px">
+            <tr><td class="mono">append</td><td>덧붙이기만 (수정·삭제 없음)</td></tr>
+            <tr><td class="mono">멱등</td><td>같은 걸 여러 번 해도 결과는 1번 한 것과 같음</td></tr>
+            <tr><td class="mono">UNIQUE</td><td>같은 값 중복 저장 금지 제약</td></tr>
+            <tr><td class="mono">JSONB</td><td>구조화 데이터를 담는 컬럼 타입</td></tr>
+            <tr><td class="mono">TIMESTAMPTZ</td><td>시간대 포함 시각(UTC 저장)</td></tr>
+            <tr><td class="mono">ENUM</td><td>정해진 값 목록 중 하나</td></tr>
+          </table>
+        </div>
+        <div class="card" style="margin:0">
+          <h3 style="margin-top:0">🛠 개발</h3>
+          <table style="font-size:13px">
+            <tr><td class="mono">config</td><td>코드 밖에서 값을 조정하는 설정</td></tr>
+            <tr><td class="mono">payload</td><td>단계 간 넘기는 데이터 묶음</td></tr>
+            <tr><td class="mono">픽스처</td><td>테스트용 고정 가짜 데이터</td></tr>
+            <tr><td class="mono">mock</td><td>실제 호출 없이 가짜 응답 주는 모드</td></tr>
+            <tr><td class="mono">슬롯</td><td>시간표의 칸 (예: 09:30 칸)</td></tr>
+            <tr><td class="mono">멱등키</td><td>중복 실행을 막는 고유 식별자</td></tr>
+          </table>
+        </div>
+        <div class="card" style="margin:0">
+          <h3 style="margin-top:0">📈 시장</h3>
+          <table style="font-size:13px">
+            <tr><td class="mono">페이퍼</td><td>실제 돈 없는 가상 매매</td></tr>
+            <tr><td class="mono">브래킷</td><td>진입+손절+익절을 한 세트로 낸 주문</td></tr>
+            <tr><td class="mono">SL/TP</td><td>손절(stop)·익절(take profit)</td></tr>
+            <tr><td class="mono">T+5</td><td>매수 후 5영업일 뒤</td></tr>
+            <tr><td class="mono">8-K·Form 4</td><td>미국 공시 종류(수시·내부자거래)</td></tr>
+            <tr><td class="mono">regime</td><td>시장 국면(위험선호·중립·위험회피)</td></tr>
+          </table>
+        </div>
+      </div>
     </section>
 
     <!-- 전체 흐름 -->
@@ -437,8 +478,26 @@ flowchart TB
     <section id="schedule">
       <div class="sec-eyebrow">Schedule</div>
       <h2>시간·스케줄 — 무엇이 언제 도나</h2>
-      <p class="sec-intro">앱 내장 스케줄러가 역할별 실행 창(뉴욕 시간)에 슬롯 정렬 cycle_ts로 구동. 서머타임·휴장일 보정.</p>
-      <div class="todo">역할별 실행 창 표 + 하루 타임라인(KST 변환) + cycle_ts 슬롯 멱등 설명</div>
+      <p class="sec-intro">앱 내장 스케줄러가 24시간 돌며, 역할마다 자기 <b>실행 창(뉴욕 시간)</b>에만 발화한다. 미국장은 한국 밤~새벽이라 서머타임·휴장일을 코드가 보정한다.</p>
+
+      <h3>역할별 실행 창</h3>
+      <div class="twrap"><table>
+        <tr><th>역할</th><th>실행 창 (뉴욕)</th><th>주기</th><th>이유</th></tr>
+        <tr><td class="mono">01~03 스크리닝</td><td>장전 1회</td><td>01 주1회 · 02·03 매일</td><td>개장 전 오늘의 후보 준비</td></tr>
+        <tr><td class="mono">04 매크로</td><td>장전 + 장중</td><td>60분</td><td>국면 갱신</td></tr>
+        <tr><td class="mono">05 공시</td><td>확장시간(장전~장후)</td><td>60분</td><td>8-K는 장 마감 후에도 나옴</td></tr>
+        <tr><td class="mono">06 뉴스</td><td>장전~장중</td><td>30분</td><td>밤사이 뉴스가 특히 중요</td></tr>
+        <tr><td class="mono">07~10 전략~주문</td><td><b>개장 중만</b></td><td>07 120분 · 주문 계열</td><td>주문이 나가는 구간</td></tr>
+        <tr><td class="mono">11 회고</td><td>마감 후 1회</td><td>일 1회</td><td>T+5 채점·lesson</td></tr>
+      </table></div>
+
+      <h3>cycle_ts = 슬롯 라벨 (멱등의 핵심)</h3>
+      <p><code>cycle_ts</code>는 실행이 몇 시에 돌았는지가 아니라 <b>"어느 칸(슬롯)의 실행인가"</b> 라벨이다(뉴스는 30분 칸, 전략은 120분 칸). 09:31에 돌든 09:47에 재실행하든 같은 09:30 칸 → <code>UNIQUE(ticker, cycle_ts)</code>가 두 번째를 무시(멱등). 슬롯은 계산값이라 마스터 테이블을 두지 않고, 실행 기록은 <code>pipeline_runs</code>가 담당.</p>
+
+      <h3>수동 실행·장애 복구 <span class="b b-teal">R9</span></h3>
+      <p>PC/서버가 24시간 못 돌 수 있으니 관리자가 <b>수동 실행</b>할 수 있다(= 장애 복구 수단 겸용). 수동+자동은 <b>슬롯 멱등 + 실행 claim 락</b>으로 안 겹친다. 기동 시 <b>catch-up</b>으로 오늘 놓친 슬롯을 현재 데이터로 따라잡는다(과거 소급은 없음 — 하루 통째 놓치면 그날은 포지션 없음). 실패 → 텔레그램 알림 → 재실행(체크포인트 재개, 중복 없음).</p>
+
+      <div class="note warn"><b>⏰ 서머타임 함정</b> — 실행 창을 "한국시간 22:30"처럼 박으면 3·11월 전환 때 1시간 틀어진다. <b>뉴욕 시간으로 정의하고 실행 시점에 변환</b> + NYSE 휴장일 캘린더로 공휴일·단축장을 반영한다.</div>
     </section>
 
     <!-- 공통 컨벤션 -->
@@ -548,49 +607,196 @@ erDiagram
       <div class="sec-eyebrow">Pipeline</div>
       <h2>파이프라인 상세 01→11</h2>
       <p class="sec-intro">각 역할: 하는 일 → 입력/출력 → 스키마 → 전달 JSON → row 예시. 좌측 척추에서 바로 이동.</p>
-      <div id="s01" class="card"><h3><span class="mono b b-gray">01</span> 유니버스 스크리너</h3><div class="todo">시총 상위 2,000 주1회 · 유동성 하드 필터</div></div>
-      <div id="s02" class="card"><h3><span class="mono b b-gray">02</span> 기술분석</h3><div class="todo">RSI·MACD·MA·ATR 지표 계산 · 20종목</div></div>
-      <div id="s03" class="card"><h3><span class="mono b b-gray">03</span> 일일 스크리너</h3><div class="todo">버킷 스코어링 → 오늘의 50</div></div>
-      <div id="s04" class="card"><h3><span class="mono b b-gray">04</span> 매크로</h3><div class="todo">regime 0.30/0.70 · 감점표</div></div>
-      <div id="s05" class="card"><h3><span class="mono b b-gray">05</span> 공시</h3><div class="todo">SEC 공시 · Form 4 템플릿 · reason JSONB</div></div>
-      <div id="s06" class="card"><h3><span class="mono b b-gray">06</span> 뉴스</h3><div class="todo">RSS 제목+스니펫 · 출처등급 · 대표기사 하이브리드</div></div>
-      <div id="s07" class="card"><h3><span class="mono b b-gray">07</span> 전략</h3><div class="todo">buy/hold/sell · 게이트 3종 · 메모리 주입</div></div>
-      <div id="s08" class="card"><h3><span class="mono b b-gray">08</span> 반박(Critic)</h3><div class="todo">적대적 검증 · snapshot 실전달 · 과신 에스컬레이션</div></div>
-      <div id="s09" class="card"><h3><span class="mono b b-gray">09</span> 리스크·비중</h3><div class="todo">사이징 · 서킷브레이커 4종 · 성향 차등</div></div>
-      <div id="s10" class="card"><h3><span class="mono b b-gray">10</span> 주문·체결</h3><div class="todo">브래킷 SL/TP · client_order_id 멱등 · halted 체크</div></div>
-      <div id="s11" class="card"><h3><span class="mono b b-gray">11</span> 회고</h3><div class="todo">T+5 자동 채점 · lesson 생성 · SPY 벤치마크</div></div>
+      <div id="s01" class="card">
+        <h3><span class="mono b b-gray">01</span> 유니버스 스크리너 <span class="b b-gray">주1회</span></h3>
+        <p style="margin-top:4px">미국 상장 전체(~16,000)에서 <b>시총 상위 2,000</b>을 골라 감시망(tb_universe)에 박제한다. 주1회라 시총 순위처럼 천천히 변하는 값에 맞고, <code>(as_of_date, ticker)</code> 복합 PK로 매주 스냅샷을 쌓아 <b>생존편향</b>을 막는다(사라진 종목도 과거 기록에 남음).</p>
+        <div class="io"><span>📥 미국 상장 ~16,000</span><span>📤 <code>tb_universe</code> 2,000</span><span>🗃️ NASDAQ screener API (무료)</span></div>
+      </div>
+      <div id="s02" class="card">
+        <h3><span class="mono b b-gray">02</span> 기술분석</h3>
+        <p style="margin-top:4px">유니버스 2,000의 일봉으로 결정론적 지표를 계산한다 — RSI·MACD·MA20/50·ATR·상대강도(rs_20)·거래량비(vol_ratio)·수익률(ret_5d/20d)·추세(<code>up·mixed·down·no_data</code>). LLM 미사용. 여기서 <b>유동성 하드 필터</b>(주가 ≥ $5, 20일 평균 거래대금 ≥ $20M)로 거래 곤란 종목을 거른다.</p>
+        <div class="io"><span>📥 <code>tb_universe</code> 일봉</span><span>📤 <code>tb_technical</code></span><span>⚙️ 지표·필터 config</span></div>
+      </div>
+      <div id="s03" class="card">
+        <h3><span class="mono b b-gray">03</span> 일일 스크리너 <span class="b b-gray">매일 장전</span></h3>
+        <p style="margin-top:4px">지표로 <b>5버킷</b>(<code>trend_leader·volume_surge·high_52w_breakout·pullback·squeeze_breakout</code> + backfill) 스코어링해 <b>오늘의 50</b>을 뽑는다(tb_daily_pick). 이후 05~11은 원칙적으로 이 50 ∪ 보유 종목만 다룬다.</p>
+        <div class="io"><span>📥 <code>tb_technical</code></span><span>📤 <code>tb_daily_pick</code> ≤50</span><span>🎯 픽 게이트 0.70</span></div>
+      </div>
+      <div id="s04" class="card">
+        <h3><span class="mono b b-gray">04</span> 매크로 <span class="b b-gray">장전+장중 60분</span></h3>
+        <p style="margin-top:4px">시장 국면을 <code>risk_on·neutral·risk_off</code>로 판정(경계 risk_score 0.30/0.70). VIX·나스닥·S&amp;P·금리·달러를 담는다. LLM 미사용. risk-off일수록 07에서 확신도 <b>감점</b>(최대 −0.40).</p>
+        <div class="io"><span>📥 FRED·지수 데이터</span><span>📤 <code>tb_macro</code></span><span>🔑 PK <code>as_of</code>(슬롯 역할)</span></div>
+      </div>
+      <div id="s05" class="card">
+        <h3><span class="mono b b-gray">05</span> 공시 <span class="b b-ai">LLM</span> <span class="b b-gray">확장시간 60분</span></h3>
+        <p style="margin-top:4px">SEC 공시(8-K·10-Q·Form 4 등)를 읽어 <b>원본 원장</b>(tb_disclosure, 1건=1행)에 적재하고, 종목·사이클 단위로 <b>집계</b>(tb_disclosure_signal)한다. 점수: sentiment·importance·risk·confidence(0~1). <b>Form 4는 LLM 없이 코드 템플릿</b> 조립 — 공개시장 자발 매수(코드 P)만 유의미 신호, 예정 매도(10b5-1)는 노이즈 처리.</p>
+        <div class="io"><span>📥 SEC EDGAR</span><span>📤 <code>tb_disclosure</code> / <code>_signal</code></span><span>🆕 reason JSONB · disclosure_count · top_evidence</span></div>
+      </div>
+      <div id="s06" class="card">
+        <h3><span class="mono b b-gray">06</span> 뉴스 <span class="b b-ai">LLM</span> <span class="b b-gray">장전~장중 30분</span></h3>
+        <p style="margin-top:4px">RSS <b>제목+스니펫만</b>(크롤링 없음) 읽어 원본(tb_news)·집계(tb_news_signal) 생성. <b>출처등급</b>으로 소셜·미등록 매체는 LLM 도달 전 사전 차단(<code>block</code>). <b>대표 기사</b>는 관련성 필터(오귀속 차단) 통과분 중 importance×신뢰무게 최상위 1건, 동률은 published_at 최신→id.</p>
+        <div class="io"><span>📥 RSS 피드</span><span>📤 <code>tb_news</code> / <code>_signal</code></span><span>🛡 출처등급 yaml · reason JSONB</span></div>
+      </div>
+      <div id="s07" class="card">
+        <h3><span class="mono b b-gray">07</span> 전략 (Strategist) <span class="b b-ai">LLM</span> <span class="b b-gray">개장 중</span></h3>
+        <p style="margin-top:4px">신호 4종(기술·매크로·공시·뉴스) + 실시간 시세 + <b>최근 lesson</b>을 종합해 <code>buy·hold·<b>sell</b></code>과 확신도(conviction)를 낸다. <b>게이트 3종</b>: source_trust ≥ 0.55(약한 뉴스 투표 박탈)·매크로 감점·강악재 ≤ 0.15 차단. 판단 시점 시세 4필드(current·high·low·close_prev)를 <b>박제</b>해 08에 넘긴다. 매도 판단(보유 재평가)도 여기서.</p>
+        <div class="io"><span>📥 신호 4종·시세·lesson</span><span>📤 <code>tb_strategist_signals</code></span><span>🔑 UNIQUE(ticker,cycle_ts,inv_type)</span></div>
+      </div>
+      <div id="s08" class="card">
+        <h3><span class="mono b b-gray">08</span> 반박 (Critic) <span class="b b-ai">LLM</span> <span class="b b-gray">개장 중</span></h3>
+        <p style="margin-top:4px">전략 판단을 <b>적대적으로 검증</b>한다 — <code>pass·reject·hold</code>. 07이 박제한 시세를 실제로 대조(허용오차 2% 초과 시 hold), 논리 결함·과신을 반박. 확신이 셀수록(conviction ≥ 0.90) 승인 문턱을 0.70→0.80으로 올린다. 매도 판단도 검증(근거 없는 패닉 매도 차단).</p>
+        <div class="io"><span>📥 <code>tb_strategist_signals</code>+시세</span><span>📤 <code>tb_critic_verdict</code></span><span>🔑 UNIQUE(signal_id)</span></div>
+      </div>
+      <div id="s09" class="card">
+        <h3><span class="mono b b-gray">09</span> 리스크·비중 <span class="b b-gray">개장 중 · 계좌별</span></h3>
+        <p style="margin-top:4px">pass된 판단을 <b>계좌마다 성향 파라미터</b>로 실행한다. 포지션 사이징 + <b>서킷브레이커 4종</b>(동시 보유 수·종목 비중·일일 손실 한도·최소 현금). 일일 손실 한도 도달 시 <b>당일 신규 매수 전면 중단</b>(보유·브래킷은 유지, 익영업일 자동 해제). 여기가 "리서치 공용 → 계좌 구독"의 경계.</p>
+        <div class="io"><span>📥 <code>tb_critic_verdict</code>·계좌</span><span>📤 주문 계획</span><span>⚙️ 성향별 한도 config</span></div>
+      </div>
+      <div id="s10" class="card">
+        <h3><span class="mono b b-gray">10</span> 주문·체결 <span class="b b-gray">개장 중</span></h3>
+        <p style="margin-top:4px">Alpaca 페이퍼로 <b>고정 브래킷</b> 주문(진입 + 손절 −15% + 익절 +20%). <code>client_order_id = q-a{계좌}-s{신호}</code>로 결정적 멱등, 409/타임아웃 시 재조정. 주문 직전 <b>거래정지(halted) 체크</b>. 상태 <code>planned→submitted→filled</code>. 페이퍼 3중 안전잠금(broker=alpaca ∧ trading_enabled ∧ paper URL).</p>
+        <div class="io"><span>📥 주문 계획</span><span>📤 <code>tb_order</code> / <code>tb_fill</code></span><span>🔒 페이퍼 전용</span></div>
+      </div>
+      <div id="s11" class="card">
+        <h3><span class="mono b b-gray">11</span> 회고 (Reviewer) <span class="b b-ai">LLM</span> <span class="b b-gray">마감 후</span></h3>
+        <p style="margin-top:4px">체결 후 <b>T+1~5 종가 스냅샷</b>을 모아 <b>T+5(영업일)</b>에 수익률·적중·최대낙폭을 채점하고 <b>lesson</b>(교훈 1~2문장)을 생성한다. lesson은 07이 같은 종목 판단 시 프롬프트로 <b>되먹임</b> — 학습 루프의 완성. SPY 대비 상대 성과도 함께.</p>
+        <div class="io"><span>📥 <code>tb_order</code>·시세</span><span>📤 <code>tb_review_price_snapshots</code>·<code>tb_review</code></span><span>🔁 lesson → 07</span></div>
+      </div>
     </section>
 
     <!-- 판단 방어선 -->
     <section id="defense">
       <div class="sec-eyebrow">Guardrails</div>
       <h2>판단 방어선</h2>
-      <p class="sec-intro">LLM 출력과 주문 사이에 결정론적 코드 층이 항상 여러 겹. 모든 문턱은 config 소유(⚙️ 조정 가능).</p>
-      <div class="todo">출처등급(block 사전 drop) · 07 게이트 3종(source_trust·감점표·강악재) · snapshot 2% 허용오차 · 과신 에스컬레이션 · 숫자표</div>
+      <p class="sec-intro">이 프로젝트의 핵심 안전 서사 — LLM 출력과 실제 주문 사이에 결정론적 코드 층이 항상 여러 겹 놓인다.</p>
+      <div class="note good"><b>💼 어필 한 줄</b> — 외부 텍스트 → (스키마 검증) → 점수 → (코드 게이트) → 제안 → (Critic 반박) → (09 코드 리스크·서킷) → 페이퍼 주문. <b>LLM이 검증 없이 돈에 닿는 경로가 0개.</b></div>
+
+      <h3>방어 층 (입구 → 주문)</h3>
+      <div class="twrap"><table>
+        <tr><th>층</th><th>무엇을 막나</th><th>위치</th></tr>
+        <tr><td class="mono">1 · 출처등급</td><td>소셜·블로그·미등록 매체 → <b>LLM 도달 전 사전 차단</b>(block drop)</td><td>06 뉴스</td></tr>
+        <tr><td class="mono">2 · 스키마 검증</td><td>LLM 출력이 계약(0~1·enum·필수 필드) 벗어나면 거부</td><td>Pydantic</td></tr>
+        <tr><td class="mono">3 · 07 게이트</td><td>약한 뉴스 신호·위험 국면·강한 악재</td><td>07 전략</td></tr>
+        <tr><td class="mono">4 · Critic 반박</td><td>논리 결함·과신·시세 괴리 → reject/hold</td><td>08 반박</td></tr>
+        <tr><td class="mono">5 · 서킷브레이커</td><td>계좌 전체 손실·과노출·현금 부족</td><td>09 리스크</td></tr>
+        <tr><td class="mono">6 · 페이퍼 3중 잠금</td><td>실계좌 주문 원천 차단(broker=alpaca ∧ trading_enabled ∧ paper URL)</td><td>10 주문</td></tr>
+      </table></div>
+
+      <h3>문턱값 <span class="b b-teal">⚙️ 전부 config · 운영 실측 후 조정</span></h3>
+      <div class="twrap"><table>
+        <tr><th>항목</th><th>값</th><th>역할</th></tr>
+        <tr><td>source_trust 게이트</td><td class="mono">≥ 0.55</td><td>신뢰도 낮은 뉴스 신호의 투표권 박탈</td></tr>
+        <tr><td>강악재 컷</td><td class="mono">sentiment ≤ 0.15</td><td>강한 악재 종목 매수 차단</td></tr>
+        <tr><td>매크로 감점</td><td class="mono">최대 −0.40</td><td>risk-off 국면 확신도 하향</td></tr>
+        <tr><td>snapshot 허용오차</td><td class="mono">2%</td><td>07 박제 시세 vs 08 검증 시세 괴리 → hold</td></tr>
+        <tr><td>Critic 승인 문턱</td><td class="mono">0.70</td><td>미만이면 reject</td></tr>
+        <tr><td>과신 에스컬레이션</td><td class="mono">conviction ≥ 0.90 → 문턱 0.80</td><td>확신이 셀수록 검증을 더 세게</td></tr>
+      </table></div>
     </section>
 
     <!-- 계좌·성향 -->
     <section id="accounts">
       <div class="sec-eyebrow">Accounts</div>
       <h2>계좌·투자 성향</h2>
-      <p class="sec-intro">리서치 신호는 공용 1회 생성, 각 계좌가 성향(aggressive·conservative) 파라미터로 구독·실행.</p>
-      <div class="todo">성향 2종 프로파일 표(문턱·한도·late_entry) · 계좌 구성(데모 5 + 테스트 2, 시뮬레이션) · 서킷브레이커</div>
+      <p class="sec-intro">리서치 신호는 공용 1회 생성, 각 계좌가 성향 파라미터로 구독·실행한다. 성향이 <b>말뿐 아니라 실제로 다르게 행동하는 근거</b> = 아래 문턱·한도 차등.</p>
+
+      <h3>성향 프로파일 <span class="b b-teal">⚙️ config</span></h3>
+      <div class="twrap"><table>
+        <tr><th>항목</th><th>공격형 <span class="mono">aggressive</span></th><th>안전형 <span class="mono">conservative</span></th></tr>
+        <tr><td>매수 문턱 (conviction)</td><td class="mono">0.65</td><td class="mono">0.75</td></tr>
+        <tr><td>risk-off 대응</td><td>확신도 감점</td><td><b>신규 매수 전면 금지</b></td></tr>
+        <tr><td>late_entry 컷 (ret_5d)</td><td class="mono">≥ 15% 금지</td><td class="mono">≥ 12% 금지</td></tr>
+        <tr><td>동시 보유 종목</td><td class="mono">10</td><td class="mono">5</td></tr>
+        <tr><td>종목당 최대 비중</td><td class="mono">20%</td><td class="mono">10%</td></tr>
+        <tr><td>일일 손실 한도</td><td class="mono">−4%</td><td class="mono">−2%</td></tr>
+        <tr><td>최소 현금 비율</td><td class="mono">10%</td><td class="mono">30%</td></tr>
+      </table></div>
+
+      <h3>계좌 구성 — 데모 5 + 테스트 2</h3>
+      <p>Alpaca 페이퍼는 <b>키 1개 = 계좌 1개</b>라, 다계좌는 <b>내부 시뮬레이션</b>(실제 시장가격으로 체결 흉내)으로 둔다. Alpaca 페이퍼 연결은 시세 데이터 소스 + 단일 실주문 경로 검증용으로 유지. 테스트 계좌는 데모 손익·회고 이력을 오염시키지 않도록 분리(<code>is_test</code>).</p>
+      <div class="twrap"><table>
+        <tr><th>구분</th><th>성향</th><th>초기 자본</th><th>용도</th></tr>
+        <tr><td rowspan="2">데모</td><td class="mono">aggressive</td><td class="mono">$1,000,000 · $50,000</td><td>팀원 2명</td></tr>
+        <tr><td class="mono">conservative</td><td class="mono">$150,000 · $100,000 · $50,000</td><td>팀원 3명</td></tr>
+        <tr><td rowspan="2">테스트</td><td class="mono">aggressive</td><td class="mono">$100,000</td><td>개발 검증(대시보드 제외)</td></tr>
+        <tr><td class="mono">conservative</td><td class="mono">$100,000</td><td>개발 검증(대시보드 제외)</td></tr>
+      </table></div>
+
+      <h3>서킷브레이커</h3>
+      <p>건별 리스크(이 주문이 안전한가)와 별개로 <b>계좌 전체</b>를 지킨다. <b>일일 손실 한도 도달 시 그날 신규 매수만 전면 중단</b>(보유 포지션·브래킷은 유지 — 패닉 청산 아님), 익영업일 자동 해제. 발동 사실은 텔레그램 알림 + 유저 화면에 "오늘은 손실 한도로 매수를 쉬었습니다"로 노출.</p>
     </section>
 
     <!-- 화면 -->
     <section id="screens">
       <div class="sec-eyebrow">Screens</div>
       <h2>관리자·유저 화면</h2>
-      <p class="sec-intro">관리자 = 펀드매니저 ERP(계좌 CRUD·운영·비용·리포트). 유저 = 조회 전용 포털(내 계좌·거래 이유·투명성 리포트).</p>
-      <div class="todo">관리자 기능 목록 + 유저 화면 5종 + 인증(OTP) + 화면 와이어프레임</div>
+      <p class="sec-intro">파이프라인 위에 두 개의 화면을 얹는다 — 관리자(펀드매니저 ERP)와 유저(조회 전용 포털). 기존 1차 Control Room(Jinja2 서버렌더)을 확장한다. 인증은 로그인 + OTP(TOTP), 유저 계정은 관리자가 생성.</p>
+
+      <div class="grid c2">
+        <div class="card" style="margin:0">
+          <h3 style="margin-top:0">🛠 관리자 — 펀드매니저 ERP</h3>
+          <ul style="margin:0;padding-left:18px;font-size:14px;line-height:1.9">
+            <li><b>계좌 CRUD</b> — 개설(유저 생성 포함)·성향 지정·일시정지·해지</li>
+            <li><b>계좌 총람</b> — 계좌별 수익률(SPY 대비)·보유·주문·서킷 상태</li>
+            <li><b>운영 콘솔</b> — 스케줄 상태·파이프라인 라이브·방어선 발동 내역</li>
+            <li><b>수동 컨트롤</b>(R9) — 사이클/역할 실행·catch-up·실패 재실행·리뷰 재채점</li>
+            <li><b>비용 대시보드</b> — LLM 사용량·토큰·비용·잔여 예산</li>
+            <li><b>유지보수</b> — 로그·데이터 헬스·config 조회</li>
+            <li><b>리포트 발행</b> — 유저 데일리 브리핑 미리보기·발행</li>
+          </ul>
+        </div>
+        <div class="card" style="margin:0">
+          <h3 style="margin-top:0">👤 유저 — 조회 전용 포털</h3>
+          <ul style="margin:0;padding-left:18px;font-size:14px;line-height:1.9">
+            <li><b>내 계좌 홈</b> — 총자산·수익률 곡선·SPY 대비·보유 카드</li>
+            <li><b>거래 타임라인</b> — 매수/매도 + <b>사람 언어 이유</b>(reason JSONB 기반)</li>
+            <li><b>매니저 리포트</b> — 매크로 국면·오늘 산/안 산 이유·주간 요약</li>
+            <li><b>투명성 리포트</b> — T+5 회고 결과·lesson 공개 (차별점)</li>
+            <li><b>리스크 상태</b> — "오늘은 risk-off라 매수를 쉬었습니다"</li>
+            <li class="muted" style="list-style:none;margin-left:-18px">— 쓰기 기능 없음. 자기 계좌만 조회(소유권 검증).</li>
+          </ul>
+        </div>
+      </div>
     </section>
 
     <!-- 개발 계획 -->
     <section id="plan">
       <div class="sec-eyebrow">Plan</div>
       <h2>개발 계획 — 마일스톤</h2>
-      <p class="sec-intro">4단계 11마일스톤 + 웨이브 일정(07.18–27). 상세 = <code>docs/mvp2-planning/phase2-dev-plan.md</code>.</p>
-      <div class="todo">Wave 0~4 타임라인 + M1~M11 카드 + E2E 6종 + 담당자 핸드오프 브랜치</div>
+      <p class="sec-intro">4단계 11마일스톤 + 웨이브 일정. 각 마일스톤은 <b>독립적으로 동작·테스트 가능한 산출</b>을 낸다. 상세 = <code>docs/mvp2-planning/phase2-dev-plan.md</code>.</p>
+
+      <h3>웨이브 일정</h3>
+      <div class="twrap"><table>
+        <tr><th>Wave</th><th>마일스톤</th><th>산출</th></tr>
+        <tr><td class="mono">0 · 매수 개시</td><td>기존 코드 페이퍼 라이브</td><td><b>T+5 시계 시작</b> (월요일 개장)</td></tr>
+        <tr><td class="mono">1 · 백본</td><td>M1 스케줄러·멱등 → M2 스키마 → M3 깔때기</td><td>자동 매수 루프</td></tr>
+        <tr><td class="mono">2 · 판단 품질</td><td>M4 방어선 → M5 매도 → M6 계좌·서킷</td><td>멀티 계좌·양방향 판단</td></tr>
+        <tr><td class="mono">3 · 루프·운영</td><td>M7 학습 → M8 운영 가드</td><td>무인 안정성</td></tr>
+        <tr><td class="mono">4 · 서비스</td><td>M9 관리자 → M10 유저 → M11 배포<span class="muted">(선택)</span></td><td>화면·발표</td></tr>
+      </table></div>
+
+      <h3>마일스톤 M1~M11</h3>
+      <div class="grid c2">
+        <div class="card" style="margin:0"><h4 style="margin:0 0 8px"><span class="b b-teal">기반</span></h4>
+          <p style="margin:0;font-size:13.5px"><b>M1</b> 슬롯 멱등·스케줄러·NYSE 캘린더 · <b>M2</b> 스키마·계약 일괄(신규 3테이블·reason JSONB·side sell)</p></div>
+        <div class="card" style="margin:0"><h4 style="margin:0 0 8px"><span class="b b-teal">판단 엔진</span></h4>
+          <p style="margin:0;font-size:13.5px"><b>M3</b> 깔때기 복원 · <b>M4</b> 방어선 · <b>M5</b> 매도·보유 재평가(최대 작업) · <b>M6</b> 계좌·서킷브레이커</p></div>
+        <div class="card" style="margin:0"><h4 style="margin:0 0 8px"><span class="b b-teal">루프·운영</span></h4>
+          <p style="margin:0;font-size:13.5px"><b>M7</b> 학습 루프(T+5 채점·lesson·메모리·SPY) · <b>M8</b> 운영 가드(텔레그램·비용·대사)</p></div>
+        <div class="card" style="margin:0"><h4 style="margin:0 0 8px"><span class="b b-teal">서비스</span></h4>
+          <p style="margin:0;font-size:13.5px"><b>M9</b> 관리자 ERP · <b>M10</b> 유저 포털 · <b>M11</b> 배포(로컬 필수 · AWS 선택)</p></div>
+      </div>
+
+      <h3>E2E 검증 시나리오</h3>
+      <div class="twrap"><table>
+        <tr><th>#</th><th>시나리오</th><th>검증</th></tr>
+        <tr><td class="mono">1</td><td>NVDA 매수 완주</td><td>01→11 완주·페이퍼 주문·체결</td></tr>
+        <tr><td class="mono">2</td><td>같은 슬롯 2회 실행</td><td>signal 행 1개 (멱등)</td></tr>
+        <tr><td class="mono">3</td><td>일일 손실 한도 초과</td><td>당일 매수 skip·익영업일 해제</td></tr>
+        <tr><td class="mono">4</td><td>보유 종목 하드 악재</td><td>자동 청산 + 사유</td></tr>
+        <tr><td class="mono">5</td><td>동일 신호·2성향</td><td>공격형 매수 / 안전형 보류</td></tr>
+        <tr><td class="mono">6</td><td>휴장일</td><td>07~10 미실행·T+5 영업일 보정</td></tr>
+      </table></div>
     </section>
 
     <!-- AI 추천 제안 -->
@@ -599,30 +805,74 @@ erDiagram
       <h2>AI 추천 제안 · 열린 안건</h2>
       <p class="sec-intro">확정 대기·팀 협의 필요 항목. 해결되면 결론을 남기고 이력으로 보존.</p>
       <div class="ai-card">
-        <div class="ah"><span class="anum b b-ai">예시</span><span class="at">카드 형식 미리보기</span><span class="b b-hold">협의 필요</span></div>
+        <div class="ah"><span class="anum b b-ai">A1</span><span class="at">snapshot 허용오차 · Critic 문턱 숫자</span><span class="b b-hold">협의 필요</span></div>
         <div class="ab">
-          <div class="row"><div class="rk">제안</div><div>여기에 제안 내용.</div></div>
-          <div class="row"><div class="rk">근거</div><div>왜 이게 필요한지.</div></div>
-          <div class="row"><div class="rk">추천</div><div>Claude 실무 관점 판단.</div></div>
+          <div class="row"><div class="rk">안건</div><div>07→08 시세 허용오차(현 제안 2%)와 Critic 승인 문턱(현 0.70) — 원래 이은미↔김미연 협의 대상.</div></div>
+          <div class="row"><div class="rk">현 상태</div><div>진행을 막지 않으려 초기값을 제안값으로 확정하고 <code>⚙️ config·운영 실측 후 조정</code> 표기. 운영 데이터가 쌓이면 재보정.</div></div>
         </div>
       </div>
-      <div class="todo">열린 안건 카드 — snapshot 허용오차·Critic 문턱·뉴스망 50 한계·태스크별 모델 등</div>
+      <div class="ai-card">
+        <div class="ah"><span class="anum b b-ai">A2</span><span class="at">뉴스 감시망 "오늘의 50" 한계</span><span class="b b-hold">뒤집기 트리거</span></div>
+        <div class="ab">
+          <div class="row"><div class="rk">한계</div><div>뉴스·공시가 오늘의 50에 묶여, 기술적 셋업 전에 터지는 촉매는 다음 날 volume_surge/breakout 버킷으로 후행 포착된다.</div></div>
+          <div class="row"><div class="rk">뒤집기</div><div>회고 실측에서 "50 밖 촉매 놓침"이 유의미하면 → 뉴스 수집만 2,000 전체로 확대(RSS는 저비용).</div></div>
+        </div>
+      </div>
+      <div class="ai-card">
+        <div class="ah"><span class="anum b b-ai">A3</span><span class="at">태스크별 LLM 모델 오버라이드</span><span class="b b-gray">구조 확보</span></div>
+        <div class="ab">
+          <div class="row"><div class="rk">현 상태</div><div>M2에서 모델 config를 태스크별로 분리(<code>models.default</code>·<code>models.strategy</code>) — 나중에 07(가장 중요한 판단)만 상위 모델로 올릴 수 있게.</div></div>
+          <div class="row"><div class="rk">판단</div><div>구조만 확보, 실제 교체는 운영 모델 실측 후.</div></div>
+        </div>
+      </div>
+      <div class="ai-card">
+        <div class="ah"><span class="anum b b-ai">A4</span><span class="at">일일 LLM 예산 · 계좌 실명 표기</span><span class="b b-gray">기본값 진행</span></div>
+        <div class="ab">
+          <div class="row"><div class="rk">예산</div><div><code>budget.daily_llm_usd</code> = M8에서 gpt-4o-mini 단가로 실측 후 확정(1차 비용표는 존재하지 않는 모델 전제라 폐기).</div></div>
+          <div class="row"><div class="rk">계좌명</div><div>데모 계좌는 익명/역할 라벨(공격형-1 등) 기본. 실명 표기 원하면 변경.</div></div>
+        </div>
+      </div>
     </section>
 
     <!-- 결정 로그 -->
     <section id="decisionlog">
       <div class="sec-eyebrow">Decision log</div>
       <h2>결정 로그 — 뒤집기 트리거</h2>
-      <p class="sec-intro">확정된 결정과 그것을 다시 열 조건. 같은 논쟁의 재발을 막는다.</p>
-      <div class="todo">결정 · 날짜 · 뒤집기 조건 압축표 (cycle 마스터·대표기사 배열·깔때기 50 등)</div>
+      <p class="sec-intro">확정한 결정과 그것을 <b>다시 열 조건</b>. 조건이 충족되기 전엔 같은 논쟁을 재개하지 않는다(재발 방지). 세부 근거는 <code>docs/mvp2-planning/</code>.</p>
+      <div class="twrap"><table>
+        <tr><th>결정</th><th>확정</th><th>뒤집기 조건</th></tr>
+        <tr><td>cycle 마스터 테이블 안 만듦 (슬롯=계산값)</td><td>유지</td><td>사이클이 시각 외 메타데이터를 가질 때 → 로그 테이블(이미 pipeline_runs)</td></tr>
+        <tr><td>대표 기사 1건 (배열 아님)</td><td>유지</td><td>회고에서 복수 대형 사건 동시 발생이 빈번 → <b>사건 단위 행 분해</b>(배열 아님)</td></tr>
+        <tr><td>깔때기 2,000 → 50 → 20+보유</td><td>2차 복원</td><td>50 밖 촉매 놓침 유의미 → 뉴스 수집만 2,000 확대 <span class="muted">(A2)</span></td></tr>
+        <tr><td>src_*_at = 시각 참조 (id 아님)</td><td>유지</td><td>2차 ORM 마찰이 클 때 → id 참조 재검토</td></tr>
+        <tr><td>consensus = 설명용(게이트 아님)</td><td>확정</td><td>없음 — 게이트화는 "좁은 깔때기" 재발이라 비채택</td></tr>
+        <tr><td>규칙 4 완화 (NUMERIC 정밀도 강제 해제)</td><td>2차 개정</td><td>팀 고지 필요 — 이견 시 재논의</td></tr>
+        <tr><td>AWS 배포 = 최후·선택</td><td>확정</td><td>로컬 상시 구동이 불가·불안정하면 AWS 승격</td></tr>
+        <tr><td>실계좌(라이브) 전환</td><td>범위 외</td><td>실전 전 보안 게이트 전부 충족 시 별도 프로젝트로</td></tr>
+      </table></div>
     </section>
 
     <!-- 보안 -->
     <section id="security">
       <div class="sec-eyebrow">Security</div>
       <h2>보안</h2>
-      <p class="sec-intro">LLM 특화 위협 모델 + 페이퍼→실전 전환 전 게이트. "검증 없이 돈에 닿는 경로 0개".</p>
-      <div class="todo">위협 7종 + 프롬프트 인젝션 격리 + 킬스위치 + 인증·권한(관리자/유저)</div>
+      <p class="sec-intro">LLM이 외부 텍스트를 읽고 돈에 닿는 시스템이라, 위협 모델을 명시하고 방어를 배선한다.</p>
+
+      <h3>LLM 특화 위협 → 방어</h3>
+      <div class="twrap"><table>
+        <tr><th>위협</th><th>방어</th></tr>
+        <tr><td>프롬프트 인젝션 (외부 텍스트가 지시를 주입)</td><td>외부 텍스트를 <code>external_data</code>로 <b>격리</b> 전달(지시 영역과 분리) · 06 출처등급 사전 차단</td></tr>
+        <tr><td>LLM 출력 이상값 (범위·타입 위반)</td><td>Pydantic 스키마 검증(0~1·enum·필수) — 벗어나면 거부</td></tr>
+        <tr><td>잘못된 판단이 주문으로</td><td><a href="#defense">판단 방어선</a> 6층 + Critic 반박 + 09 서킷브레이커</td></tr>
+        <tr><td>오발주·폭주</td><td>페이퍼 3중 잠금 · 일일 주문 한도 · 멱등키 · 예산 상한</td></tr>
+        <tr><td>시크릿 노출</td><td><code>.env</code> gitignore(점검 완료) · 키 하드코딩 금지 · 로그 마스킹</td></tr>
+        <tr><td>감사 추적 부재</td><td>계보 컬럼(model·prompt·policy 버전·input_hash) + pipeline_runs 로그</td></tr>
+      </table></div>
+
+      <h3>인증·권한 (2차 신규)</h3>
+      <p>로그인 + <b>OTP(TOTP)</b> · 역할 분리(<code>admin</code>/<code>user</code>) · 유저는 <b>자기 계좌만</b> 조회(소유권 검증)·쓰기 없음 · 관리자 실거래 구역만 토큰 게이트.</p>
+
+      <div class="note warn"><b>실전(라이브) 전환 전 게이트 — 범위 외지만 명시</b> — 킬스위치 이중화 · 키 로테이션 절차 · 이상 탐지 알림(체결·잔고 급변) · 일일 손실 하드캡. 이 표가 다 차기 전 실계좌 금지.</div>
     </section>
 
     <!-- 변경 이력 -->
@@ -632,7 +882,7 @@ erDiagram
       <p class="sec-intro">이 문서를 수정하면 표 맨 위에 한 줄 추가 + 버전 갱신 + git 커밋·태그.</p>
       <div class="twrap"><table>
         <tr><th>버전</th><th>날짜</th><th>수정자</th><th>변경 요약</th></tr>
-        <tr><td class="mono">v4.0</td><td class="mono">2026-07-18</td><td>문성혁 + Claude</td><td>2차(MVP-2) 설계서 신규 — 디자인 전면 재설계(좌측 파이프라인 척추 목차·모노 계기판 타이포·다크모드), 뼈대 구축. 1차 정본은 <code>quantinue-integrated-design-mvp1.html</code>로 동결. 내용은 Phase 1·2 산출물에서 이관 예정</td></tr>
+        <tr><td class="mono">v4.0</td><td class="mono">2026-07-18</td><td>문성혁 + Claude</td><td>2차(MVP-2) 설계서 신규 — 디자인 전면 재설계(좌측 파이프라인 척추 목차·모노 계기판 타이포·다크모드), 뼈대 구축. 1차 정본은 <code>quantinue-integrated-design-mvp1.html</code>로 동결. <b>전 섹션 작성 완료</b> — 2차 확정사항(R1~R9)·컨벤션·전체흐름·데이터모델·파이프라인 01~11·방어선·계좌·화면·개발계획·AI제안·결정로그·보안·용어사전</td></tr>
       </table></div>
     </section>
 

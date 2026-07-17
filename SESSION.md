@@ -115,6 +115,13 @@
 7. 🆕 **(07-12) 문서를 수정하면 반드시 `#changelog` 표 맨 위에 한 줄 추가** — 버전 +0.1 · 날짜 · 수정자 · 1~3줄 요약, 히어로 버전 배지도 같이 갱신. 줄이 없으면 그 수정은 없던 일로 간주.
 8. 변경 이력의 버전마다 Git 커밋 1개와 같은 버전 태그를 남긴다. 변경 이력은 사람이 읽는 요약, Git은 실제 diff의 정본이다.
 
+### 07-18 (3) — v4.0 전 섹션 작성 완료 + 저장소 rename
+
+- `quantinue-integrated-design.html` **전 섹션 채움 완료**: 2차 확정사항(R1~R9 카드)·공통 컨벤션(8규칙 신설)·전체 흐름(Mermaid flowchart)·데이터 모델(ERD+총람+2차 스키마 변경, 실제 schema.sql 기준)·파이프라인 01~11 상세(io 스트립)·판단 방어선(6층+문턱표)·계좌·성향(프로파일·구성·서킷)·관리자/유저 화면·개발계획(웨이브·M1~11·E2E 6)·AI 제안(열린 안건 4)·결정 로그(뒤집기 트리거 8)·보안(위협7·인증)·용어 30초 사전.
+- **결정 R9 추가**(수동 운영·장애 복구: 슬롯 멱등+claim 락·catch-up·관리자 수동 컨트롤) · **AWS 최후·선택**(로컬 상시 구동 대체, 완료기준에서 제외) — phase1/phase2 문서에도 반영.
+- **GitHub 저장소 rename**: `quantinue-doc` → `quantinue` (gh CLI, remote 갱신). **시크릿 점검 완료 — 노출 없음**(.env gitignore·히스토리·하드코딩 전부 clean). node_modules/.pyc 추적은 위생 이슈(app-v2 시 정리).
+- 디자인 확정: 라이트 기본·다크 토글·모바일 햄버거 서랍·칩 정렬·Mermaid CDN. 파일명 = canonical 유지(`quantinue-integrated-design.html`).
+
 ### 07-18 (2) — v4.0: 2차 설계서 신규 문서 뼈대 (Phase 3 착수)
 
 - **`docs/quantinue-integrated-design.html`을 v4.0으로 전면 재작성** (기존 v3.9는 동결본 `-mvp1.html`에 이미 보존). frontend-design 스킬 방향으로 디자인 재설계.
