@@ -1,0 +1,1 @@
+"""Pipeline run persistence adapters."""

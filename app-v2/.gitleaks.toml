@@ -1,0 +1,13 @@
+title = "Quantinue secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Documented placeholders and generated dependencies"
+paths = [
+  '''(^|/)\.env\.example$''',
+  '''(^|/)node_modules/''',
+  '''(^|/)\.venv/''',
+  '''(^|/)\.omo/evidence/''',
+]

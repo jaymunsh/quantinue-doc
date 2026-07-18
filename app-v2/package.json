@@ -1,0 +1,14 @@
+{
+  "name": "quantinue-ui-qa",
+  "private": true,
+  "scripts": {
+    "qa:browser": "playwright test .omo/evidence/task-8-browser.spec.js",
+    "qa:states": "playwright test .omo/evidence/task-8-state-browser.spec.js",
+    "qa:lighthouse": "node .omo/evidence/task-8-lighthouse.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.55.1",
+    "lighthouse": "12.8.2",
+    "playwright": "1.55.1"
+  }
+}

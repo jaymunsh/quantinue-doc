@@ -1,0 +1,41 @@
+version: 1
+timezone: America/New_York
+mvp:
+  data_mode: fixture
+  ticker: NVDA
+  accounts: 1
+  integer_quantity_only: true
+  stop_loss_ratio: 0.15
+  take_profit_ratio: 0.20
+  evidence_max_age_seconds: 300
+  role_timeout_seconds: 120
+  role_max_retries: 2
+  retry_base_delay_seconds: 0.25
+  resume_failed: true
+  checkpoint_after_each_role: true
+  duplicate_order_policy: reject
+  policy_profile: aggressive
+  thresholds:
+    minimum_confidence: 0.60
+    strategist_buy_score: 0.65
+    critic_approval_score: 0.60
+    maximum_risk_score: 0.70
+  models:
+    mock: deterministic-mock-v1
+    openai: gpt-4o-mini
+    local: qwen2.5:7b
+  schedule:
+    role_04:
+      interval_minutes: 60
+    role_05:
+      interval_minutes: 60
+    role_06:
+      interval_minutes: 30
+    role_07:
+      interval_minutes: 120
+phase_2:
+  accounts: 5
+  news_interval_minutes: 5
+  strategist_interval_minutes: 10
+  add_job_run_audit: true
+  add_prompt_and_model_versions: true
