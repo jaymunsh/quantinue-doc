@@ -37,7 +37,9 @@ from quantinue.orchestration.factory import (
     build_default_orchestrator,
     build_market_data,
 )
-from quantinue.orchestration.policy import load_mvp2_config
+from quantinue.core.market_calendar import NyseCalendar
+from quantinue.orchestration.policy import load_mvp2_config, load_pipeline_document
+from quantinue.orchestration.scheduler import CycleScheduler, TickDecision
 from quantinue.orchestration.slots import slot_of
 
 if TYPE_CHECKING:
@@ -92,6 +94,18 @@ def create_app(  # noqa: C901, PLR0915
             raise RuntimeError(msg)
         return live_run_runtime
 
+    cycle_scheduler = CycleScheduler(
+        config=mvp2_config.schedule,
+        calendar=NyseCalendar(),
+        scheduler=load_pipeline_document(
+            PACKAGE_DIR.parent.parent / "config" / "pipeline.yaml"
+        ).due_role_scheduler(),
+        store=selected_store,
+        trigger=lambda request: _live_run_runtime().start(request),
+        ticker=RunCreate().ticker,
+    )
+    last_scheduler_decision: TickDecision | None = None
+
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
         nonlocal live_run_runtime
@@ -101,6 +115,8 @@ def create_app(  # noqa: C901, PLR0915
             await selected_store.initialize()
             if review_runtime is not None:
                 await review_runtime.initialize()
+            if mvp2_config.schedule.enabled:
+                task_group.start_soon(cycle_scheduler.run_forever)
             try:
                 yield
             finally:
@@ -243,6 +259,31 @@ def create_app(  # noqa: C901, PLR0915
             ticker=request_payload.ticker,
             cycle_ts=request_payload.cycle_ts,
         )
+
+    def _decision_view(decision: TickDecision | None) -> dict[str, object] | None:
+        if decision is None:
+            return None
+        return {
+            "triggered": decision.triggered,
+            "reason": decision.reason,
+            "cycle_ts": decision.cycle_ts.isoformat() if decision.cycle_ts else None,
+        }
+
+    @app.get("/api/scheduler/status")
+    async def scheduler_status() -> dict[str, object]:
+        return {
+            "enabled": mvp2_config.schedule.enabled,
+            "last_decision": _decision_view(last_scheduler_decision),
+        }
+
+    @app.post("/api/scheduler/catchup")
+    async def scheduler_catchup() -> dict[str, object]:
+        nonlocal last_scheduler_decision
+        decision = await cycle_scheduler.tick(datetime.now(UTC))
+        last_scheduler_decision = decision
+        view = _decision_view(decision)
+        assert view is not None  # noqa: S101 - decision is always produced above
+        return view
 
     @app.get("/api/runs", response_model=list[ControlRoomRun])
     async def list_runs() -> list[ControlRoomRun]:

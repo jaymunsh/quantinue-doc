@@ -478,3 +478,28 @@ def test_dashboard_fixture_renders_redacted_nonterminal_states(run_status: RunSt
     else:
         assert "ProviderTimeout" in response.text
     assert "raw provider response" not in response.text
+
+
+def test_scheduler_status_exposes_enabled_flag() -> None:
+    app = create_app()
+
+    with TestClient(app) as client:
+        response = client.get("/api/scheduler/status")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["enabled"] is False  # config 기본 enabled=false
+    assert body["last_decision"] is None
+
+
+def test_scheduler_catchup_reports_decision() -> None:
+    app = create_app()
+
+    with TestClient(app) as client:
+        response = client.post("/api/scheduler/catchup")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["triggered"] is False
+    assert body["reason"] == "disabled"
+    assert body["cycle_ts"] is None
