@@ -116,14 +116,13 @@ async def terminal_run_by_key(engine: AsyncEngine, runs: Table, key: str) -> Pip
 async def latest_useful_cycle_ts(engine: AsyncEngine, runs: Table) -> datetime | None:
     """Read the newest cycle timestamp among runs not lost to failure."""
     async with engine.connect() as connection:
-        value = (
+        return (
             await connection.execute(
                 select(func.max(runs.c.cycle_ts)).where(
                     runs.c.status.in_(("pending", "running", "completed"))
                 )
             )
         ).scalar()
-    return value
 
 
 async def recent_terminal_runs(

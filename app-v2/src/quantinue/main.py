@@ -31,13 +31,13 @@ from quantinue.api.schemas import (
 from quantinue.core.config import DatabaseMode, Settings
 from quantinue.core.contracts import PipelineRequest, PipelineRun, RunStatus
 from quantinue.core.logging import configure_logging
+from quantinue.core.market_calendar import NyseCalendar
 from quantinue.db.contracts import PersistedAttempt
 from quantinue.orchestration.factory import (
     build_configured_orchestrator,
     build_default_orchestrator,
     build_market_data,
 )
-from quantinue.core.market_calendar import NyseCalendar
 from quantinue.orchestration.policy import load_mvp2_config, load_pipeline_document
 from quantinue.orchestration.scheduler import CycleScheduler, TickDecision
 from quantinue.orchestration.slots import slot_of
@@ -94,6 +94,10 @@ def create_app(  # noqa: C901, PLR0915
             raise RuntimeError(msg)
         return live_run_runtime
 
+    def _scheduled_trigger(cycle_ts: datetime) -> bool:
+        request = PipelineRequest(ticker=RunCreate().ticker, cycle_ts=cycle_ts)
+        return _live_run_runtime().start(request)
+
     cycle_scheduler = CycleScheduler(
         config=mvp2_config.schedule,
         calendar=NyseCalendar(),
@@ -101,8 +105,7 @@ def create_app(  # noqa: C901, PLR0915
             PACKAGE_DIR.parent.parent / "config" / "pipeline.yaml"
         ).due_role_scheduler(),
         store=selected_store,
-        trigger=lambda request: _live_run_runtime().start(request),
-        ticker=RunCreate().ticker,
+        trigger=_scheduled_trigger,
     )
     last_scheduler_decision: TickDecision | None = None
 

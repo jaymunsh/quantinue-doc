@@ -4,12 +4,11 @@ from datetime import UTC, datetime
 
 import pytest
 
+import quantinue.main as main_module
 from quantinue.main import _pipeline_request
 
 
 def test_pipeline_request_quantizes_cycle_to_slot(monkeypatch: pytest.MonkeyPatch) -> None:
-    import quantinue.main as main_module
-
     class _FrozenDatetime:
         @staticmethod
         def now(tz: object) -> datetime:
@@ -24,8 +23,6 @@ def test_pipeline_request_quantizes_cycle_to_slot(monkeypatch: pytest.MonkeyPatc
 
 
 def test_two_calls_inside_one_slot_share_cycle_ts(monkeypatch: pytest.MonkeyPatch) -> None:
-    import quantinue.main as main_module
-
     moments = iter(
         [
             datetime(2026, 7, 20, 13, 31, tzinfo=UTC),

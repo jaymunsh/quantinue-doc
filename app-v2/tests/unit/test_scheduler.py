@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 
 import pytest
 
-from quantinue.core.contracts import PipelineRequest
 from quantinue.core.market_calendar import NyseCalendar
 from quantinue.orchestration.policy import (
     DueRoleScheduler,
@@ -27,10 +26,10 @@ class _StoreStub:
 
 class _TriggerSpy:
     def __init__(self) -> None:
-        self.requests: list[PipelineRequest] = []
+        self.cycles: list[datetime] = []
 
-    def __call__(self, request: PipelineRequest) -> bool:
-        self.requests.append(request)
+    def __call__(self, cycle_ts: datetime) -> bool:
+        self.cycles.append(cycle_ts)
         return True
 
 
@@ -44,7 +43,6 @@ def _scheduler(
         scheduler=DueRoleScheduler(default_schedule_plan()),
         store=_StoreStub(latest),
         trigger=spy,
-        ticker="NVDA",
     )
     return instance, spy
 
@@ -57,7 +55,7 @@ async def test_first_tick_with_no_history_triggers_catchup() -> None:
 
     assert decision.triggered is True
     assert decision.reason == "due"
-    assert spy.requests[0].cycle_ts == datetime(2026, 7, 20, 14, 0, tzinfo=UTC)
+    assert spy.cycles[0] == datetime(2026, 7, 20, 14, 0, tzinfo=UTC)
 
 
 @pytest.mark.anyio
@@ -68,7 +66,7 @@ async def test_recent_run_is_not_due() -> None:
 
     assert decision.triggered is False
     assert decision.reason == "not_due"
-    assert spy.requests == []
+    assert spy.cycles == []
 
 
 @pytest.mark.anyio
@@ -78,7 +76,7 @@ async def test_stale_run_is_due_again() -> None:
     decision = await scheduler.tick(datetime(2026, 7, 20, 14, 31, tzinfo=UTC))
 
     assert decision.triggered is True  # role_06 cadence(30m) exceeded
-    assert spy.requests[0].cycle_ts == datetime(2026, 7, 20, 14, 30, tzinfo=UTC)
+    assert spy.cycles[0] == datetime(2026, 7, 20, 14, 30, tzinfo=UTC)
 
 
 @pytest.mark.anyio
@@ -89,7 +87,7 @@ async def test_weekend_never_triggers() -> None:
 
     assert decision.triggered is False
     assert decision.reason == "holiday"
-    assert spy.requests == []
+    assert spy.cycles == []
 
 
 @pytest.mark.anyio
@@ -101,7 +99,7 @@ async def test_closed_session_on_trading_day_does_not_trigger() -> None:
 
     assert decision.triggered is False
     assert decision.reason == "closed_session"
-    assert spy.requests == []
+    assert spy.cycles == []
 
 
 @pytest.mark.anyio
@@ -112,7 +110,7 @@ async def test_disabled_scheduler_never_triggers() -> None:
 
     assert decision.triggered is False
     assert decision.reason == "disabled"
-    assert spy.requests == []
+    assert spy.cycles == []
 
 
 @pytest.mark.anyio
@@ -124,4 +122,4 @@ async def test_same_slot_double_tick_sends_same_cycle_key() -> None:
     _ = await second_scheduler.tick(datetime(2026, 7, 20, 14, 16, tzinfo=UTC))
 
     # 별개 프로세스/수동 발화가 같은 슬롯에서 나가도 cycle_ts 동일 → claim이 dedup.
-    assert first_spy.requests[0].cycle_ts == second_spy.requests[0].cycle_ts
+    assert first_spy.cycles[0] == second_spy.cycles[0]

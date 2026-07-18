@@ -55,7 +55,7 @@ def _snapshot(ticker: str, trade_date: date) -> TechnicalSnapshot:
 
 
 def _account() -> AccountWrite:
-    return AccountWrite("test", Decimal("1000"), Decimal("1000"), Decimal("1000"))
+    return AccountWrite("test", Decimal(1000), Decimal(1000), Decimal(1000))
 
 
 @pytest.mark.anyio

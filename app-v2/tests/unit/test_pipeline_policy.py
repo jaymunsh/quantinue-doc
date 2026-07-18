@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from quantinue.broker.provider import MockBroker
 from quantinue.core.config import DataMode, LlmMode, Settings
@@ -9,6 +10,8 @@ from quantinue.llm.provider import DeterministicAnalyzer
 from quantinue.orchestration.factory import build_roles
 from quantinue.orchestration.policy import (
     DueRoleScheduler,
+    Mvp2ScheduleConfig,
+    load_mvp2_config,
     load_pipeline_document,
     load_pipeline_policy,
 )
@@ -112,8 +115,6 @@ def test_due_role_scheduler_rejects_naive_schedule_times() -> None:
 
 
 def test_mvp2_schedule_config_loads_from_yaml() -> None:
-    from quantinue.orchestration.policy import load_mvp2_config
-
     config = load_mvp2_config(Path("config/pipeline.yaml"))
 
     assert config.schedule.enabled is False  # 기본은 꺼짐 — W0 수동 운용 보호
@@ -123,9 +124,5 @@ def test_mvp2_schedule_config_loads_from_yaml() -> None:
 
 
 def test_mvp2_schedule_rejects_unknown_session() -> None:
-    from pydantic import ValidationError
-
-    from quantinue.orchestration.policy import Mvp2ScheduleConfig
-
     with pytest.raises(ValidationError):
         Mvp2ScheduleConfig(trigger_sessions=("lunch",))  # type: ignore[arg-type]

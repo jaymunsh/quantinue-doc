@@ -29,7 +29,8 @@ async def test_latest_cycle_ts_counts_completed_and_ignores_abandoned() -> None:
     late = PipelineRequest(ticker="NVDA", cycle_ts=datetime(2026, 7, 20, 14, 0, tzinfo=UTC))
 
     claim_early = await store.claim(_key(early), early)
-    assert claim_early.acquired and claim_early.context is not None
+    assert claim_early.acquired
+    assert claim_early.context is not None
     await store.finish_run(_key(early), claim_early.context.to_run())
 
     claim_late = await store.claim(_key(late), late)

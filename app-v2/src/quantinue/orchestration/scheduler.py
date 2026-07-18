@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Protocol
 import anyio
 import structlog
 
-from quantinue.core.contracts import PipelineRequest
 from quantinue.core.market_calendar import Session
 from quantinue.orchestration.slots import slot_of
 
@@ -42,16 +41,14 @@ class CycleScheduler:
         calendar: NyseCalendar,
         scheduler: DueRoleScheduler,
         store: _LatestCycleSource,
-        trigger: Callable[[PipelineRequest], bool],
-        ticker: str,
+        trigger: Callable[[datetime], bool],
     ) -> None:
-        """Bind collaborators; the loop owns no state beyond them."""
+        """Bind collaborators; the trigger owns ticker/request construction."""
         self._config = config
         self._calendar = calendar
         self._scheduler = scheduler
         self._store = store
         self._trigger = trigger
-        self._ticker = ticker
         self._logger: structlog.stdlib.BoundLogger = structlog.get_logger("scheduler")
 
     async def tick(self, now: datetime) -> TickDecision:
@@ -70,7 +67,7 @@ class CycleScheduler:
             if not self._scheduler.due_roles(normalized, last_runs):
                 return TickDecision(triggered=False, reason="not_due")
         cycle_ts = slot_of(normalized, self._config.cycle_slot_minutes)
-        self._trigger(PipelineRequest(ticker=self._ticker, cycle_ts=cycle_ts))
+        self._trigger(cycle_ts)
         return TickDecision(triggered=True, reason="due", cycle_ts=cycle_ts)
 
     async def run_forever(self) -> None:
