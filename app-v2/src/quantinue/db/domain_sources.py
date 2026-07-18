@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from quantinue.core.contracts import DisclosureSourceRecord, NewsSourceRecord
 from quantinue.db.domain_records import StrategistSignalWrite
+from quantinue.db.reason import reason_payload
 
 
 class _IdentifierRow(BaseModel):
@@ -46,7 +47,7 @@ async def save_source_records(
             importance=value.disclosure_score,
             risk_score=0,
             confidence=_db_confidence(disclosure_source.confidence),
-            reason="consumed by role 05",
+            reason=reason_payload(),
             summary=disclosure_source.summary,
             source=disclosure_source.source,
             source_ref=disclosure_source.source_ref,
@@ -81,7 +82,7 @@ async def save_source_records(
             source_trust=1,
             confidence=_db_confidence(news_source.confidence),
             is_confirmed=True,
-            reason="consumed by role 06",
+            reason=reason_payload(),
             summary=news_source.summary,
             source_ref=news_source.url,
             captured_at=news_source.captured_at or news_source.published_at,
@@ -107,7 +108,7 @@ async def save_source_records(
             filing_no=disclosure_source.filing_no,
             filed_at=disclosure_source.filed_at,
             event_type=disclosure_source.event_type,
-            reason="pipeline aggregate disclosure score",
+            reason=reason_payload(),
             confidence=_db_confidence(disclosure_source.confidence),
             is_hard_blocked=False,
             source=disclosure_source.source,
@@ -135,7 +136,7 @@ async def save_source_records(
             published_at=news_source.published_at,
             ref=news_source.url,
             event_type="other",
-            reason="pipeline aggregate news score",
+            reason=reason_payload(),
             summary=news_source.summary,
             news_count=1,
             confidence=_db_confidence(news_source.confidence),
