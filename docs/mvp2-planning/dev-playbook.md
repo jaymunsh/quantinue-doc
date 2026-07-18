@@ -23,14 +23,14 @@
 
 | # | 태스크 | 상세 |
 |---|---|---|
-| W0-1 | app-v2 baseline 커밋 | `git checkout -b sunghyuk && git add app-v2 && git commit -m "chore: app-v2 baseline (1차 커밋 6163630 스냅샷)"`. push |
+| W0-1 | app-v2 baseline 커밋 | ✅ **완료** (2026-07-18, 커밋 `dea5944`, 브랜치 `sunghyuk`). `.omo/`(1차 오케스트레이션 흔적 21MB)는 baseline에서 제외 + gitignore 추가 — 순수 앱소스 199파일만 커밋. `.env`(Alpaca 키)는 gitignore로 제외 확인. push는 원격 붙일 때 |
 | W0-2 | 의존성 설치 | `cd app-v2 && uv sync`. 실패 시 pyproject 확인 |
 | W0-3 | Postgres 기동 | `docker compose up -d` (app-v2/compose.yaml — DB 포트 5444). ⏳ compose가 schema.sql 자동 적용하는지 확인 — 아니면 `psql postgresql://quantinue:quantinue@127.0.0.1:5444/quantinue -f db/schema.sql` |
 | W0-4 | env 점검 (드라이런 구성) | `app-v2/.env`: `DATA_MODE=public` ✓ · `LLM_MODE=local`(base 127.0.0.1:8888, 모델 Qwen3.6-35B-A3B-OptiQ-4bit) ✓ · **브로커는 일단 mock 유지** |
 | W0-5 | MLX 서버 확인 | `curl -s -H "Authorization: Bearer $QUANTINUE_LOCAL_LLM_API_KEY" http://127.0.0.1:8888/v1/models` → 모델 목록 응답 |
 | W0-6 | 드라이런 (mock 브로커) | `uv run uvicorn quantinue.main:app --port 8000` → `curl -X POST localhost:8000/api/runs -H 'content-type: application/json' -d '{"ticker":"NVDA"}'` → 01→11 완주·주문 계획 생성 확인. 대시보드 `localhost:8000` 육안 확인 |
 | W0-7 | 실 페이퍼 무장 | ⚠️ 사용자 확인 후: `.env` `QUANTINUE_BROKER_MODE=alpaca` + `QUANTINUE_TRADING_ENABLED=true`. `DAILY_NEW_ORDER_CAP=5` 유지 |
-| W0-8 | 스모크 (장전) | 월요일 개장(뉴욕 09:30 = KST 22:30) 직후 수동 실행 → Alpaca 페이퍼 대시보드에서 브래킷 주문 접수·체결 확인 → tb_order/tb_fill 기록 확인 |
+| W0-8 | 스모크 (장전) | 월요일 개장(뉴욕 09:30 = KST 22:30) 직후 수동 실행 → Alpaca 페이퍼 대시보드에서 브래킷 주문 접수·체결 확인 → tb_order/tb_fill 기록 확인. ⚠️ **반드시 정규장 시간에만**: 주문 페이로드(`broker/alpaca.py:244-255`)가 `type=market·order_class=bracket·extended_hours 미설정` — Alpaca는 시장가·브래킷 주문을 장외(프리마켓/애프터아워)에서 거부. 장외 매수는 지정가+extended_hours로 바꾸는 코드변경 필요(Wave 0 범위 밖, 필요 시 별도 항목화) |
 | W0-9 | 매일 반복 | 자동 스케줄(M1) 전까지는 개장 시간대 수동 트리거 1~2회/일. PC 절전 방지: `caffeinate -s` |
 
 **완료 기준**: Alpaca 페이퍼에 실제 포지션 ≥ 1 · tb_order status=filled · T+5 카운트 시작.
