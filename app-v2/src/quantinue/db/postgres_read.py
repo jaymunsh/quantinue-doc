@@ -1,5 +1,6 @@
 """Read and order-reservation operations shared by the PostgreSQL run store."""
 
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import Table
@@ -16,6 +17,7 @@ from quantinue.db.contracts import (
 )
 from quantinue.db.postgres_query import (
     active_run_snapshots,
+    latest_useful_cycle_ts,
     persisted_attempts,
     recent_terminal_runs,
     reserve_daily_order,
@@ -44,6 +46,11 @@ async def list_attempts(
 async def list_recent(engine: AsyncEngine, runs: Table, limit: int = 20) -> tuple[PipelineRun, ...]:
     """Return recent terminal runs."""
     return await recent_terminal_runs(engine, runs, limit)
+
+
+async def latest_cycle_ts(engine: AsyncEngine, runs: Table) -> datetime | None:
+    """Return the newest cycle timestamp not lost to failure."""
+    return await latest_useful_cycle_ts(engine, runs)
 
 
 async def list_active(

@@ -1,5 +1,6 @@
 """Typed reflected-table query helpers."""
 
+from datetime import datetime
 from decimal import Decimal
 from typing import Final
 
@@ -110,6 +111,19 @@ async def terminal_run_by_key(engine: AsyncEngine, runs: Table, key: str) -> Pip
     if row is None or row["status"] not in {"completed", "failed"}:
         return None
     return PipelineRun.model_validate_json(to_json(row["payload"]))
+
+
+async def latest_useful_cycle_ts(engine: AsyncEngine, runs: Table) -> datetime | None:
+    """Read the newest cycle timestamp among runs not lost to failure."""
+    async with engine.connect() as connection:
+        value = (
+            await connection.execute(
+                select(func.max(runs.c.cycle_ts)).where(
+                    runs.c.status.in_(("pending", "running", "completed"))
+                )
+            )
+        ).scalar()
+    return value
 
 
 async def recent_terminal_runs(

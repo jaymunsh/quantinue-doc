@@ -180,6 +180,10 @@ class RunStore(Protocol):
         """Prepare storage."""
         ...
 
+    async def latest_cycle_ts(self) -> datetime | None:
+        """Return the newest cycle timestamp not lost to failure."""
+        ...
+
     async def close(self) -> None:
         """Release storage resources."""
         ...

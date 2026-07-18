@@ -1,6 +1,7 @@
 """Read-only run-store operations kept separate from claim mutation logic."""
 
 from abc import ABC, abstractmethod
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import Table
@@ -52,6 +53,10 @@ class PostgresRunReadMixin(ABC):
     async def list_recent(self, limit: int = 20) -> tuple[PipelineRun, ...]:
         """Return recent terminal runs."""
         return await postgres_read.list_recent(self.engine, self._table("pipeline_runs"), limit)
+
+    async def latest_cycle_ts(self) -> datetime | None:
+        """Return the newest cycle timestamp not lost to failure."""
+        return await postgres_read.latest_cycle_ts(self.engine, self._table("pipeline_runs"))
 
     async def list_active(self, limit: int = 20) -> tuple[ActivePipelineSnapshot, ...]:
         """Return current checkpoint snapshots without raw failure messages."""

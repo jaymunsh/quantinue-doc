@@ -166,6 +166,21 @@ class InMemoryRunStore(MemoryCompletedBuyMixin):
         """Return a terminal run by key."""
         return self._runs.get(key)
 
+    async def latest_cycle_ts(self) -> datetime | None:
+        """Return the newest cycle timestamp not lost to failure."""
+        async with self._lock:
+            candidates = [
+                run.cycle_ts
+                for run in self._runs.values()
+                if run.status is not RunStatus.FAILED
+            ]
+            candidates.extend(
+                self._contexts[key].request.cycle_ts
+                for key in self._active
+                if key in self._contexts
+            )
+        return max(candidates, default=None)
+
     async def list_attempts(self, run_id: RunId) -> tuple[PersistedAttempt, ...]:
         """Return attempts for a run in insertion order."""
         for key, context in self._contexts.items():
