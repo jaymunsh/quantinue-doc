@@ -17,16 +17,37 @@ from quantinue.core.errors import (
 from quantinue.core.ontology import EvidenceKind, Trend
 from quantinue.core.schemas import Evidence
 from quantinue.market_data import Candle, MarketData
+from quantinue.orchestration.policy import ScreeningConfig
 from quantinue.roles.role_02_technical_analysis.contracts import (
     TechnicalAnalysisInput,
     TechnicalAnalysisOutput,
     TechnicalSnapshot,
 )
 
-TECHNICAL_CONCURRENCY: Final = 5
-TECHNICAL_UNIVERSE_LIMIT: Final = 20
 MINIMUM_HISTORY: Final = 50
-REQUIRED_SUCCESSFUL_SNAPSHOTS: Final = 20
+
+DEFAULT_SCREENING: Final[ScreeningConfig] = ScreeningConfig()
+
+
+def average_dollar_volume(candles: tuple[Candle, ...], window: int) -> float:
+    """Return mean close x volume over the trailing window.
+
+    Liquidity is what makes a position exitable, so it is filtered on traded
+    value rather than share count.
+    """
+    recent = candles[-window:]
+    if not recent:
+        return 0.0
+    return sum(float(item.close) * item.volume for item in recent) / len(recent)
+
+
+def passes_hard_filters(candles: tuple[Candle, ...], config: ScreeningConfig) -> bool:
+    """Reject penny prices and illiquid names before any indicator work."""
+    if not candles:
+        return False
+    if float(candles[-1].close) < config.min_price_usd:
+        return False
+    return average_dollar_volume(candles, config.dollar_volume_window) >= config.min_avg_dollar_vol
 EXPECTED_FETCH_ERRORS: Final = (
     AuthenticationFailureError,
     HttpFailureError,
@@ -115,6 +136,7 @@ class TechnicalAnalysis:
     component: ClassVar[str] = "02"
     name: ClassVar[str] = "기술 분석"
     market_data: MarketData | None = None
+    screening: ScreeningConfig = DEFAULT_SCREENING
 
     def fixture(self, context: PipelineContext) -> TechnicalAnalysisOutput:
         """Build the deterministic documented technical row."""
@@ -180,7 +202,8 @@ class TechnicalAnalysis:
                 self.component, self.name, "기술 점수 0.82, 현재가 128.40", evidence=evidence
             )
         market_data = self.market_data
-        limiter = anyio.CapacityLimiter(TECHNICAL_CONCURRENCY)
+        config = self.screening
+        limiter = anyio.CapacityLimiter(config.technical_concurrency)
         collected: dict[str, tuple[Candle, ...] | None] = {}
 
         async def collect(ticker: str) -> None:
@@ -192,31 +215,32 @@ class TechnicalAnalysis:
                     return
                 collected[ticker] = values if len(values) >= MINIMUM_HISTORY else None
 
-        initial = context.universe[:TECHNICAL_UNIVERSE_LIMIT]
-        if context.request.ticker not in initial:
-            initial = (*initial[:-1], context.request.ticker)
-        candidates = (*initial, *(ticker for ticker in context.universe if ticker not in initial))
-        requested: list[str] = []
-        for offset in range(0, len(candidates), TECHNICAL_CONCURRENCY):
-            batch = candidates[offset : offset + TECHNICAL_CONCURRENCY]
-            requested.extend(batch)
-            async with anyio.create_task_group() as task_group:
-                for ticker in batch:
-                    _ = task_group.start_soon(collect, ticker)
-            successful_count = sum(collected.get(ticker) is not None for ticker in requested)
-            if successful_count >= TECHNICAL_UNIVERSE_LIMIT:
-                break
+        # The universe is stored in full, but one candle request per ticker costs
+        # seconds, so only the largest-cap slice is priced inside the premarket window.
+        candidates = context.universe[: config.technical_candidates]
+        if context.request.ticker not in candidates:
+            candidates = (*candidates[:-1], context.request.ticker)
+        requested = list(candidates)
+        async with anyio.create_task_group() as task_group:
+            for ticker in candidates:
+                _ = task_group.start_soon(collect, ticker)
         requested_candles = collected.get(context.request.ticker)
         if requested_candles is None:
             field = "candles"
             reason = f"requested ticker {context.request.ticker} has no usable history"
             raise ValidationFailureError(field, reason)
-        successful = tuple(ticker for ticker in requested if collected.get(ticker) is not None)[
-            :TECHNICAL_UNIVERSE_LIMIT
-        ]
-        if len(successful) < REQUIRED_SUCCESSFUL_SNAPSHOTS:
+        successful = tuple(
+            ticker
+            for ticker in requested
+            if collected.get(ticker) is not None
+            and (
+                ticker == context.request.ticker
+                or passes_hard_filters(collected[ticker] or (), config)
+            )
+        )
+        if not successful:
             field = "candles"
-            reason = "exactly 20 securities require usable candle history"
+            reason = "no securities passed the price and liquidity filters"
             raise ValidationFailureError(field, reason)
         snapshots = tuple(
             _snapshot(ticker, collected[ticker] or (), f"{context.run_id}:02:candles:{ticker}")

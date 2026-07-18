@@ -9,24 +9,30 @@ from quantinue.core.errors import ValidationFailureError
 from quantinue.core.ontology import EvidenceKind
 from quantinue.core.schemas import Evidence
 from quantinue.market_data import MarketData, SecuritySnapshot
+from quantinue.orchestration.policy import ScreeningConfig
 from quantinue.roles.role_01_universe_screener.contracts import (
     UniverseMember,
     UniverseScreenerInput,
     UniverseScreenerOutput,
 )
 
-PUBLIC_UNIVERSE_LIMIT: Final = 50
+DEFAULT_SCREENING: Final[ScreeningConfig] = ScreeningConfig()
 
-
-def _select_public_universe(
-    snapshots: tuple[SecuritySnapshot, ...], requested_ticker: str
+def select_public_universe(
+    snapshots: tuple[SecuritySnapshot, ...],
+    requested_ticker: str,
+    config: ScreeningConfig,
 ) -> tuple[SecuritySnapshot, ...]:
+    """Return the widest configured universe, ordered by market capitalisation.
+
+    Source order is meaningless, so ranking by market cap is what makes a
+    truncated universe the *largest* names rather than an arbitrary slice.
+    """
     unique: dict[str, SecuritySnapshot] = {}
     for snapshot in snapshots:
         if snapshot.market_cap > 0 and snapshot.ticker not in unique:
             unique[snapshot.ticker] = snapshot
-    eligible = tuple(unique.values())
-    if not eligible:
+    if not unique:
         field = "universe"
         reason = "no eligible securities"
         raise ValidationFailureError(field, reason)
@@ -35,9 +41,13 @@ def _select_public_universe(
         field = "universe"
         reason = f"requested ticker {requested_ticker} is unavailable"
         raise ValidationFailureError(field, reason)
-    selected = eligible[:PUBLIC_UNIVERSE_LIMIT]
+    eligible = tuple(
+        sorted(unique.values(), key=lambda item: (-item.market_cap, item.ticker))
+    )
+    limit = config.universe_size
+    selected = eligible[:limit]
     if requested not in selected:
-        return (*selected[: PUBLIC_UNIVERSE_LIMIT - 1], requested)
+        return (*selected[: limit - 1], requested)
     return selected
 
 
@@ -48,6 +58,7 @@ class UniverseScreener:
     component: ClassVar[str] = "01"
     name: ClassVar[str] = "1차 스크리너"
     market_data: MarketData | None = None
+    screening: ScreeningConfig = DEFAULT_SCREENING
 
     def fixture(self, context: PipelineContext) -> UniverseScreenerOutput:
         """Build the deterministic API-key-free role result."""
@@ -107,7 +118,7 @@ class UniverseScreener:
                 evidence=evidence,
             )
         snapshots = await self.market_data.screener(str(context.run_id))
-        selected = _select_public_universe(snapshots, context.request.ticker)
+        selected = select_public_universe(snapshots, context.request.ticker, self.screening)
         snapshot = selected[0]
         result = UniverseScreenerOutput(
             run_id=context.run_id,

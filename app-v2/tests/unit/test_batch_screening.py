@@ -15,6 +15,7 @@ from quantinue.market_data.models import (
     SecSubmission,
     SecuritySnapshot,
 )
+from quantinue.orchestration.policy import ScreeningConfig
 from quantinue.roles.role_01_universe_screener.service import UniverseScreener
 from quantinue.roles.role_02_technical_analysis.service import TechnicalAnalysis
 from quantinue.roles.role_03_daily_screener.service import DailyScreener
@@ -95,10 +96,22 @@ def _tickers(count: int = 50) -> tuple[str, ...]:
     return (*tuple(f"T{rank:03d}" for rank in range(count - 1)), "NVDA")
 
 
-async def _screen(market: _BatchMarketData) -> PipelineContext:
+# 이 파일의 대부분은 배치/랭킹 거동을 검증하므로 가격·유동성 문턱은 꺼 둔다.
+# 문턱 자체는 test_hard_filters_* 에서 따로 검증한다.
+PERMISSIVE = ScreeningConfig(
+    technical_candidates=20,
+    technical_concurrency=5,
+    min_price_usd=0,
+    min_avg_dollar_vol=0,
+)
+
+
+async def _screen(
+    market: _BatchMarketData, screening: ScreeningConfig = PERMISSIVE
+) -> PipelineContext:
     context = PipelineContext(request=PipelineRequest(ticker="NVDA", cycle_ts=NOW))
-    context = await UniverseScreener(market).execute(context)
-    return await TechnicalAnalysis(market).execute(context)
+    context = await UniverseScreener(market, screening).execute(context)
+    return await TechnicalAnalysis(market, screening).execute(context)
 
 
 @pytest.mark.anyio
@@ -115,22 +128,22 @@ async def test_technical_analysis_is_bounded_stable_and_uses_real_candles() -> N
     assert market.peak <= 5
     assert tuple(item.ticker for item in snapshots) == _tickers(20)
     assert len(snapshots) == len(result.to_run().detail.roles[1].items) == 20
-    assert market.requested == list(_tickers(20))
+    assert sorted(market.requested) == sorted(_tickers(20))
     assert snapshots[0].ret_20d != snapshots[1].ret_20d
     assert snapshots[0].ma20 != snapshots[1].ma20
 
 
 @pytest.mark.anyio
-async def test_technical_analysis_records_partial_failures_but_requires_ten_successes() -> None:
-    # Given
+async def test_technical_analysis_records_partial_failures_without_backfilling() -> None:
+    # Given: two of the twenty candidates have no usable history
     market = _BatchMarketData(_tickers(), frozenset({"T003", "T017"}))
 
     # When
     result = await _screen(market)
 
-    # Then
+    # Then: the failures are recorded, not silently replaced by deeper names
     assert result.technical_output is not None
-    assert len(result.technical_output.snapshots) == 20
+    assert len(result.technical_output.snapshots) == 18
     assert result.technical_output.excluded_insufficient_history == ("T003", "T017")
 
 
@@ -145,30 +158,38 @@ async def test_technical_analysis_rejects_requested_ticker_failure() -> None:
 
 
 @pytest.mark.anyio
-async def test_technical_analysis_rejects_fewer_than_twenty_successes() -> None:
-    # Given
+async def test_technical_analysis_survives_when_only_the_focus_has_history() -> None:
+    # Given: every candidate except the requested ticker fails
     tickers = _tickers()
-    market = _BatchMarketData(tickers, frozenset(tickers[18:-1]))
+    market = _BatchMarketData(tickers, frozenset(tickers[:19]))
 
-    # When / Then
-    with pytest.raises(ValidationFailureError, match="exactly 20"):
-        _ = await _screen(market)
+    # When
+    result = await _screen(market)
+
+    # Then: the cycle continues on the focus alone rather than aborting
+    assert result.technical_output is not None
+    assert tuple(item.ticker for item in result.technical_output.snapshots) == ("NVDA",)
 
 
 @pytest.mark.anyio
-async def test_daily_screener_ranks_ten_and_keeps_requested_focus() -> None:
+async def test_daily_screener_pick_count_is_config_owned_and_stable() -> None:
     # Given
     technical = await _screen(_BatchMarketData(_tickers()))
+    narrow = ScreeningConfig(daily_picks=10)
 
     # When
-    first = await DailyScreener().execute(technical)
-    second = await DailyScreener().execute(technical)
+    first = await DailyScreener(narrow).execute(technical)
+    second = await DailyScreener(narrow).execute(technical)
+    wide = await DailyScreener(ScreeningConfig(daily_picks=50)).execute(technical)
 
     # Then
     assert first.daily_screener_output == second.daily_screener_output
     assert first.daily_screener_output is not None
     assert len(first.daily_screener_output.picks) == 10
     assert len({pick.ticker for pick in first.daily_screener_output.picks}) == 10
+    # 50을 요구해도 지표가 있는 20개까지만 나온다 — 상한이지 하한이 아니다.
+    assert wide.daily_screener_output is not None
+    assert len(wide.daily_screener_output.picks) == 20
     assert any(
         pick.ticker == "NVDA" and pick.is_requested_focus
         for pick in first.daily_screener_output.picks

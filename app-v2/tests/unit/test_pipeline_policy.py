@@ -155,3 +155,15 @@ def test_mvp2_profiles_and_gates_load_from_yaml() -> None:
 def test_mvp2_profile_rejects_out_of_range_threshold() -> None:
     with pytest.raises(ValidationError):
         ProfileConfig(buy_threshold=1.5)
+
+
+def test_mvp2_screening_caps_technical_fetch_work() -> None:
+    config = load_mvp2_config(Path("config/pipeline.yaml"))
+
+    # 유니버스는 전부 저장하되, 일봉 조회(종목당 ~3s)는 상위 N개로 제한한다.
+    assert config.screening.universe_size == 2000
+    assert config.screening.technical_candidates == 500
+    assert config.screening.technical_concurrency == 10
+    assert config.screening.dollar_volume_window == 20
+    assert config.screening.technical_candidates <= config.screening.universe_size
+    assert config.screening.llm_depth <= config.screening.daily_picks

@@ -68,6 +68,11 @@ mvp2:
     universe_size: 2000
     min_price_usd: 5
     min_avg_dollar_vol: 20000000
+    # 일봉은 종목당 1콜(~3s)이라 전 종목 조회는 장전 창을 넘긴다.
+    # 유니버스 2000은 전부 저장하되, 지표 계산은 시총 상위 N개만.
+    technical_candidates: 500
+    technical_concurrency: 10
+    dollar_volume_window: 20
     daily_picks: 50
     llm_depth: 20
   exits:

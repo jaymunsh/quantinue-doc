@@ -209,13 +209,22 @@ class GatesConfig(BaseModel):
 
 
 class ScreeningConfig(BaseModel):
-    """Funnel widths from the raw universe down to LLM-depth candidates."""
+    """Funnel widths from the raw universe down to LLM-depth candidates.
+
+    `technical_candidates` exists because daily candles are fetched one ticker
+    per request (~3s each on the public NASDAQ endpoint). The full universe is
+    still stored, but only the largest-cap slice is priced for indicators, so a
+    cycle finishes inside the premarket window without hammering the source.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     universe_size: int = Field(default=2000, gt=0, le=10_000)
     min_price_usd: float = Field(default=5, ge=0)
     min_avg_dollar_vol: float = Field(default=20_000_000, ge=0)
+    technical_candidates: int = Field(default=500, gt=0, le=10_000)
+    technical_concurrency: int = Field(default=10, gt=0, le=64)
+    dollar_volume_window: int = Field(default=20, gt=0, le=250)
     daily_picks: int = Field(default=50, gt=0, le=500)
     llm_depth: int = Field(default=20, gt=0, le=200)
 

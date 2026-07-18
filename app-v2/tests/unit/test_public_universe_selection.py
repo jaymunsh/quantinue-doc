@@ -16,6 +16,7 @@ from quantinue.market_data.models import (
     SecSubmission,
     SecuritySnapshot,
 )
+from quantinue.orchestration.policy import ScreeningConfig
 from quantinue.roles.role_01_universe_screener.contracts import (
     UniverseMember,
     UniverseScreenerOutput,
@@ -121,8 +122,8 @@ async def test_public_universe_preserves_requested_ticker_when_feed_contains_it(
 
 
 @pytest.mark.anyio
-async def test_public_universe_selects_50_stable_unique_members_with_requested_ticker() -> None:
-    # Given
+async def test_public_universe_keeps_all_eligible_ranked_by_market_cap() -> None:
+    # Given: duplicates and a lower-cap requested ticker (market_cap = 10_000 - rank)
     first_fifty = tuple(_security(f"T{rank:03d}", rank) for rank in range(50))
     snapshots = (
         *first_fifty,
@@ -135,12 +136,29 @@ async def test_public_universe_selects_50_stable_unique_members_with_requested_t
     # When
     result = await UniverseScreener(_UniverseMarketData(snapshots)).execute(context)
 
-    # Then
-    assert result.universe == (*tuple(f"T{rank:03d}" for rank in range(49)), "NVDA")
-    assert len(result.universe) == len(set(result.universe)) == 50
+    # Then: every unique name survives, ordered by market cap (NVDA is smallest)
+    assert result.universe == (*tuple(f"T{rank:03d}" for rank in range(50)), "NVDA")
+    assert len(result.universe) == len(set(result.universe)) == 51
     assert result.universe_output is not None
-    assert len(result.universe_output.members) == 50
-    assert len(result.to_run().detail.roles[0].items) == 50
+    assert len(result.universe_output.members) == 51
+
+
+@pytest.mark.anyio
+async def test_public_universe_truncation_keeps_the_largest_caps() -> None:
+    # Given
+    snapshots = (
+        *tuple(_security(f"T{rank:03d}", rank) for rank in range(50)),
+        _security("NVDA", 101),
+    )
+    context = PipelineContext(request=PipelineRequest(ticker="NVDA", cycle_ts=NOW))
+
+    # When
+    result = await UniverseScreener(
+        _UniverseMarketData(snapshots), ScreeningConfig(universe_size=5)
+    ).execute(context)
+
+    # Then: the four largest caps plus the retained focus
+    assert result.universe == ("T000", "T001", "T002", "T003", "NVDA")
 
 
 @pytest.mark.anyio
@@ -176,21 +194,22 @@ async def test_public_universe_rejects_feed_with_only_zero_market_caps() -> None
 
 
 @pytest.mark.anyio
-async def test_role02_processes_twenty_tickers_after_50_member_universe() -> None:
-    # Given
+async def test_role02_prices_only_the_configured_candidate_slice() -> None:
+    # Given: the universe is wide, but candle work is capped by config
     snapshots = (
         *tuple(_security(f"T{rank:03d}", rank) for rank in range(50)),
         _security("NVDA", 101),
     )
     market_data = _UniverseMarketData(snapshots)
+    screening = ScreeningConfig(technical_candidates=20, min_price_usd=0, min_avg_dollar_vol=0)
     context = PipelineContext(request=PipelineRequest(ticker="NVDA", cycle_ts=NOW))
-    context = await UniverseScreener(market_data).execute(context)
+    context = await UniverseScreener(market_data, screening).execute(context)
 
     # When
-    result = await TechnicalAnalysis(market_data).execute(context)
+    result = await TechnicalAnalysis(market_data, screening).execute(context)
 
-    # Then
-    assert len(result.universe) == 50
+    # Then: the full universe is retained, but only 20 names are priced
+    assert len(result.universe) == 51
     assert result.technical_output is not None
     assert tuple(item.ticker for item in result.technical_output.snapshots) == (
         *result.universe[:19],

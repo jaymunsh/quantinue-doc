@@ -7,6 +7,7 @@ from quantinue.core.contracts import PipelineContext
 from quantinue.core.ontology import Bucket, EvidenceKind, Trend
 from quantinue.core.schemas import Evidence
 from quantinue.core.typing import require_value
+from quantinue.orchestration.policy import ScreeningConfig
 from quantinue.roles.role_02_technical_analysis.contracts import TechnicalSnapshot
 from quantinue.roles.role_03_daily_screener.contracts import (
     DailyPick,
@@ -15,7 +16,7 @@ from quantinue.roles.role_03_daily_screener.contracts import (
 )
 
 DAILY_PICK_THRESHOLD: Final = 0.70
-DAILY_PICK_LIMIT: Final = 10
+DEFAULT_SCREENING: Final[ScreeningConfig] = ScreeningConfig()
 
 
 def _score(snapshot: TechnicalSnapshot) -> float:
@@ -37,10 +38,14 @@ def _score(snapshot: TechnicalSnapshot) -> float:
 
 
 class DailyScreener:
-    """Rank ten daily candidates while retaining the requested deep-analysis focus."""
+    """Rank the configured daily picks while retaining the requested deep-analysis focus."""
 
     component: ClassVar[str] = "03"
     name: ClassVar[str] = "2차 스크리너"
+
+    def __init__(self, screening: ScreeningConfig = DEFAULT_SCREENING) -> None:
+        """Bind the funnel widths that decide how many picks survive."""
+        self.screening = screening
 
     def fixture(self, context: PipelineContext) -> DailyScreenerOutput:
         """Build the deterministic daily-pick row after the score gate."""
@@ -83,7 +88,7 @@ class DailyScreener:
             result = self.fixture(context) if score >= DAILY_PICK_THRESHOLD else None
         else:
             ranked = sorted(technical.snapshots, key=lambda item: (-_score(item), item.ticker))
-            selected = ranked[:DAILY_PICK_LIMIT]
+            selected = ranked[: self.screening.daily_picks]
             requested = next(item for item in ranked if item.ticker == context.request.ticker)
             if requested not in selected:
                 selected = [*selected[:-1], requested]
