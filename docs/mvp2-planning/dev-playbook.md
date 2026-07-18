@@ -38,9 +38,14 @@
 
 ---
 
-## M1. 슬롯 멱등 + 스케줄러 + 캘린더 (R2·R9) — Wave 1
+## M1. 슬롯 멱등 + 스케줄러 + 캘린더 (R2·R9) — Wave 1 ✅ **완료 (2026-07-18)**
 
 **전제**: 없음(첫 마일스톤). **파급**: 이후 모든 실행이 이 슬롯·스케줄 위에서 돈다.
+
+> **구현 완료 요약** (플랜: `plans/2026-07-18-m1-scheduler-plan.md` · 커밋 `31009aa`~`d5350f7` 8개):
+> - 1-1 `orchestration/slots.py:slot_of` ✅ · 1-2 main.py 3개 트리거 경로 슬롯화 ✅ · 1-3 `core/market_calendar.py`(exchange-calendars 4.13 XNYS, **current_session pre/regular/after/closed 포함**, DST 3/9·11/2 검증) ✅ · 1-4 `mvp2.schedule` config(**기본 enabled=false** — 운영 전환 시 yaml 한 줄로 켬) ✅ · 1-5 `orchestration/scheduler.py:CycleScheduler`(60s 틱, lifespan task group 스폰) ✅ · 1-6 **신규 락 불필요 — 기존 `deterministic_run_key`+`store.claim`이 슬롯 양자화만으로 dedup**(E2E-2 테스트로 검증) ✅ · 1-7 catch-up=첫 틱 자연 판정 + `POST /api/scheduler/catchup`·`GET /api/scheduler/status` ✅ · 1-8 테스트 21개 신규(슬롯 6·캘린더 11·스케줄러 7 등, 전체 542 green·ruff clean) ✅
+> - **스코프 노트**: 역할별 창(role_01 weekly 등)은 M1에 없음 — 파이프라인이 01→11 원자 실행이라 무의미, M3 역할 분리와 함께 확장. `RunStore.latest_cycle_ts()`가 last_runs 데이터원(전 역할 공통).
+> - ⏳해소: DueRoleScheduler 시그니처 확인 완료(순수 seam 재사용, `plan_periods()` 공개 1줄 추가) · last_runs 쿼리 = `latest_useful_cycle_ts`(pending/running/completed 중 max cycle_ts).
 
 | # | 태스크 | 파일 | 상세 |
 |---|---|---|---|
