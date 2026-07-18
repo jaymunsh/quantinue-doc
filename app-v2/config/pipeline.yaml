@@ -33,6 +33,12 @@ mvp:
       interval_minutes: 30
     role_07:
       interval_minutes: 120
+mvp2:
+  schedule:
+    enabled: false
+    tick_seconds: 60
+    cycle_slot_minutes: 30
+    trigger_sessions: [pre, regular, after]
 phase_2:
   accounts: 5
   news_interval_minutes: 5

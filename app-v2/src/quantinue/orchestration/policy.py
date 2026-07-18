@@ -165,6 +165,36 @@ class PipelineDocument(BaseModel):
         return DueRoleScheduler(self.mvp.schedule, self.timezone)
 
 
+class Mvp2ScheduleConfig(BaseModel):
+    """Automatic cycle trigger cadence and gates; disabled until armed."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: bool = False
+    tick_seconds: int = Field(default=60, gt=0, le=3_600)
+    cycle_slot_minutes: int = Field(default=30, gt=0, le=1_440)
+    trigger_sessions: tuple[Literal["pre", "regular", "after"], ...] = (
+        "pre",
+        "regular",
+        "after",
+    )
+
+
+class Mvp2Config(BaseModel):
+    """MVP-2 configuration surface owned by config/pipeline.yaml."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    schedule: Mvp2ScheduleConfig = Mvp2ScheduleConfig()
+
+
+def load_mvp2_config(path: Path) -> Mvp2Config:
+    """Load the mvp2 block; an absent block yields safe defaults (disabled)."""
+    with path.open(encoding="utf-8") as stream:
+        document = yaml.safe_load(stream) or {}
+    return Mvp2Config.model_validate(document.get("mvp2") or {})
+
+
 def load_pipeline_policy(path: Path) -> PipelinePolicy:
     """Parse trusted YAML syntax, then validate its runtime projection."""
     return load_pipeline_document(path).mvp
