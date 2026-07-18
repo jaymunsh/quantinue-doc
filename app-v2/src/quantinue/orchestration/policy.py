@@ -180,12 +180,88 @@ class Mvp2ScheduleConfig(BaseModel):
     )
 
 
+class ProfileConfig(BaseModel):
+    """Per-investment-type thresholds, sizing limits, and circuit breakers."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    buy_threshold: float = Field(default=0.65, ge=0, le=1)
+    risk_off_action: Literal["penalty", "no_new_buys"] = "penalty"
+    late_entry_max: float = Field(default=0.15, ge=0, le=1)
+    max_positions: int = Field(default=10, gt=0, le=100)
+    max_weight: float = Field(default=0.20, gt=0, le=1)
+    daily_loss_limit: float = Field(default=0.04, gt=0, le=1)
+    min_cash_ratio: float = Field(default=0.10, ge=0, le=1)
+
+
+class GatesConfig(BaseModel):
+    """Decision-defence thresholds applied by roles 07 and 08."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source_trust_min: float = Field(default=0.55, ge=0, le=1)
+    hard_negative_max: float = Field(default=0.15, ge=0, le=1)
+    macro_penalty_cap: float = Field(default=0.40, ge=0, le=1)
+    snapshot_tolerance: float = Field(default=0.02, ge=0, le=1)
+    critic_approval: float = Field(default=0.70, ge=0, le=1)
+    overconfidence_conviction: float = Field(default=0.90, ge=0, le=1)
+    overconfidence_approval: float = Field(default=0.80, ge=0, le=1)
+
+
+class ScreeningConfig(BaseModel):
+    """Funnel widths from the raw universe down to LLM-depth candidates."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    universe_size: int = Field(default=2000, gt=0, le=10_000)
+    min_price_usd: float = Field(default=5, ge=0)
+    min_avg_dollar_vol: float = Field(default=20_000_000, ge=0)
+    daily_picks: int = Field(default=50, gt=0, le=500)
+    llm_depth: int = Field(default=20, gt=0, le=200)
+
+
+class ExitsConfig(BaseModel):
+    """Holding-period exit policy measured in trading sessions."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    time_exit_bdays: int = Field(default=10, gt=0, le=250)
+
+
+class BudgetConfig(BaseModel):
+    """Spending ceiling enforced before any billable model call."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    daily_llm_usd: float = Field(default=3.0, ge=0)
+
+
+def _default_profiles() -> dict[str, ProfileConfig]:
+    return {
+        "aggressive": ProfileConfig(),
+        "conservative": ProfileConfig(
+            buy_threshold=0.75,
+            risk_off_action="no_new_buys",
+            late_entry_max=0.12,
+            max_positions=5,
+            max_weight=0.10,
+            daily_loss_limit=0.02,
+            min_cash_ratio=0.30,
+        ),
+    }
+
+
 class Mvp2Config(BaseModel):
     """MVP-2 configuration surface owned by config/pipeline.yaml."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     schedule: Mvp2ScheduleConfig = Mvp2ScheduleConfig()
+    profiles: dict[str, ProfileConfig] = Field(default_factory=_default_profiles)
+    gates: GatesConfig = GatesConfig()
+    screening: ScreeningConfig = ScreeningConfig()
+    exits: ExitsConfig = ExitsConfig()
+    budget: BudgetConfig = BudgetConfig()
 
 
 def load_mvp2_config(path: Path) -> Mvp2Config:

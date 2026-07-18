@@ -39,6 +39,41 @@ mvp2:
     tick_seconds: 60
     cycle_slot_minutes: 30
     trigger_sessions: [pre, regular, after]
+  profiles:
+    aggressive:
+      buy_threshold: 0.65
+      risk_off_action: penalty
+      late_entry_max: 0.15
+      max_positions: 10
+      max_weight: 0.20
+      daily_loss_limit: 0.04
+      min_cash_ratio: 0.10
+    conservative:
+      buy_threshold: 0.75
+      risk_off_action: no_new_buys
+      late_entry_max: 0.12
+      max_positions: 5
+      max_weight: 0.10
+      daily_loss_limit: 0.02
+      min_cash_ratio: 0.30
+  gates:
+    source_trust_min: 0.55
+    hard_negative_max: 0.15
+    macro_penalty_cap: 0.40
+    snapshot_tolerance: 0.02
+    critic_approval: 0.70
+    overconfidence_conviction: 0.90
+    overconfidence_approval: 0.80
+  screening:
+    universe_size: 2000
+    min_price_usd: 5
+    min_avg_dollar_vol: 20000000
+    daily_picks: 50
+    llm_depth: 20
+  exits:
+    time_exit_bdays: 10
+  budget:
+    daily_llm_usd: 3.0
 phase_2:
   accounts: 5
   news_interval_minutes: 5

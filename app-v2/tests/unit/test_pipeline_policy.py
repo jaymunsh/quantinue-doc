@@ -11,6 +11,7 @@ from quantinue.orchestration.factory import build_roles
 from quantinue.orchestration.policy import (
     DueRoleScheduler,
     Mvp2ScheduleConfig,
+    ProfileConfig,
     load_mvp2_config,
     load_pipeline_document,
     load_pipeline_policy,
@@ -126,3 +127,31 @@ def test_mvp2_schedule_config_loads_from_yaml() -> None:
 def test_mvp2_schedule_rejects_unknown_session() -> None:
     with pytest.raises(ValidationError):
         Mvp2ScheduleConfig(trigger_sessions=("lunch",))  # type: ignore[arg-type]
+
+
+def test_mvp2_profiles_and_gates_load_from_yaml() -> None:
+    config = load_mvp2_config(Path("config/pipeline.yaml"))
+
+    aggressive = config.profiles["aggressive"]
+    conservative = config.profiles["conservative"]
+    assert aggressive.buy_threshold == 0.65
+    assert aggressive.max_positions == 10
+    assert aggressive.daily_loss_limit == 0.04
+    assert aggressive.risk_off_action == "penalty"
+    assert conservative.buy_threshold == 0.75
+    assert conservative.min_cash_ratio == 0.30
+    assert conservative.risk_off_action == "no_new_buys"
+    assert config.gates.source_trust_min == 0.55
+    assert config.gates.macro_penalty_cap == 0.40
+    assert config.gates.snapshot_tolerance == 0.02
+    assert config.gates.overconfidence_approval == 0.80
+    assert config.screening.universe_size == 2000
+    assert config.screening.daily_picks == 50
+    assert config.screening.llm_depth == 20
+    assert config.exits.time_exit_bdays == 10
+    assert config.budget.daily_llm_usd == 3.0  # 임시값 — M8 실측 후 확정
+
+
+def test_mvp2_profile_rejects_out_of_range_threshold() -> None:
+    with pytest.raises(ValidationError):
+        ProfileConfig(buy_threshold=1.5)
