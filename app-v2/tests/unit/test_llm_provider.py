@@ -44,6 +44,7 @@ class WireModelSettingsRequest(BaseModel):
     reasoning_effort: str | None = None
     max_tokens: int | None = None
     max_completion_tokens: int | None = None
+    chat_template_kwargs: dict[str, object] | None = None
 
 
 @pytest.mark.anyio
@@ -269,6 +270,10 @@ async def test_local_mode_disables_reasoning_and_caps_structured_output() -> Non
 
     assert observed_requests[0].reasoning_effort == "none"
     assert observed_requests[0].max_tokens == 256
+    # Local reasoning models (Qwen3.6 via omlx) ignore reasoning_effort and emit
+    # chain-of-thought prose into content, breaking structured JSON output. The
+    # omlx server honours chat_template_kwargs.enable_thinking=false instead.
+    assert observed_requests[0].chat_template_kwargs == {"enable_thinking": False}
 
 
 @pytest.mark.anyio

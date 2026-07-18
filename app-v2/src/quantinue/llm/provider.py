@@ -220,6 +220,11 @@ def build_llm_analyzer(settings: Settings, openai_client: AsyncOpenAI | None = N
                 temperature=0,
                 parallel_tool_calls=False,
                 openai_reasoning_effort="none",
+                # Local reasoning models (Qwen3.6 via omlx) ignore reasoning_effort
+                # and dump chain-of-thought prose into `content`, which then fails
+                # structured JSON parsing. The omlx/vLLM chat template honours
+                # enable_thinking=false to suppress the <think> phase entirely.
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
             )
             model = OpenAIChatModel(
                 model_name,
