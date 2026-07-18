@@ -26,9 +26,9 @@
 | W0-1 | app-v2 baseline 커밋 | ✅ **완료** (2026-07-18, 커밋 `dea5944`, 브랜치 `sunghyuk`). `.omo/`(1차 오케스트레이션 흔적 21MB)는 baseline에서 제외 + gitignore 추가 — 순수 앱소스 199파일만 커밋. `.env`(Alpaca 키)는 gitignore로 제외 확인. push는 원격 붙일 때 |
 | W0-2 | 의존성 설치 | ✅ **완료**. `cd app-v2 && uv sync` 성공. 검증: `uv run pytest tests/unit -q` → **491 passed**(playbook 기존 "347개" 표기는 부정확 → 실측 491). 항상 green 유지 기준선 = 491 |
 | W0-3 | Postgres 기동 | ✅ **완료**. ⚠️ **포트 5444→5445 변경**: 5444는 1차 `app-db-1`(다른 작업자 WIP, tb_order=1·pipeline_runs=91)이 점유 → app-v2 전용 DB를 **5445**로 격리(compose.yaml·.env 동시 수정). ⏳해소: compose가 schema.sql **자동 적용함**(`./db/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql` 마운트, 빈 볼륨 첫 기동 시). `docker compose up -d db`(web 제외) → `app-v2-db-1` healthy, 19테이블 자동생성·전부 empty. 1차 DB 무손상 확인 |
-| W0-4 | env 점검 (드라이런 구성) | `app-v2/.env`: `DATA_MODE=public` ✓ · `LLM_MODE=local`(base 127.0.0.1:8888, 모델 Qwen3.6-35B-A3B-OptiQ-4bit) ✓ · **브로커는 일단 mock 유지** |
-| W0-5 | MLX 서버 확인 | `curl -s -H "Authorization: Bearer $QUANTINUE_LOCAL_LLM_API_KEY" http://127.0.0.1:8888/v1/models` → 모델 목록 응답 |
-| W0-6 | 드라이런 (mock 브로커) | `uv run uvicorn quantinue.main:app --port 8000` → `curl -X POST localhost:8000/api/runs -H 'content-type: application/json' -d '{"ticker":"NVDA"}'` → 01→11 완주·주문 계획 생성 확인. 대시보드 `localhost:8000` 육안 확인 |
+| W0-4 | env 점검 (드라이런 구성) | ✅ **완료**. `DATA_MODE=public` ✓ · `LLM_MODE=local`(8888, Qwen3.6-35B-A3B-OptiQ-4bit) ✓ · 브로커 mock/false ✓ · DATABASE_URL 5445 ✓ |
+| W0-5 | MLX 서버 확인 | ✅ **완료**. `/v1/models` 응답 정상 — Qwen3.6-35B-A3B-OptiQ-4bit 서빙 중(max_model_len 262144) |
+| W0-6 | 드라이런 (mock 브로커) | ✅ **완료** (2026-07-18). 포트 8000은 다른 프로세스 점유 → **8020 사용**. 1·2차 시도에서 **버그 2건 발견·수정**(TDD, 유닛 491→493 green): ① 로컬 LLM thinking 미억제 → `enable_thinking=false` extra_body 전달(커밋 `3002fcf`) ② 주말·프리마켓에서 stage-08 trade_date가 픽과 갈라져 FK 위반 → 세션 날짜 사용(커밋 `eae11dd`). 3차 시도: **HTTP 201 · 01→11 완주 · MLX 실호출 12건 · FK 자식 3테이블 trade_date=07-17 일치 · pipeline_runs=completed**. 판단: NVDA hold(확신도 0.231, 뉴스 0.10·공시 0.00 — 크리틱 차단·주문 0주, 주말 실데이터 기반 정상 판단). 깔때기 동작: universe 50 → picks 10(NVDA 포함) |
 | W0-7 | 실 페이퍼 무장 | ⚠️ 사용자 확인 후: `.env` `QUANTINUE_BROKER_MODE=alpaca` + `QUANTINUE_TRADING_ENABLED=true`. `DAILY_NEW_ORDER_CAP=5` 유지 |
 | W0-8 | 스모크 (장전) | 월요일 개장(뉴욕 09:30 = KST 22:30) 직후 수동 실행 → Alpaca 페이퍼 대시보드에서 브래킷 주문 접수·체결 확인 → tb_order/tb_fill 기록 확인. ⚠️ **반드시 정규장 시간에만**: 주문 페이로드(`broker/alpaca.py:244-255`)가 `type=market·order_class=bracket·extended_hours 미설정` — Alpaca는 시장가·브래킷 주문을 장외(프리마켓/애프터아워)에서 거부. 장외 매수는 지정가+extended_hours로 바꾸는 코드변경 필요(Wave 0 범위 밖, 필요 시 별도 항목화) |
 | W0-9 | 매일 반복 | 자동 스케줄(M1) 전까지는 개장 시간대 수동 트리거 1~2회/일. PC 절전 방지: `caffeinate -s` |
@@ -55,6 +55,7 @@
 
 **완료 기준**: 같은 슬롯 2회 실행 → signal 1행 · 동시 발화 중복 0 · 휴장일 07~10 미실행 · 재시작 후 catch-up 동작 · **앱 켜두면 사람 없이 하루 사이클 자동 완주**.
 ⏳ 보완: `DueRoleScheduler` 현재 시그니처 확인 후 창 검사와의 결합 방식 확정 · pipeline_runs에서 last_runs 조회 쿼리 작성.
+※ W0에서 선반영: trade_date 이원화(시계 vs 데이터) FK 버그의 **최소 수정**이 `db/postgres_lifecycle.py:_session_trade_date()`로 들어감(커밋 `eae11dd`) — M1-3 캘린더 도입 시 이걸 정식 세션날짜 일원화(전 역할 관통)로 승격할 것.
 
 ## M2. 스키마·계약 일괄 확장 — Wave 1
 
