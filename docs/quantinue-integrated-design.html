@@ -281,7 +281,7 @@
       </div>
       <button class="theme-btn" id="themeBtn" type="button" aria-label="다크모드 전환">🌙</button>
     </div>
-    <span class="rail-ver">v4.6 · MVP-2</span>
+    <span class="rail-ver">v4.7 · MVP-2</span>
 
     <nav class="nav" aria-label="주요 섹션">
       <div class="nav-group">시작</div>
@@ -1481,8 +1481,9 @@ erDiagram
 }</pre></div>
       </details>
 
-      <h3>2차(MVP-2) 스키마 변경 <span class="b b-teal">M2에서 일괄 계약화</span></h3>
-      <p>아래 변경은 코드 3파일(schema.sql·schemas.py/ontology.py·pipeline.yaml)에 <b>먼저</b> 반영한 뒤 구현이 따라온다(착수 순서 규칙).</p>
+      <h3>2차(MVP-2) 스키마 변경 <span class="b b-gray">M2 완료 · as-built</span></h3>
+      <p>아래 변경은 코드 3파일(schema.sql·schemas.py/ontology.py·pipeline.yaml)에 <b>먼저</b> 반영한 뒤 구현이 따라온다(착수 순서 규칙). <b>2026-07-18 M2에서 전부 적용 완료</b> — 신규 설치는 <code>db/schema.sql</code>, 기존 DB는 멱등 <code>db/migrations/mvp2.sql</code>로 올린다(두 경로가 동일 카탈로그로 수렴함을 컬럼 344·제약 134 비교로 검증).</p>
+      <div class="note"><b>기존 DB 업그레이드 시 알아둘 것</b> — ① <code>reason</code>의 기존 텍스트는 버리지 않고 <code>{"legacy": "원문"}</code>으로 감싸 보존한다. ② <code>tb_critic_verdict.source</code>(fresh/cache/cooldown, 캐시 상태)는 계보의 <code>source</code>(출처)와 이름이 겹쳐 <b><code>verdict_source</code>로 리네임</b>했다 — 6개 계보 테이블의 컬럼 이름을 통일하기 위함. ③ 계보 10컬럼은 전부 NULL 허용 — 기존 행은 계보 없이 남고 <b>신규 기록부터 채운다</b>.</div>
       <div class="twrap"><table>
         <tr><th>구분</th><th>변경</th><th>이유</th></tr>
         <tr><td><span class="b b-ai">신규</span></td><td class="mono">tb_user</td><td>로그인·권한(admin/user)·OTP — 관리자가 생성</td></tr>
@@ -1900,6 +1901,7 @@ erDiagram
       <p class="sec-intro">이 문서를 수정하면 표 맨 위에 한 줄 추가 + 버전 갱신 + git 커밋·태그.</p>
       <div class="twrap"><table>
         <tr><th>버전</th><th>날짜</th><th>수정자</th><th>변경 요약</th></tr>
+        <tr><td class="mono">v4.7</td><td class="mono">2026-07-18</td><td>문성혁 + Claude</td><td><b>M2 완료 — 스키마·계약 일괄 확장</b> — reason JSONB ×4(legacy 보존)·공시signal +2·side +sell·07/08 계보 10 ×2·신규 3테이블·tb_account 확장·config mvp2(profiles/gates/screening/exits/budget) · <b>critic <code>source</code>→<code>verdict_source</code> 동명 충돌 해소</b> · 멱등 마이그레이션으로 W0 실데이터 무손실 적용 검증(행수 동일·2회 멱등·신규설치 경로와 카탈로그 일치)</td></tr>
         <tr><td class="mono">v4.6</td><td class="mono">2026-07-18</td><td>문성혁 + Claude</td><td><b>M1 완료 — 자동 스케줄·슬롯 멱등</b> — slot_of 슬롯 양자화(같은 슬롯 = 런 1개, 기존 claim 재사용·신규 락 0) · NYSE 캘린더(XNYS·DST 검증·current_session) · CycleScheduler 60s 틱(거래일·세션·due 게이트, 기본 disabled) · catch-up=첫 틱 + /api/scheduler/catchup·status · 테스트 542 green(#logic 카드 신설)</td></tr>
         <tr><td class="mono">v4.5</td><td class="mono">2026-07-18</td><td>문성혁 + Claude</td><td><b>Wave 0 착수 — 드라이런 완주·세션 정책</b> — app-v2 baseline 커밋(브랜치 sunghyuk·DB 5445 격리) · NVDA 드라이런 01→11 완주(실데이터+MLX 실호출) · 버그 2건 수정: 로컬 LLM thinking 억제(enable_thinking=false)·세션 trade_date FK(#logic 카드 신설) · <b>거래 세션 정책 확정</b>: 전 세션 개방 목표, W0 정규장 → M5 장외 청산 → M5+ 보호주문 상태기계 후 장외 매수(#logic 카드 신설)</td></tr>
         <tr><td class="mono">v4.4</td><td class="mono">2026-07-18</td><td>문성혁 + Claude</td><td><b>브랜딩·문서 미러 규칙</b> — Quantinue Q 로고(상승 추세선 심볼) 적용 · 파비콘·애플터치 아이콘 · 브랜드 컬러를 <b>Quantinue Blue #0B4DDB</b>로 정렬(기존 틸 대체) · 계획서에 "핵심 로직·프롬프트는 코드 확정 후 #logic 반영" 미러 규칙 추가</td></tr>

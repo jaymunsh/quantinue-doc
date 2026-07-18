@@ -62,9 +62,16 @@
 ⏳ 보완: `DueRoleScheduler` 현재 시그니처 확인 후 창 검사와의 결합 방식 확정 · pipeline_runs에서 last_runs 조회 쿼리 작성.
 ※ W0에서 선반영: trade_date 이원화(시계 vs 데이터) FK 버그의 **최소 수정**이 `db/postgres_lifecycle.py:_session_trade_date()`로 들어감(커밋 `eae11dd`) — M1-3 캘린더 도입 시 이걸 정식 세션날짜 일원화(전 역할 관통)로 승격할 것.
 
-## M2. 스키마·계약 일괄 확장 — Wave 1
+## M2. 스키마·계약 일괄 확장 — Wave 1 ✅ **완료 (2026-07-18)**
 
 **전제**: M1과 독립(병행 가능). **원칙**: 3파일(schema.sql·ontology/schemas·pipeline.yaml) 먼저, 구현은 이후 마일스톤.
+
+> **구현 완료 요약** (플랜: `plans/2026-07-18-m2-schema-plan.md` · 커밋 `ee3bd56`~`538c0e4` 7개):
+> - 2-1 ontology ✅(Side+SELL·AccountStatus·UserRole·LlmTask — 1차의 "sell 거부" 계약 테스트를 새 계약으로 교체) · 2-2 reason JSONB ×4 ✅(신규 `db/reason.py` — 점수 컬럼명→사유 맵, 미지 키 거부. **실제 점수별 사유 채우기는 M4**) · 2-3 공시 signal +2 ✅ · 2-4 side sell ✅ · 2-5 계보 10 ×2 ✅ · 2-6 신규 3테이블 ✅ · 2-7 tb_account 확장 ✅ · 2-8 config mvp2 ✅(profiles/gates/screening/exits/budget frozen 모델) · 2-9 마이그레이션 ✅
+> - **⏳2-4 해소**: 제약명 = `tb_strategist_signals_side_check`(실 DB 조회 확인).
+> - **계획에 없던 충돌 발견·해소**: `tb_critic_verdict.source`(fresh/cache/cooldown, 캐시 상태)가 R10 계보의 `source`(출처)와 **동명 충돌** → 기존 것을 **`verdict_source`로 리네임**해 6개 계보 테이블 컬럼명을 통일. `CriticVerdictWrite.source`→`verdict_source`(코드·테스트 동반 수정).
+> - **무손실 검증**(완료 기준): W0 실데이터 DB(5445)에 적용 → 11테이블 **행수 완전 동일**, reason은 `{"legacy": "..."}`로 보존, **2회 실행 멱등**. 추가로 **마이그레이션 경로 == 신규 설치 경로** 확증(컬럼 344·제약 134 완전 일치) + 마이그레이션 DB에서 스키마 계약 테스트 green + 앱 기동·조회 정상.
+> - 테스트: 유닛/웹 **553 green** · 통합 **30 green**(깨끗한 DB 1회 실행) · ruff clean. ※ 통합 테스트는 일회용 DB 전제라 같은 DB 재실행 시 중복키로 실패함(설계상 정상).
 
 | # | 태스크 | 상세 |
 |---|---|---|
