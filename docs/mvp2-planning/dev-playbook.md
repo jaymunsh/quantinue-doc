@@ -157,7 +157,7 @@
 
 **완료 기준**: 게이트 경계값 단위 테스트(±0.001) · block 매체 LLM 호출 0 · 08 합성 코드 부재(grep) · 문턱 전부 yaml로만 변경 가능(코드 리터럴 grep 0).
 
-> ⚠️ **M5~M8 착수 전 `ghost-config-audit.md` 확인** — 선언만 되고 소비자가 없는 값 전수 조사(2026-07-19). 각 마일스톤이 배선해야 할 유령이 정리돼 있다: M5 = `exits.time_exit_bdays` · M6 = 성향별 리스크 한도 5종 + `conservative` 프로필 도달 불가 · M8 = `budget.daily_llm_usd`·`tb_llm_usage`. 추가로 `screening.llm_depth`(20) 미적용 — 픽 50개 전부가 LLM을 타고 있어 M3 완료 기록과 불일치.
+> ⚠️ **M5~M8 착수 전 `ghost-config-audit.md` 확인** — 선언만 되고 소비자가 없는 값 전수 조사(2026-07-19). 각 마일스톤이 배선해야 할 유령이 정리돼 있다: M5 = `exits.time_exit_bdays` · M6 = 성향별 리스크 한도 5종 + `conservative` 프로필 도달 불가 · M8 = `budget.daily_llm_usd`·`tb_llm_usage`.
 
 ## M5. 매도·보유 재평가 (R7-1) — Wave 2 · **최대 설계 작업**
 
