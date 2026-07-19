@@ -1,6 +1,7 @@
 """No-key public HTTP market-data adapters."""
 
 import csv
+import re
 from collections.abc import Awaitable, Callable
 from contextlib import closing
 from dataclasses import dataclass
@@ -16,9 +17,10 @@ from xml.etree import ElementTree as ET
 
 import httpx2
 from anyio.to_thread import run_sync
-from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, field_validator
 
 from quantinue.core.errors import HttpFailureError, TransientFailureError, ValidationFailureError
+from quantinue.core.plain_text import plain_text
 from quantinue.market_data.models import (
     Candle,
     MacroObservation,
@@ -28,6 +30,8 @@ from quantinue.market_data.models import (
     SecuritySnapshot,
     TickerNewsQuery,
 )
+
+_SUPPORTED_TICKER: Final = re.compile(r"^[A-Z0-9.-]{1,12}$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +44,7 @@ class MarketDataEndpoints:
     sec_url: str
     rss_url: str
     ticker_news_url: str = "https://news.google.com/rss/search"
+    company_tickers_url: str = "https://www.sec.gov/files/company_tickers.json"
 
     @classmethod
     def defaults(cls) -> "MarketDataEndpoints":
@@ -99,6 +104,14 @@ class _NasdaqData(_Boundary):
 
 class _NasdaqResponse(_Boundary):
     data: _NasdaqData
+
+
+class _SecTickerRow(_Boundary):
+    cik_str: int = Field(ge=0, le=9_999_999_999)
+    ticker: str = Field(pattern=r"^[A-Z0-9.-]{1,12}$")
+
+
+_SEC_TICKERS = TypeAdapter(dict[str, _SecTickerRow])
 
 
 class _CandleRow(_Boundary):
@@ -268,6 +281,7 @@ class HttpMarketData:
         self._fred_fetcher = fred_fetcher
         self._endpoints = endpoints
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._cik_by_ticker: dict[str, str] | None = None
 
     async def aclose(self) -> None:
         """Close the owned HTTP client at application shutdown."""
@@ -306,6 +320,7 @@ class HttpMarketData:
                 provenance=self._provenance("nasdaq-screener", str(response.url), at, execution_id),
             )
             for row in payload.data.securities
+            if _SUPPORTED_TICKER.fullmatch(row.symbol.upper()) is not None
         )
 
     async def candles(self, ticker: str, execution_id: str) -> tuple[Candle, ...]:
@@ -388,6 +403,23 @@ class HttpMarketData:
             for accession, filed, form, document in rows
         )
 
+    async def cik_for_ticker(self, ticker: str, execution_id: str) -> str:
+        """Resolve a ticker through the SEC official company index."""
+        del execution_id
+        if self._cik_by_ticker is None:
+            response = await self._get(self._endpoints.company_tickers_url)
+            rows = _SEC_TICKERS.validate_json(response.content)
+            self._cik_by_ticker = {
+                item.ticker.upper(): str(item.cik_str).zfill(10) for item in rows.values()
+            }
+        normalized = ticker.upper()
+        cik = self._cik_by_ticker.get(normalized)
+        if cik is None:
+            component = "05"
+            field_name = f"sec_cik:{normalized}"
+            raise ValidationFailureError(component, field_name)
+        return cik
+
     async def rss(self, execution_id: str) -> tuple[NewsItem, ...]:
         """Fetch RSS titles and snippets without crawling articles."""
         response = await self._get(self._endpoints.rss_url)
@@ -398,8 +430,8 @@ class HttpMarketData:
             url = node.findtext("link", default="")
             items.append(
                 NewsItem(
-                    title=node.findtext("title", default=""),
-                    snippet=node.findtext("description", default=""),
+                    title=plain_text(node.findtext("title", default="")),
+                    snippet=plain_text(node.findtext("description", default="")),
                     url=url,
                     published_at=published,
                     provenance=self._provenance("rss", url, published, execution_id),
@@ -422,8 +454,8 @@ class HttpMarketData:
             root = ET.fromstring(response.content)  # noqa: S314 - configured public RSS only
             return tuple(
                 NewsItem(
-                    title=node.findtext("title", default=""),
-                    snippet=node.findtext("description", default=""),
+                    title=plain_text(node.findtext("title", default="")),
+                    snippet=plain_text(node.findtext("description", default="")),
                     url=node.findtext("link", default=""),
                     guid=node.findtext("guid"),
                     published_at=(

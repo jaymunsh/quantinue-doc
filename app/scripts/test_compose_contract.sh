@@ -16,8 +16,9 @@ grep -F 'published: "5444"' "$rendered" >/dev/null
 grep -F 'published: "8011"' "$rendered" >/dev/null
 grep -F 'target: /docker-entrypoint-initdb.d/001-schema.sql' "$rendered" >/dev/null
 grep -F 'postgresql+asyncpg://quantinue:quantinue@db:5432/quantinue' "$rendered" >/dev/null
+grep -F 'QUANTINUE_DATA_MODE: public' "$rendered" >/dev/null
 grep -F 'QUANTINUE_LLM_MODE: local' "$rendered" >/dev/null
-grep -F 'QUANTINUE_LOCAL_LLM_BASE_URL: http://host.docker.internal:11434/v1' "$rendered" >/dev/null
+grep -F 'QUANTINUE_LOCAL_LLM_BASE_URL: http://host.docker.internal:8888/v1' "$rendered" >/dev/null
 grep -F 'QUANTINUE_BROKER_MODE: mock' "$rendered" >/dev/null
 grep -F 'QUANTINUE_TRADING_ENABLED: "false"' "$rendered" >/dev/null
 

@@ -31,6 +31,16 @@ class StrategistSignalWrite:
     disclosure_score: Decimal = Decimal(0)
     news_score: Decimal = Decimal(0)
     signal_consensus: int = 0
+    # 판단 서사 — 모델이 만들었을 때만 존재한다(None = 안 만들었다, "" 금지).
+    bull_case: str | None = None
+    key_risk: str | None = None
+    # 판단이 읽은 국면 관측의 시각(tb_macro FK). 안 읽었으면 계보도 없다.
+    src_macro_at: datetime | None = None
+    # 어느 모델·프롬프트가 판단했는가 — 재현과 사후 감사의 전제.
+    model_provider: str | None = None
+    model_name: str | None = None
+    prompt_version: str | None = None
+    input_hash: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -274,13 +284,15 @@ class BuyCandidate:
 class MacroSnapshot:
     """The market regime the ledger last recorded.
 
-    분석 잡이 매크로를 보게 하려고 만든 최소 계약이다. 두 값만 있는 이유:
-    ``regime``은 크리틱의 차단 판정(성향별)에, ``risk_score``는 확신도 감점
-    (``gates.macro_penalty_table``)에 쓰인다 — 소비자가 있는 것만 담는다.
+    분석 잡이 매크로를 보게 하려고 만든 최소 계약이다. ``regime``은 크리틱의
+    차단 판정(성향별)에, ``risk_score``는 확신도 감점에 쓰인다. ``as_of``는
+    계보다 — 판단이 어느 국면 **관측** 위에서 내려졌는지를 원장에 남기려면
+    읽은 행의 시각이 필요하다(``tb_strategist_signals.src_macro_at`` FK).
     """
 
     regime: str
     risk_score: float
+    as_of: datetime
 
 
 @dataclass(frozen=True, slots=True)

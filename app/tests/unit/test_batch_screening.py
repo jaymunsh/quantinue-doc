@@ -1,12 +1,14 @@
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from typing import cast
 
 import pytest
 from anyio.lowlevel import checkpoint
 
 from quantinue.core.contracts import PipelineContext, PipelineRequest
 from quantinue.core.errors import ValidationFailureError
+from quantinue.db.store import InMemoryRunStore
 from quantinue.market_data.models import (
     Candle,
     MacroObservation,
@@ -15,8 +17,9 @@ from quantinue.market_data.models import (
     SecSubmission,
     SecuritySnapshot,
 )
+from quantinue.orchestration.pipeline import PipelineOrchestrator, PipelineRole
 from quantinue.roles.role_01_universe_screener.service import UniverseScreener
-from quantinue.roles.role_02_technical_analysis.service import TechnicalAnalysis
+from quantinue.roles.role_02_technical_analysis.service import TechnicalAnalysis, technical_score
 from quantinue.roles.role_03_daily_screener.service import DailyScreener
 
 NOW = datetime(2026, 7, 13, 13, 0, tzinfo=UTC)
@@ -80,6 +83,26 @@ class _BatchMarketData:
         return ()
 
 
+@dataclass(slots=True)
+class _PassRole:
+    component: str
+    name: str
+    captured: list[tuple[str, float | None]] | None = None
+
+    async def execute(self, context: PipelineContext) -> PipelineContext:
+        if self.captured is not None:
+            self.captured.append((context.request.ticker, context.technical_score))
+        return context.add_stage(self.component, self.name, "done")
+
+
+def _pass_role(
+    component: str,
+    name: str,
+    captured: list[tuple[str, float | None]] | None = None,
+) -> PipelineRole:
+    return cast("PipelineRole", cast("object", _PassRole(component, name, captured)))
+
+
 def _provenance(ticker: str, execution_id: str) -> Provenance:
     return Provenance(
         source="batch-test",
@@ -97,6 +120,12 @@ def _tickers(count: int = 50) -> tuple[str, ...]:
 
 async def _screen(market: _BatchMarketData) -> PipelineContext:
     context = PipelineContext(request=PipelineRequest(ticker="NVDA", cycle_ts=NOW))
+    context = await UniverseScreener(market).execute(context)
+    return await TechnicalAnalysis(market).execute(context)
+
+
+async def _automatic_screen(market: _BatchMarketData) -> PipelineContext:
+    context = PipelineContext(request=PipelineRequest(ticker="NVDA", cycle_ts=NOW, automatic=True))
     context = await UniverseScreener(market).execute(context)
     return await TechnicalAnalysis(market).execute(context)
 
@@ -145,6 +174,19 @@ async def test_technical_analysis_rejects_requested_ticker_failure() -> None:
 
 
 @pytest.mark.anyio
+async def test_automatic_screening_has_no_hidden_requested_ticker_bias() -> None:
+    market = _BatchMarketData(_tickers(), frozenset({"NVDA"}))
+
+    result = await _automatic_screen(market)
+
+    assert result.technical_output is not None
+    assert tuple(item.ticker for item in result.technical_output.snapshots) == tuple(
+        f"T{rank:03d}" for rank in range(20)
+    )
+    assert "NVDA" not in market.requested
+
+
+@pytest.mark.anyio
 async def test_technical_analysis_rejects_fewer_than_twenty_successes() -> None:
     # Given
     tickers = _tickers()
@@ -156,7 +198,7 @@ async def test_technical_analysis_rejects_fewer_than_twenty_successes() -> None:
 
 
 @pytest.mark.anyio
-async def test_daily_screener_ranks_ten_and_keeps_requested_focus() -> None:
+async def test_daily_screener_keeps_all_twenty_technical_candidates() -> None:
     # Given
     technical = await _screen(_BatchMarketData(_tickers()))
 
@@ -167,15 +209,40 @@ async def test_daily_screener_ranks_ten_and_keeps_requested_focus() -> None:
     # Then
     assert first.daily_screener_output == second.daily_screener_output
     assert first.daily_screener_output is not None
-    assert len(first.daily_screener_output.picks) == 10
-    assert len({pick.ticker for pick in first.daily_screener_output.picks}) == 10
+    assert len(first.daily_screener_output.picks) == 20
+    assert len({pick.ticker for pick in first.daily_screener_output.picks}) == 20
     assert any(
         pick.ticker == "NVDA" and pick.is_requested_focus
         for pick in first.daily_screener_output.picks
     )
-    assert len(first.to_run().detail.roles[2].items) == 10
+    assert len(first.to_run().detail.roles[2].items) == 20
     assert any(
         "NVDA" in item and "사용자 요청 심층 분석" in item
         for item in first.to_run().detail.roles[2].items
     )
     assert first.request.ticker == "NVDA"
+
+
+@pytest.mark.anyio
+async def test_automatic_candidate_seed_preserves_role02_technical_score() -> None:
+    market = _BatchMarketData(_tickers())
+    captured: list[tuple[str, float | None]] = []
+    store = InMemoryRunStore()
+    roles = (
+        UniverseScreener(market),
+        TechnicalAnalysis(market),
+        DailyScreener(),
+        _pass_role("04", "macro"),
+        _pass_role("05", "capture", captured),
+        *tuple(_pass_role(f"{component:02d}", "pass") for component in range(6, 12)),
+    )
+
+    runs = await PipelineOrchestrator(roles, store).run_screening(
+        PipelineRequest(ticker="NVDA", cycle_ts=NOW, automatic=True)
+    )
+
+    assert len(runs) == 20
+    automatic = await _automatic_screen(market)
+    assert automatic.technical_output is not None
+    snapshots = {item.ticker: item for item in automatic.technical_output.snapshots}
+    assert captured == [(run.ticker, technical_score(snapshots[run.ticker])) for run in runs]

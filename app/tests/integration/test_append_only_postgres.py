@@ -9,7 +9,11 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from quantinue.core.contracts import DisclosureSourceRecord, NewsSourceRecord
 from quantinue.core.ontology import ModelProvider
-from quantinue.db.domain_records import CriticVerdictWrite, StrategistSignalWrite
+from quantinue.db.domain_records import (
+    CriticVerdictWrite,
+    SourceRecordsWrite,
+    StrategistSignalWrite,
+)
 from quantinue.db.postgres import PostgresRunStore
 
 _URL = os.getenv("QUANTINUE_TEST_DATABASE_URL")
@@ -130,7 +134,15 @@ async def test_postgres_keeps_first_ledger_rows_when_conflicting_payload_replays
                 ),
                 {"trade_date": cycle.date(), "ticker": ticker},
             )
-        await store.domain.save_source_records(initial_signal, initial_disclosure, initial_news)
+        await store.domain.save_source_records(
+            SourceRecordsWrite(
+                signal=initial_signal,
+                disclosures=(initial_disclosure,),
+                news=(initial_news,),
+                representative_disclosure=initial_disclosure,
+                representative_news=initial_news,
+            )
+        )
         signal_id = await store.domain.save_signal(initial_signal)
         verdict_id = await store.domain.save_verdict(
             CriticVerdictWrite(
@@ -256,7 +268,13 @@ async def test_postgres_keeps_first_ledger_rows_when_conflicting_payload_replays
         # When
         for _ in range(2):
             await store.domain.save_source_records(
-                conflicting_signal, conflicting_disclosure, conflicting_news
+                SourceRecordsWrite(
+                    signal=conflicting_signal,
+                    disclosures=(conflicting_disclosure,),
+                    news=(conflicting_news,),
+                    representative_disclosure=conflicting_disclosure,
+                    representative_news=conflicting_news,
+                )
             )
             assert await store.domain.save_signal(conflicting_signal) == signal_id
             assert (

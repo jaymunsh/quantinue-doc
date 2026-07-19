@@ -49,7 +49,8 @@ def _ema(values: tuple[float, ...], period: int) -> float:
     return result
 
 
-def _technical_score(snapshot: TechnicalSnapshot) -> float:
+def technical_score(snapshot: TechnicalSnapshot) -> float:
+    """Return the canonical role-02 score for one validated snapshot."""
     match snapshot.trend:
         case Trend.UP:
             trend = 0.2
@@ -106,6 +107,27 @@ def _snapshot(ticker: str, candles: tuple[Candle, ...], evidence_id: str) -> Tec
         trend=trend,
         evidence_ids=(evidence_id,),
     )
+
+
+def _selected_snapshot(
+    context: PipelineContext,
+    snapshots: tuple[TechnicalSnapshot, ...],
+) -> TechnicalSnapshot:
+    if context.request.automatic:
+        return snapshots[0]
+    return next(item for item in snapshots if item.ticker == context.request.ticker)
+
+
+def _usable_candles(
+    collected: dict[str, tuple[Candle, ...] | None],
+    ticker: str,
+) -> tuple[Candle, ...]:
+    candles = collected.get(ticker)
+    if candles is None:
+        field = "candles"
+        reason = f"selected ticker {ticker} has no usable history"
+        raise ValidationFailureError(field, reason)
+    return candles
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,7 +215,7 @@ class TechnicalAnalysis:
                 collected[ticker] = values if len(values) >= MINIMUM_HISTORY else None
 
         initial = context.universe[:TECHNICAL_UNIVERSE_LIMIT]
-        if context.request.ticker not in initial:
+        if not context.request.automatic and context.request.ticker not in initial:
             initial = (*initial[:-1], context.request.ticker)
         candidates = (*initial, *(ticker for ticker in context.universe if ticker not in initial))
         requested: list[str] = []
@@ -207,7 +229,7 @@ class TechnicalAnalysis:
             if successful_count >= TECHNICAL_UNIVERSE_LIMIT:
                 break
         requested_candles = collected.get(context.request.ticker)
-        if requested_candles is None:
+        if not context.request.automatic and requested_candles is None:
             field = "candles"
             reason = f"requested ticker {context.request.ticker} has no usable history"
             raise ValidationFailureError(field, reason)
@@ -228,17 +250,16 @@ class TechnicalAnalysis:
             snapshots=snapshots,
             excluded_insufficient_history=excluded,
         )
-        requested_snapshot = next(
-            snapshot for snapshot in snapshots if snapshot.ticker == context.request.ticker
-        )
-        score = _technical_score(requested_snapshot)
+        requested_snapshot = _selected_snapshot(context, snapshots)
+        score = technical_score(requested_snapshot)
         updated = replace(
             context,
             technical_score=score,
             last_price=requested_snapshot.close,
             technical_output=result,
         )
-        provenance = requested_candles[-1].provenance
+        selected_candles = _usable_candles(collected, requested_snapshot.ticker)
+        provenance = selected_candles[-1].provenance
         evidence = Evidence(
             evidence_id=f"{context.run_id}:02:candles",
             run_id=context.run_id,

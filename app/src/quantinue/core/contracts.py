@@ -121,6 +121,7 @@ class PipelineRequest(BaseModel):
 
     ticker: str = Field(min_length=1, max_length=12)
     cycle_ts: datetime
+    automatic: bool = False
 
     @field_validator("ticker")
     @classmethod
@@ -196,6 +197,8 @@ class PipelineRun(BaseModel):
     detail: TerminalRunDetail = Field(default_factory=TerminalRunDetail)
     order: OrderResult | None = None
     review: ReviewResult | None = None
+    automatic: bool = False
+    candidate_rank: int | None = Field(default=None, ge=1, le=50)
 
 
 @dataclass(frozen=True, slots=True)
@@ -241,6 +244,7 @@ class PipelineContext:
     take_profit: float | None = None
     order: OrderResult | None = None
     review: ReviewResult | None = None
+    candidate_rank: int | None = None
 
     def add_stage(
         self, component: str, name: str, summary: str, *, evidence: Evidence | None = None
@@ -301,4 +305,6 @@ class PipelineContext:
             detail=terminal_detail_from_context(self),
             order=self.order,
             review=self.review,
+            automatic=self.request.automatic,
+            candidate_rank=self.candidate_rank,
         )

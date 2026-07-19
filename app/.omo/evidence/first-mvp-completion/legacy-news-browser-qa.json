@@ -1,0 +1,24 @@
+[
+  {
+    "name": "desktop",
+    "width": 1440,
+    "height": 1000,
+    "scrollWidth": 1440,
+    "clientWidth": 1440,
+    "hasUnscored": true,
+    "hasExplanation": true,
+    "fixtureLinks": 0,
+    "errors": []
+  },
+  {
+    "name": "mobile",
+    "width": 375,
+    "height": 812,
+    "scrollWidth": 375,
+    "clientWidth": 375,
+    "hasUnscored": true,
+    "hasExplanation": true,
+    "fixtureLinks": 0,
+    "errors": []
+  }
+]

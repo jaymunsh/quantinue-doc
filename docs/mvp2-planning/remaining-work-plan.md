@@ -52,7 +52,19 @@
 **완료 기준.** 실 LLM 한 바퀴에서 신규 필드가 원장에 앉고 skip 0 · 관제실에
 표시 · 유닛/통합 green.
 
-- [ ] 미착수
+**실행 중 내린 판정 2건.**
+- `risk_rebuttal`·`counter_scenarios`: **안 쓴다.** pass 평결의 검증 요약이
+  이미 `tb_critic_verdict.objection`에 앉고(실 원장 확인) 관제실이 조인으로
+  보여준다 — 되쓰면 같은 문장이 두 테이블에 산다. counter_scenarios는 토큰
+  비용 대비 소비자가 없다.
+- 서사 길이 상한은 프롬프트 부탁이 아니라 **스키마가 강제한다**(max_length=200)
+  — 부탁만으로는 장문이 온다는 것이 512 실측의 교훈이었다.
+
+**실 LLM A/B (2026-07-20, oMLX Qwen3.6-35B)**: aggressive 8/8 · conservative
+4/4, 실패 0, 서사 12/12 전부 입력값 인용(vol_ratio·high_252_ratio 등),
+7~16초/종목. max_tokens 512 유지 확정.
+
+- [x] 완료
 
 ## C. `mvp2.jobs.enabled` 켜기 — 수동 스모크의 졸업
 

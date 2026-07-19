@@ -127,6 +127,8 @@ class JudgementView(BaseModel):
     side: str
     conviction: Decimal
     summary: str
+    bull_case: str | None
+    key_risk: str | None
     verdict_decision: str | None
     verdict_confidence: Decimal | None
     objection: str | None
@@ -307,6 +309,8 @@ def profile_judgement_views(
                 side=item.side,
                 conviction=item.conviction,
                 summary=item.summary,
+                bull_case=item.bull_case,
+                key_risk=item.key_risk,
                 verdict_decision=item.verdict_decision,
                 verdict_confidence=item.verdict_confidence,
                 objection=item.objection,

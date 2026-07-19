@@ -404,3 +404,5 @@ th { color: var(--sub); background: var(--bg); font-size: 13px; }
 .slot-nav { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
 .slot-link { padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; font-variant-numeric: tabular-nums; text-decoration: none; color: var(--sub); }
 .slot-current { color: var(--ink); border-color: currentColor; font-weight: 700; }
+.judgement-bull { margin: 4px 0 0; font-size: 13px; color: var(--ok, #2f7d5b); overflow-wrap: anywhere; }
+.judgement-risk { margin: 2px 0 0; font-size: 13px; color: var(--danger, #b4232a); overflow-wrap: anywhere; }

@@ -43,7 +43,7 @@ _RESOURCE_BY_TASK = {
 # 보수적이든 같아야 한다. 성향이 갈리는 지점은 **같은 사실을 놓고 얼마나
 # 확신하느냐**뿐이다.
 _PERSONA_TASKS = frozenset({"strategy"})
-PROMPT_VERSION = "2026-07-19.1"
+PROMPT_VERSION = "2026-07-20.1"
 POLICY_VERSION = "quantinue-mvp.1"
 
 

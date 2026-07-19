@@ -267,6 +267,19 @@ class AnalysisJob:
                 signal_consensus=StrategyOutput.vote_consensus(
                     strategy_input, self.gates, self.profile, evidence.score
                 ),
+                # 판단 서사와 계보. 구 role_07이 채우던 것을 잡 전환에서 버리고
+                # 있었다 — 프롬프트는 만들고 원장은 안 받는 상태였다. 서사가
+                # 없으면 None 그대로 둔다(지어내지 않음), 국면 계보는 실제로
+                # 읽은 tb_macro 행의 시각만 적는다.
+                bull_case=evidence.bull_case,
+                key_risk=evidence.key_risk,
+                src_macro_at=None if macro is None else macro.as_of,
+                model_provider=evidence.metadata.provider
+                if isinstance(evidence.metadata.provider, str)
+                else evidence.metadata.provider.value,
+                model_name=evidence.metadata.model,
+                prompt_version=evidence.metadata.prompt_version,
+                input_hash=evidence.metadata.input_hash,
             )
         )
         verdict = await self._verify(

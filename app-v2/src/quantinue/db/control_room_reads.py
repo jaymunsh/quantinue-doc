@@ -70,6 +70,8 @@ class JudgementRecord:
     side: str
     conviction: Decimal
     summary: str
+    bull_case: str | None
+    key_risk: str | None
     verdict_decision: str | None
     verdict_confidence: Decimal | None
     objection: str | None
@@ -235,6 +237,7 @@ async def judgements(engine: AsyncEngine, trade_date: date) -> tuple[JudgementRe
                     dedent(
                         """
                         SELECT s.ticker, s.inv_type, s.side, s.conviction, s.summary,
+                               s.bull_case, s.key_risk,
                                v.decision AS verdict_decision,
                                v.confidence AS verdict_confidence,
                                v.objection
@@ -259,6 +262,8 @@ async def judgements(engine: AsyncEngine, trade_date: date) -> tuple[JudgementRe
             side=row.side,
             conviction=row.conviction,
             summary=row.summary,
+            bull_case=row.bull_case,
+            key_risk=row.key_risk,
             verdict_decision=row.verdict_decision,
             verdict_confidence=row.verdict_confidence,
             objection=row.objection,

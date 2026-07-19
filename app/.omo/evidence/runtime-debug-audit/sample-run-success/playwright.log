@@ -1,0 +1,10 @@
+
+Running 2 tests using 1 worker
+
+
+
+
+
+[1A[2K[1/2] .omo/evidence/runtime-debug-audit/sample-run-success/ui-qa.spec.js:10:3 › desktop completed run detail
+[1A[2K[2/2] .omo/evidence/runtime-debug-audit/sample-run-success/ui-qa.spec.js:10:3 › mobile completed run detail
+[1A[2K  2 passed (4.0s)

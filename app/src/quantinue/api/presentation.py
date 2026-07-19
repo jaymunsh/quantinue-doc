@@ -30,6 +30,7 @@ from quantinue.api.schemas import (
     TerminalRunDetailView,
 )
 from quantinue.core.contracts import PipelineRun, StageStatus
+from quantinue.core.plain_text import plain_text
 from quantinue.core.terminal_detail import CollectionFact, NewsSelectionDetail, TerminalRunDetail
 from quantinue.db.contracts import PersistedAttempt
 from quantinue.db.simulated_portfolio import SimulatedPortfolioSnapshot
@@ -45,7 +46,7 @@ LEGACY_REPRESENTATIVE_EXPLANATION: Final = (
 ROLE_DESCRIPTIONS: Final[dict[str, str]] = {
     "01": (
         "NASDAQ 기업의 종목명·시가총액·가격·거래량을 확인해 1차 MVP 분석 유니버스 "
-        "50개를 안정적으로 선정·보존하고, 요청 종목이 포함되는지 검증합니다."
+        "50개를 안정적으로 선정·보존하고 후속 기술 분석 대상으로 전달합니다."
     ),
     "02": (
         "1차 유니버스 50개 중 최대 20개 종목의 실제 일봉 가격과 거래량으로 "
@@ -53,20 +54,21 @@ ROLE_DESCRIPTIONS: Final[dict[str, str]] = {
         "이동평균, RSI, MACD, 상대강도, ATR과 수익률을 다음 단계의 정량 근거로 전달합니다."
     ),
     "03": (
-        "최대 20개 기술 분석 결과를 결정론적으로 순위화해 오늘 검토할 후보 10개를 추립니다. "
-        "요청 종목은 실제 주문까지 이어지는 단일 심층 분석 대상으로 명확히 표시합니다."
+        "20개 기술 분석 결과를 결정론적으로 순위화해 오늘 상세 분석할 후보 20개를 확정합니다. "
+        "선정된 후보 각각을 공시·뉴스 수집부터 전략·비평·리스크·모의 주문까지의 "
+        "심층 분석으로 전달합니다."
     ),
     "04": (
         "금리·주가지수·변동성·달러 등 거시 지표를 종합해 시장 국면과 위험 점수를 "
         "판정합니다. 위험 회피 국면은 이후 전략과 주문의 하드 게이트로 사용됩니다."
     ),
     "05": (
-        "SEC 최신 공시의 양식·제출 시각·문서를 수집하고 LLM으로 중요도, 감성, 위험과 "
-        "차단 사유를 분석합니다. 원문 출처와 모델·프롬프트 계보를 함께 남깁니다."
+        "SEC 공시 계약과 같은 양식·제출 시각·문서 필드를 바탕으로 중요도, 감성, 위험과 "
+        "차단 사유를 분석합니다. 실행 모드에 맞는 출처와 모델·프롬프트 계보를 함께 남깁니다."
     ),
     "06": (
-        "최신 뉴스와 RSS 제목·요약을 수집해 사건 유형, 중요도, 감성, 위험도와 출처 "
-        "신뢰도를 분석합니다. 공시 분석과 연결해 중복되거나 상충하는 신호를 확인합니다."
+        "뉴스 계약의 제목·요약·발행 시각을 바탕으로 사건 유형, 중요도, 감성, 위험도와 "
+        "출처 신뢰도를 분석합니다. 실행 모드에 맞는 수집 출처와 선별 이유를 함께 남깁니다."
     ),
     "07": (
         "기술·거시·공시·뉴스 근거를 종합해 매수·보유 제안과 확신도를 만듭니다. "
@@ -85,8 +87,9 @@ ROLE_DESCRIPTIONS: Final[dict[str, str]] = {
         "체결 결과와 주문번호를 만듭니다."
     ),
     "11": (
-        "판단 결과를 사후 검토 대상으로 등록합니다. T+1~T+5 가격을 추적해 "
-        "수익·낙폭을 평가하고 교훈을 기록합니다."
+        "이번 실행의 판단 결과를 사후 검토 대상으로 등록합니다. 내장 스케줄러는 없지만 "
+        "PostgreSQL 모드에서 운영자가 처리 API를 호출하면 T+1~T+5 가격과 수익률·최대 낙폭·"
+        "판단 일치도를 멱등 처리해 실제 결과를 학습 근거로 남깁니다."
     ),
 }
 
@@ -157,8 +160,8 @@ def evidence_reference_label(reference: str) -> str:
 def _collection_detail_view(fact: CollectionFact) -> CollectionDetailView:
     """Project one already-bounded collection fact into its API representation."""
     return CollectionDetailView(
-        title=fact.title,
-        summary=fact.summary,
+        title=plain_text(fact.title),
+        summary=plain_text(fact.summary),
         source=fact.source,
         reference=source_reference_view(fact.reference),
         score=fact.score,
@@ -184,7 +187,7 @@ def _news_selection_view(detail: NewsSelectionDetail) -> NewsSelectionView:
                     item.representative_explanation
                     or (LEGACY_REPRESENTATIVE_EXPLANATION if is_legacy_representative else "")
                 ),
-                title=item.title,
+                title=plain_text(item.title),
                 published_at=item.published_at,
                 reference=source_reference_view(item.reference),
             )
@@ -276,9 +279,9 @@ def terminal_run_detail_view(detail: TerminalRunDetail) -> TerminalRunDetailView
                 title=role.title,
                 description=ROLE_DESCRIPTIONS[role.component],
                 status=role.status,
-                summary=role.summary,
-                facts=role.facts,
-                items=role.items,
+                summary=plain_text(role.summary),
+                facts=tuple((plain_text(label), plain_text(value)) for label, value in role.facts),
+                items=tuple(plain_text(item) for item in role.items),
                 news_selection=(
                     _news_selection_view(role.news_selection)
                     if role.component == "06" and role.news_selection is not None
@@ -381,4 +384,6 @@ def control_room_run(run: PipelineRun, attempts: tuple[PersistedAttempt, ...]) -
         detail=detail_view,
         order=order,
         review=review,
+        automatic=run.automatic,
+        candidate_rank=run.candidate_rank,
     )

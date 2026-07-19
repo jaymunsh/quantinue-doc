@@ -15,7 +15,7 @@ from quantinue.roles.role_03_daily_screener.contracts import (
 )
 
 DAILY_PICK_THRESHOLD: Final = 0.70
-DAILY_PICK_LIMIT: Final = 10
+DAILY_PICK_LIMIT: Final = 20
 
 
 def _score(snapshot: TechnicalSnapshot) -> float:
@@ -37,7 +37,7 @@ def _score(snapshot: TechnicalSnapshot) -> float:
 
 
 class DailyScreener:
-    """Rank ten daily candidates while retaining the requested deep-analysis focus."""
+    """Rank twenty daily candidates while retaining the requested deep-analysis focus."""
 
     component: ClassVar[str] = "03"
     name: ClassVar[str] = "2차 스크리너"
@@ -84,9 +84,10 @@ class DailyScreener:
         else:
             ranked = sorted(technical.snapshots, key=lambda item: (-_score(item), item.ticker))
             selected = ranked[:DAILY_PICK_LIMIT]
-            requested = next(item for item in ranked if item.ticker == context.request.ticker)
-            if requested not in selected:
-                selected = [*selected[:-1], requested]
+            if not context.request.automatic:
+                requested = next(item for item in ranked if item.ticker == context.request.ticker)
+                if requested not in selected:
+                    selected = [*selected[:-1], requested]
             result = DailyScreenerOutput(
                 run_id=context.run_id,
                 picks=tuple(
@@ -98,7 +99,9 @@ class DailyScreener:
                         rank=rank,
                         sector="미분류",
                         score=_score(item),
-                        is_requested_focus=item.ticker == context.request.ticker,
+                        is_requested_focus=(
+                            not context.request.automatic and item.ticker == context.request.ticker
+                        ),
                         evidence_ids=item.evidence_ids,
                     )
                     for rank, item in enumerate(selected, start=1)
@@ -120,12 +123,9 @@ class DailyScreener:
             kind=EvidenceKind.MODEL_OUTPUT,
             parent_evidence_ids=(context.evidence_trace[-1].evidence_id,),
         )
-        summary = "".join(
-            (
-                f"오늘의 후보 {len(result.picks) if result is not None else 0}개 · ",
-                f"{context.request.ticker} 심층 분석 유지",
-            )
-        )
+        summary = f"오늘의 후보 {len(result.picks) if result is not None else 0}개"
+        if not context.request.automatic:
+            summary = f"{summary} · {context.request.ticker} 심층 분석 유지"
         return updated.add_stage(
             self.component,
             self.name,

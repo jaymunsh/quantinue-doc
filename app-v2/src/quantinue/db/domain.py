@@ -745,7 +745,7 @@ class PostgresDomainRepository:
         async with self._engine.begin() as connection:
             row = (
                 await connection.execute(
-                    select(table.c.regime, table.c.risk_score)
+                    select(table.c.regime, table.c.risk_score, table.c.as_of)
                     .where(table.c.as_of >= cutoff)
                     .order_by(table.c.as_of.desc())
                     .limit(1)
@@ -753,7 +753,9 @@ class PostgresDomainRepository:
             ).first()
         if row is None:
             return None
-        return MacroSnapshot(regime=row.regime, risk_score=float(row.risk_score))
+        return MacroSnapshot(
+            regime=row.regime, risk_score=float(row.risk_score), as_of=row.as_of
+        )
 
     async def approved_sell_profiles(
         self, as_of: date, tickers: tuple[str, ...]
@@ -1364,6 +1366,13 @@ class PostgresDomainRepository:
                 conviction=value.conviction,
                 signal_consensus=value.signal_consensus,
                 summary=value.summary,
+                bull_case=value.bull_case,
+                key_risk=value.key_risk,
+                src_macro_at=value.src_macro_at,
+                model_provider=value.model_provider,
+                model_name=value.model_name,
+                prompt_version=value.prompt_version,
+                input_hash=value.input_hash,
                 evidence=list(value.evidence),
                 sizing_hint={},
                 decision_close=value.decision_close,

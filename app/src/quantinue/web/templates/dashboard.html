@@ -11,28 +11,83 @@
 <body>
   <a class="skip-link" href="#main">본문으로 건너뛰기</a>
   <header class="topbar">
-    <div>
-      <p class="product-label">QUANTINUE</p>
-      <h1>파이프라인 운영실</h1>
-    </div>
-    <div class="mode-list" aria-label="현재 안전 모드">
-      <span>LLM {{ settings.llm_mode.value }}</span>
-      <span>Broker {{ settings.broker_mode.value }}</span>
-      <span>Trading {% if settings.trading_enabled %}enabled{% else %}locked{% endif %}</span>
+    <div class="topbar-intro">
+      <p class="product-label">QUANTINUE · 1차 MVP</p>
+      <h1>투자 판단 파이프라인 운영 문서</h1>
+      <p>기업 선별부터 근거 분석·위험 검토·모의 주문까지, 11단계의 입력과 결과를 확인합니다.</p>
     </div>
   </header>
 
   <main id="main" class="layout">
-    <section class="runtime-contract" aria-label="현재 실행 계약">
-      <strong>{{ settings.database_mode.value | upper }} + 로컬 모의 계좌</strong>
-      <span>mock broker</span>
-      <span>외부 주문 OFF</span>
-      <p>표시 금액은 Quantinue가 계산한 로컬 모의 원장이며 Alpaca 잔고가 아닙니다.</p>
+    <nav class="page-toc" aria-label="페이지 목차">
+      <p>화면 목차</p>
+      <ol>
+        <li><a href="#runtime-overview">실행 환경</a></li>
+        <li><a href="#mvp-overview">1차 MVP 범위</a></li>
+        <li><a href="#run-title">자동 분석 시작</a></li>
+        <li><a href="#run-summary">최근 실행 요약</a></li>
+        <li><a href="#simulated-portfolio">모의 계좌</a></li>
+        {% if screening_runs %}<li><a href="#candidate-board-title">후보별 판단</a></li>{% endif %}
+        {% if latest %}
+        <li class="toc-phase"><a href="#role-ledger">01–11 상세 원장</a>
+          <ol>
+            <li class="toc-phase-label">A · 후보 탐색</li>
+            <li><a href="#role-01"><b>01</b> 유니버스 스크리너</a></li>
+            <li><a href="#role-02"><b>02</b> 기술 분석</a></li>
+            <li><a href="#role-03"><b>03</b> 일일 스크리너</a></li>
+            <li class="toc-phase-label">B · 외부 근거</li>
+            <li><a href="#role-04"><b>04</b> 매크로 분석</a></li>
+            <li><a href="#role-05"><b>05</b> 공시 분석</a></li>
+            <li><a href="#role-06"><b>06</b> 뉴스 분석</a></li>
+            <li class="toc-phase-label">C · 판단·반증</li>
+            <li><a href="#role-07"><b>07</b> 전략가</a></li>
+            <li><a href="#role-08"><b>08</b> 비평가</a></li>
+            <li class="toc-phase-label">D · 매매·회고</li>
+            <li><a href="#role-09"><b>09</b> 리스크·포트폴리오</a></li>
+            <li><a href="#role-10"><b>10</b> 주문·체결</a></li>
+            <li><a href="#role-11"><b>11</b> 리뷰 예약</a></li>
+          </ol>
+        </li>
+        <li><a href="#pipeline-title">역할 실행 결과</a></li>
+        <li><a href="#evidence-title">근거 계보</a></li>
+        <li><a href="#safety-title">주문·리뷰 안전</a></li>
+        <li><a href="#history-title">파이프라인 실행 이력</a></li>
+        {% endif %}
+      </ol>
+    </nav>
+    <section id="runtime-overview" class="runtime-contract" aria-label="현재 실행 계약">
+      <strong>{% if settings.broker_mode.value == "alpaca" and settings.trading_enabled %}{{ settings.database_mode.value | upper }} + Alpaca Paper 주문 경계{% else %}{{ settings.database_mode.value | upper }} + 로컬 모의 계좌{% endif %}</strong>
+      <span>{% if settings.broker_mode.value == "alpaca" and settings.trading_enabled %}Alpaca Paper broker{% else %}mock broker{% endif %}</span>
+      <span>{% if settings.broker_mode.value == "alpaca" and settings.trading_enabled %}Paper 주문 ON{% else %}외부 주문 OFF{% endif %}</span>
+      <p>{% if settings.broker_mode.value == "alpaca" and settings.trading_enabled %}주문은 Alpaca Paper 전용 계정으로 전송될 수 있습니다. Live 거래 경계는 허용하지 않습니다.{% else %}표시 금액은 Quantinue가 계산한 로컬 모의 원장이며 Alpaca 잔고가 아닙니다.{% endif %}</p>
     </section>
+
+    <section id="mvp-overview" class="mvp-overview-panel" aria-labelledby="mvp-overview-title">
+      <header class="mvp-overview-lead">
+        <p class="section-label">처음 보는 분을 위한 프로젝트 설명</p>
+        <h2 id="mvp-overview-title">투자 판단 <span class="text-nowrap">전 과정</span>을 검증하는 1차 MVP</h2>
+        <p class="mvp-definition">Quantinue 1차 MVP는 시장 데이터를 수집해 투자 후보를 선별하고, 근거 분석·재검토·위험 계산을 거쳐 모의 주문 결과를 기록하는 전체 투자 판단 흐름을 검증하는 시스템입니다.</p>
+        <p class="mvp-purpose"><strong>개발 목적</strong><span>수익률을 증명하거나 완전 자동매매를 <span class="text-nowrap">운영하는 것이 아니라</span>, 수집한 근거가 판단·주문·저장까지 끊기지 않고 추적되는지 확인하는 것입니다.</span></p>
+        <p class="mvp-baseline"><strong>1차 기준 구성</strong><span>실제 공개 데이터 + PostgreSQL 저장소 + 로컬 모의계좌입니다. 현재 실행 상태는 바로 위의 실행 환경 배지가 기준 구성과 같은지 보여줍니다.</span></p>
+      </header>
+      <ol class="mvp-document-flow" aria-label="1차 MVP 입력부터 결과까지">
+        <li><span>입력</span><strong>시장·기업의 공개 정보</strong><p>NASDAQ 상장사 후보, 시장 가격, FRED 미국 경제지표, SEC 미국 기업 공시, Google News 뉴스 목록을 수집합니다.</p></li>
+        <li><span>선별</span><strong>50 → 20 → 20</strong><p>50개 기업을 만들고 기술 지표로 20개를 분석한 뒤, 상세 판단 후보 20개를 확정합니다.</p></li>
+        <li><span>판단</span><strong>근거 종합과 반증</strong><div class="mvp-decision-sequence" aria-label="전략가에서 비평가를 거쳐 리스크 계산으로 전달"><b>전략가</b><i aria-hidden="true">→</i><b>비평가</b><i aria-hidden="true">→</i><b>리스크</b></div><p>공시·뉴스·기술 신호를 종합하고, 누락·충돌을 반증한 뒤 위험 한도와 수량을 다시 계산합니다.</p></li>
+        <li><span>결과</span><strong>모의 체결과 추적 기록</strong><p>리스크 한도로 수량을 계산하고, 주문·체결과 데이터 출처의 연결 기록을 관계형 데이터베이스에 보존합니다.</p></li>
+      </ol>
+      <div class="mvp-scope-grid">
+        <article class="mvp-scope-built"><span>현재 구현됨</span><h3>수집부터 모의 체결까지</h3><ul><li>공개 데이터의 수집·형식 통일·후보 선별</li><li>11개 처리 단계별 입력·공식·결과 기록</li><li>원문 → 분석 신호 → 판단 → 주문의 출처 연결</li><li>로컬 모의계좌 주문·체결·평가손익</li></ul></article>
+        <article class="mvp-scope-limit"><span>1차의 의도적 제한</span><h3>AI와 운영 자동화는 최소화</h3><ul><li>AI를 핵심 엔진으로 전면 활용하지 않음</li><li>1차 시연은 로컬 LLM을 정해진 항목의 판단에만 제한적으로 사용</li><li>뉴스는 전체 선별 후 대표 1건만 정밀 분석</li><li>11단계는 리뷰 대상 등록이며 T+1~T+5 자동 리뷰는 제외</li></ul></article>
+        <article class="mvp-scope-next"><span>이 화면을 읽는 순서</span><h3>요약에서 근거로 내려가기</h3><ol><li>실행 환경과 자동 분석 범위 확인</li><li>모의계좌와 후보별 최종 판단 확인</li><li>11개 단계의 계산식·입력·저장 위치 확인</li><li>마지막 실행 이력에서 과거 기록 확인</li></ol></article>
+      </div>
+      <footer class="mvp-boundary"><strong>1차 MVP의 완료 기준</strong><p>기준 구성에서 실제 데이터를 넣었을 때 각 역할의 결과와 근거가 화면과 PostgreSQL 관계형 데이터베이스에 남고, 외부 실계좌 없이 모의 주문까지 재현되면 성공입니다. 정기 스케줄링, 다중 계정, 자동 T+5 리뷰와 전략 학습은 2차 범위입니다.</p></footer>
+    </section>
+
     <section class="command-panel" aria-labelledby="run-title">
       <div>
-        <p class="section-label">1차 목표</p>
-        <h2 id="run-title">한 종목으로 01부터 11까지 완주</h2>
+        <p class="section-label">오늘의 자동 분석</p>
+        <h2 id="run-title">50개 → 20개 → 20개 <span class="text-nowrap">후보 자동 분석</span></h2>
         <p>
           {% if settings.data_mode.value == "public" %}실제 공개 시장·공시·뉴스 데이터를 수집하고{% else %}내장 픽스처 데이터를 사용하고{% endif %}
           {% if settings.llm_mode.value == "local" %} 로컬 LLM으로 분석합니다.{% elif settings.llm_mode.value == "openai" %} OpenAI 모델로 분석합니다.{% else %} 결정론적 모의 모델로 분석합니다.{% endif %}
@@ -41,15 +96,196 @@
           </span>
         </p>
       </div>
-      <form action="/runs" method="post">
-        <label for="ticker">티커</label>
-        <div class="run-controls">
-          <input id="ticker" name="ticker" value="NVDA" maxlength="12" autocomplete="off" required>
-          {% if control_room_access_required %}<input id="control_room_token" name="control_room_token" type="password" autocomplete="off" aria-label="운영실 접근 토큰" required>{% endif %}
-          <button type="submit">파이프라인 실행</button>
+      <form action="/runs" method="post" class="automatic-run-form" data-run-launch-form>
+        <div class="screening-flow" aria-label="자동 스크리닝 범위">
+          <span><strong>50</strong> 유니버스</span>
+          <span><strong>20</strong> 기술 분석</span>
+          <span><strong>20</strong> 상세 후보</span>
         </div>
-        {% if form_error %}<p role="alert">티커 형식을 확인하세요</p>{% endif %}
+        <div class="run-controls">
+          {% if control_room_access_required %}<input id="control_room_token" name="control_room_token" type="password" autocomplete="off" aria-label="운영실 접근 토큰" required>{% endif %}
+          <button type="submit" data-run-launch-button>20개 후보 자동 분석 시작</button>
+        </div>
+        {% if form_error %}<p role="alert">관리자 단일 티커 형식을 확인하세요</p>{% endif %}
       </form>
+      <section class="run-launch-feedback" data-run-launch-feedback hidden aria-labelledby="run-launch-title">
+        <div class="run-launch-heading">
+          <div>
+            <p class="section-label">실시간 분석 안내</p>
+            <h3 id="run-launch-title" data-run-launch-title>실행 요청을 전달하고 있습니다</h3>
+          </div>
+          <span class="status-badge status-running" data-run-launch-status>준비 중</span>
+        </div>
+        <div class="run-launch-progress" role="progressbar" aria-label="파이프라인 단계 진행률" aria-valuemin="0" aria-valuemax="11" aria-valuenow="0" data-run-launch-progress>
+          <span data-run-launch-progress-fill></span>
+        </div>
+        <ol class="run-launch-stage-rail" aria-label="11개 분석 단계" data-run-launch-stage-rail></ol>
+        <div class="run-launch-current">
+          <span data-run-launch-component>시작 준비</span>
+          <strong data-run-launch-role>서버가 분석 요청을 접수하는 중입니다</strong>
+          <p data-run-launch-description>잠시 후 현재 수집·분석 역할과 후보 진행 수가 표시됩니다.</p>
+        </div>
+        <dl class="run-launch-metrics">
+          <div><dt>현재 후보</dt><dd data-run-launch-ticker>선정 중</dd></div>
+          <div><dt>단계 진행</dt><dd data-run-launch-stage-count>0 / 11</dd></div>
+          <div><dt>후보 완료</dt><dd data-run-launch-candidates>0 / 20</dd></div>
+        </dl>
+        <p class="run-launch-announcement" role="status" data-run-launch-announcement>분석 시작 요청을 준비합니다.</p>
+      </section>
+    </section>
+
+    <script>
+      (() => {
+        const form = document.querySelector("[data-run-launch-form]");
+        const panel = document.querySelector("[data-run-launch-feedback]");
+        if (!form || !panel || !window.fetch) return;
+        const button = form.querySelector("[data-run-launch-button]");
+        const stages = [
+          ["01", "유니버스 스크리너", "공개 시장에서 1차 분석 유니버스 50개를 선정합니다."],
+          ["02", "기술 분석", "가격·거래량 지표를 계산해 기술 분석 대상 20개를 추립니다."],
+          ["03", "일일 스크리너", "기술·유동성 점수를 결합해 상세 분석 후보 20개를 확정합니다."],
+          ["04", "거시 분석", "금리와 시장 환경을 읽어 후보 판단의 공통 배경을 만듭니다."],
+          ["05", "공시 분석", "SEC 공시를 수집하고 기업별 근거와 신호를 저장합니다."],
+          ["06", "뉴스 분석", "기사를 수집·선별하고 관련 뉴스 수와 대표\u00a0분석을 기록합니다."],
+          ["07", "전략가", "기술·거시·공시·뉴스 근거를 합쳐 매수·보유 판단을 만듭니다."],
+          ["08", "비평가", "전략가 판단의 누락·과신·반대 근거를 검토합니다."],
+          ["09", "리스크·포트폴리오", "승인 여부와 계좌 한도로 수량·진입가·손절가를 계산합니다."],
+          ["10", "주문·체결", "외부 주문 없이 로컬 모의계좌에 주문과 체결 결과를 남깁니다."],
+          ["11", "리뷰 등록", "향후 T+1~T+5 검토를 위한 가격 스냅샷 대상을 등록합니다."],
+        ];
+        const rail = panel.querySelector("[data-run-launch-stage-rail]");
+        stages.forEach(([component, name]) => {
+          const item = document.createElement("li");
+          item.dataset.component = component;
+          item.innerHTML = `<span>${component}</span><small>${name}</small>`;
+          rail.append(item);
+        });
+        const text = (selector, value) => {
+          const element = panel.querySelector(selector);
+          if (element) element.textContent = value;
+        };
+        const setStage = (component, progress) => {
+          const currentIndex = Math.max(0, stages.findIndex(([value]) => value === component));
+          rail.querySelectorAll("li").forEach((item, index) => {
+            const state = index < progress ? "complete" : index === currentIndex ? "current" : "pending";
+            const stateLabel = { complete: "완료", current: "현재", pending: "대기" }[state];
+            item.dataset.state = state;
+            item.setAttribute("aria-label", `${stages[index][0]} ${stages[index][1]} · ${stateLabel}`);
+          });
+          const progressElement = panel.querySelector("[data-run-launch-progress]");
+          const fill = panel.querySelector("[data-run-launch-progress-fill]");
+          if (progressElement) progressElement.setAttribute("aria-valuenow", String(progress));
+          if (fill) fill.style.transform = `scaleX(${Math.min(progress, 11) / 11})`;
+        };
+        let pollTimer = 0;
+        let pollFailures = 0;
+        let startedMinute = 0;
+        const terminal = new Set(["completed", "failed", "blocked", "cancelled"]);
+        const renderRuns = (runs) => {
+          const automatic = runs.filter((run) => run.automatic && Date.parse(run.cycle_ts) >= startedMinute);
+          if (!automatic.length) {
+            text("[data-run-launch-title]", "후보 유니버스를 구성하고 있습니다");
+            text("[data-run-launch-description]", stages[0][2]);
+            text("[data-run-launch-announcement]", "실행이 접수되었습니다. 첫 번째 체크포인트를 기다립니다.");
+            return false;
+          }
+          const active = automatic.find((run) => !terminal.has(run.status)) || automatic[0];
+          const current = active.current_stage || active.next_stage;
+          const component = current ? current.component : active.status === "completed" ? "11" : "01";
+          const stage = stages.find(([value]) => value === component) || stages[0];
+          const completed = automatic.filter((run) => run.status === "completed").length;
+          const failed = automatic.filter((run) => ["failed", "blocked", "cancelled"].includes(run.status)).length;
+          const progress = active.status === "completed" ? 11 : active.progress;
+          setStage(component, progress);
+          text("[data-run-launch-title]", failed ? "일부 후보를 확인해야 합니다" : completed >= 20 ? "후보 분석이 완료되었습니다" : "후보 분석이 진행 중입니다");
+          text("[data-run-launch-status]", failed ? "확인 필요" : completed >= 20 ? "완료" : active.status === "retrying" ? "재시도 중" : "실행 중");
+          text("[data-run-launch-component]", `${stage[0]} · 현재 단계`);
+          text("[data-run-launch-role]", stage[1]);
+          text("[data-run-launch-description]", stage[2]);
+          text("[data-run-launch-ticker]", active.ticker || "후보 선정 중");
+          text("[data-run-launch-stage-count]", `${progress} / 11`);
+          text("[data-run-launch-candidates]", `${completed} / 20${failed ? ` · 확인 ${failed}` : ""}`);
+          text("[data-run-launch-announcement]", `${active.ticker} 후보가 ${stage[1]} 단계에 있습니다. 후보 ${completed}개 완료.`);
+          const badge = panel.querySelector("[data-run-launch-status]");
+          if (badge) badge.className = `status-badge status-${failed ? "failed" : completed >= 20 ? "completed" : active.status}`;
+          return completed + failed >= 20;
+        };
+        const poll = async () => {
+          try {
+            const response = await fetch("/api/runs", { headers: { Accept: "application/json" } });
+            if (!response.ok) throw new Error("status unavailable");
+            pollFailures = 0;
+            const done = renderRuns(await response.json());
+            if (done) {
+              if (button) button.textContent = "분석 결과 불러오는 중";
+              window.setTimeout(() => window.location.reload(), 900);
+              return;
+            }
+          } catch {
+            pollFailures += 1;
+            text("[data-run-launch-announcement]", "진행 상태 연결을 다시 시도합니다. 실행은 서버에서 계속됩니다.");
+          }
+          pollTimer = window.setTimeout(poll, pollFailures ? 6000 : 1500);
+        };
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          window.clearTimeout(pollTimer);
+          startedMinute = Math.floor(Date.now() / 60000) * 60000;
+          panel.hidden = false;
+          const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          panel.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "nearest" });
+          if (button) {
+            button.disabled = true;
+            button.setAttribute("aria-busy", "true");
+            button.textContent = "분석 시작 요청 중";
+          }
+          setStage("01", 0);
+          try {
+            const response = await fetch(form.action, { method: "POST", body: new FormData(form), redirect: "follow" });
+            if (!response.ok) throw new Error("launch rejected");
+            text("[data-run-launch-status]", "실행 중");
+            text("[data-run-launch-title]", "후보 유니버스를 구성하고 있습니다");
+            text("[data-run-launch-announcement]", "분석 요청이 접수되었습니다. 실제 실행 상태를 확인합니다.");
+            if (button) button.textContent = "분석 진행 중";
+            await poll();
+          } catch {
+            text("[data-run-launch-status]", "시작 실패");
+            text("[data-run-launch-title]", "분석을 시작하지 못했습니다");
+            text("[data-run-launch-description]", "서버 연결을 확인한 뒤 다시 시도해 주세요.");
+            text("[data-run-launch-announcement]", "분석 시작 요청에 실패했습니다.");
+            const badge = panel.querySelector("[data-run-launch-status]");
+            if (badge) badge.className = "status-badge status-failed";
+            if (button) {
+              button.disabled = false;
+              button.removeAttribute("aria-busy");
+              button.textContent = "20개 후보 자동 분석 다시 시작";
+            }
+          }
+        });
+      })();
+    </script>
+
+    <section id="run-summary" class="summary-grid" aria-label="최근 실행 요약" aria-live="polite">
+      <article class="summary-primary">
+        <span>진행</span>
+        <strong>{{ completed_stages }} / 11</strong>
+        <p>{% if latest %}{{ latest.status.value }} · 체크포인트 {{ latest.progress }}개{% else %}아직 실행 기록이 없습니다{% endif %}</p>
+      </article>
+      <article>
+        <span>최근 종목</span>
+        <strong>{% if latest %}{{ latest.ticker }}{% else %}-{% endif %}</strong>
+        <p>{% if latest %}{{ latest.cycle_ts.strftime('%Y-%m-%d %H:%M UTC') }}{% else %}실행 후 표시됩니다{% endif %}</p>
+      </article>
+      <article>
+        <span>판단</span>
+        <strong>{% if latest and latest.side %}{{ latest.side | upper }}{% else %}-{% endif %}</strong>
+        <p>{% if latest and latest.conviction is not none %}확신도 {{ '%.3f' | format(latest.conviction) }}{% else %}전략 판단 대기{% endif %}</p>
+      </article>
+      <article>
+        <span>주문</span>
+        <strong>{% if latest and latest.order %}{{ latest.order.reconciliation_status | upper }}{% else %}-{% endif %}</strong>
+        <p>{% if latest and latest.order %}{{ latest.order.quantity }}주, {{ '%.2f' | format(latest.order.filled_avg_price) }}{% else %}모의 주문 대기{% endif %}</p>
+      </article>
     </section>
 
     <section id="simulated-portfolio" class="portfolio-panel" aria-labelledby="portfolio-title">
@@ -109,28 +345,33 @@
       </div>
     </section>
 
-    <section class="summary-grid" aria-label="최근 실행 요약" aria-live="polite">
-      <article class="summary-primary">
-        <span>진행</span>
-        <strong>{{ completed_stages }} / 11</strong>
-        <p>{% if latest %}{{ latest.status.value }} · 체크포인트 {{ latest.progress }}개{% else %}아직 실행 기록이 없습니다{% endif %}</p>
-      </article>
-      <article>
-        <span>최근 종목</span>
-        <strong>{% if latest %}{{ latest.ticker }}{% else %}-{% endif %}</strong>
-        <p>{% if latest %}{{ latest.cycle_ts.strftime('%Y-%m-%d %H:%M UTC') }}{% else %}실행 후 표시됩니다{% endif %}</p>
-      </article>
-      <article>
-        <span>판단</span>
-        <strong>{% if latest and latest.side %}{{ latest.side | upper }}{% else %}-{% endif %}</strong>
-        <p>{% if latest and latest.conviction is not none %}확신도 {{ '%.3f' | format(latest.conviction) }}{% else %}전략 판단 대기{% endif %}</p>
-      </article>
-      <article>
-        <span>주문</span>
-        <strong>{% if latest and latest.order %}{{ latest.order.reconciliation_status | upper }}{% else %}-{% endif %}</strong>
-        <p>{% if latest and latest.order %}{{ latest.order.quantity }}주, {{ '%.2f' | format(latest.order.filled_avg_price) }}{% else %}모의 주문 대기{% endif %}</p>
-      </article>
+    {% if screening_runs %}
+    <section class="candidate-board" aria-labelledby="candidate-board-title">
+      <div class="section-heading candidate-board-heading">
+        <div><p class="section-label">실행 요약 이후 후보 확인</p><h2 id="candidate-board-title">후보별 판단 현황</h2></div>
+        <p><strong>{{ screening_runs | length }} / 20</strong> 후보가 실행 기록을 남겼습니다. 전체 실행과 계좌 요약을 먼저 확인한 뒤, 필요한 후보만 펼쳐 05~11 근거를 봅니다.</p>
+      </div>
+      <ol class="candidate-grid" aria-label="후보별 상세 분석 목록">
+        {% for candidate in screening_runs %}
+        <li class="candidate-card candidate-{{ candidate.status.value }}">
+          <div class="candidate-card-head"><div><span class="candidate-rank">{{ '%02d' | format(candidate.candidate_rank) }}</span><strong>{{ candidate.ticker }}</strong></div><span class="status-badge status-{{ candidate.status.value }}">{{ candidate.status.value }}</span></div>
+          <div class="candidate-metrics"><span><small>파이프라인 단계</small><strong>{{ candidate.progress }} / 11</strong></span><span><small>판단</small><strong>{{ candidate.side | upper if candidate.side else '대기' }}</strong></span><span><small>확신도</small><strong>{% if candidate.conviction is not none %}{{ '%.1f' | format(candidate.conviction * 100) }}%{% else %}-{% endif %}</strong></span></div>
+          <details class="candidate-detail">
+            <summary><span>후보 전체 분석 기록</span><small>05 공시 · 06 뉴스 · 07 전략 · 08 비평 · 09 리스크 · 10 주문 · 11 리뷰 예약</small></summary>
+            <ol class="candidate-role-list">
+              {% for role in candidate.detail.roles if role.component in ["05", "06", "07", "08", "09", "10", "11"] %}
+              <li><div class="candidate-role-head"><span class="stage-number">{{ role.component }}</span><strong>{{ role.title }}</strong><span>{{ role.status }}</span></div><p class="candidate-role-description">{{ role.description }}</p><p>{{ role.summary or "아직 결과가 없습니다." }}</p>
+                {% if role.facts %}<dl>{% for label, value in role.facts %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>{% endif %}
+                {% if role.items %}<ol class="candidate-role-items">{% for item in role.items %}<li>{{ item }}</li>{% endfor %}</ol>{% endif %}
+              </li>
+              {% endfor %}
+            </ol>
+          </details>
+        </li>
+        {% endfor %}
+      </ol>
     </section>
+    {% endif %}
 
     <section id="app-order-exposure" class="app-order-exposure-panel" aria-labelledby="app-order-exposure-title">
       <div class="section-heading compact-heading">
@@ -249,7 +490,7 @@
     {% if latest %}
     {% include "dashboard_brief.html" %}
 
-    <section class="role-detail-panel" aria-labelledby="role-detail-title">
+    <section id="role-ledger" class="role-detail-panel" aria-labelledby="role-detail-title">
       <div class="section-heading">
         <div>
           <p class="section-label">실행 원장</p>
@@ -257,13 +498,26 @@
         </div>
         <p>각 블록은 해당 실행에서 실제로 사용·생성된 구조화 결과를 종료 후에도 보존해 표시합니다.</p>
       </div>
+      <div class="run-scope-banner {% if latest.automatic %}scope-automatic{% else %}scope-single{% endif %}">
+        <div><span>현재 펼쳐진 상세 원장</span><strong>{% if latest.automatic %}자동 배치 후보 #{{ latest.candidate_rank }} · {{ latest.ticker }}{% else %}단일 티커 진단 실행 · {{ latest.ticker }}{% endif %}</strong></div>
+        <p>{% if latest.automatic %}이 원장의 01에는 같은 배치에서 선정한 50개 기업, 02에는 기술 분석 20개, 03에는 상세 후보 20개가 함께 들어 있습니다.{% else %}이 실행은 50→20→20 자동 배치가 아니라 한 종목 계약을 점검하는 API 실행입니다. 위의 ‘후보별 판단 현황’이 최근 자동 배치이며, 자동 분석 버튼을 눌러야 50개 유니버스가 생성됩니다.{% endif %}</p>
+      </div>
+      <aside class="pipeline-walkthrough" aria-labelledby="walkthrough-title">
+        <div class="walkthrough-intro"><p class="section-label">처음 보는 분을 위한 해설</p><h3 id="walkthrough-title">이 화면은 이렇게 읽으면 됩니다</h3><p>앞 단계의 결과가 다음 단계의 입력이 됩니다. 색과 화살표를 따라가면 후보 선정부터 모의 체결까지의 판단 흐름을 한눈에 볼 수 있습니다.</p></div>
+        <ol>
+          <li class="walkthrough-discovery"><span>A · 01–03</span><strong>살펴볼 기업을 줄입니다</strong><p>시장 전체에서 50개를 고르고, 가격 흐름을 계산해 오늘 자세히 볼 20개 후보를 정합니다.</p></li>
+          <li class="walkthrough-evidence"><span>B · 04–06</span><strong>외부 근거를 모읍니다</strong><p>시장 환경, SEC 공시, 종목 뉴스를 모아 후보에게 긍정·부정 신호가 있는지 구조화합니다.</p></li>
+          <li class="walkthrough-decision"><span>C · 07–08</span><strong>제안하고 다시 반박합니다</strong><p>전략가가 근거를 합쳐 매수·보유를 제안하고, 비평가가 빠진 위험과 근거 충돌을 독립적으로 검증합니다.</p></li>
+          <li class="walkthrough-execution"><span>D · 09–11</span><strong>한도를 적용해 주문하고 리뷰 대상을 등록합니다</strong><p>승인된 판단만 수량과 손절·익절 가격으로 바꿉니다. {% if settings.broker_mode.value == "alpaca" and settings.trading_enabled %}Paper 계정으로 주문을 전송하고{% else %}모의 원장에 체결을 기록하고{% endif %}, 1차에서는 T+1~T+5 사후 평가 대기 상태까지만 만듭니다.</p></li>
+        </ol>
+      </aside>
       {% if latest.detail.roles %}
       <ol class="role-detail-list" aria-label="역할별 상세 처리 데이터">
         {% for role in latest.detail.roles %}
-        <li class="role-detail-record role-detail-{{ role.status }} role-component-{{ role.component }}">
+        <li id="role-{{ role.component }}" class="role-detail-record role-detail-{{ role.status }} role-component-{{ role.component }} {% if role.component in ['01', '02', '03'] %}phase-discovery{% elif role.component in ['04', '05', '06'] %}phase-evidence{% elif role.component in ['07', '08'] %}phase-decision{% else %}phase-execution{% endif %}">
           {% if role.component in ["01", "04", "07", "09"] %}
           <div class="role-phase-divider" aria-label="단계 구분">
-            <span>{% if role.component == "01" %}A · 후보 탐색{% elif role.component == "04" %}B · 외부 근거 수집{% elif role.component == "07" %}C · 판단과 반증{% else %}D · 매매 결정과 사후관리{% endif %}</span>
+            <span>{% if role.component == "01" %}A · 후보 탐색 <small>01–03</small>{% elif role.component == "04" %}B · 외부 근거 수집 <small>04–06</small>{% elif role.component == "07" %}C · 판단과 반증 <small>07–08</small>{% else %}D · 매매 결정과 사후관리 <small>09–11</small>{% endif %}</span>
           </div>
           {% endif %}
           <div class="role-detail-heading">
@@ -272,12 +526,147 @@
               <h3>{{ role.title }}</h3>
               <p class="role-description">{{ role.description }}</p>
             </div>
-            <span class="status-badge status-{{ role.status }}">{{ role.status }}</span>
+            <span class="status-badge status-{{ role.status }}">{% if role.component == "11" and role.status == "completed" %}등록 완료{% else %}{{ role.status }}{% endif %}</span>
           </div>
           <div class="role-run-summary">
             <span>이번 실행</span>
             <strong>{{ role.summary or "아직 이 역할의 체크포인트가 없습니다." }}</strong>
           </div>
+          {% if screening_runs and role.component in ["05", "06"] %}
+          <section class="batch-news-signal-ledger batch-source-signal-ledger" aria-labelledby="batch-{{ role.component }}-signal-title">
+            <div class="section-heading batch-news-signal-heading">
+              <div><p class="section-label">최신 자동 배치 · 후보 전체</p><h4 id="batch-{{ role.component }}-signal-title"><code>{% if role.component == "05" %}tb_disclosure_signal{% else %}tb_news_signal{% endif %}</code> 20개 요약</h4></div>
+              <p>{% if role.component == "05" %}후보별 대표 공시 분석 신호와 요약을 한곳에서 확인합니다.{% else %}후보별 관련 뉴스 수, 대표 분석 신호와 요약을 한곳에서 확인합니다.{% endif %} 실패 후보도 숨기지 않습니다.</p>
+            </div>
+            <details class="batch-source-signal-detail">
+              <summary><span><strong>후보 {{ screening_runs | length }}개 신호 요약 보기</strong><small>기본은 접혀 있으며 필요할 때 전체 원장을 펼칩니다</small></span><b><i class="disclosure-closed-label">펼쳐 보기</i><i class="disclosure-open-label">접기</i></b></summary>
+            <ol class="batch-news-signal-list" aria-label="후보별 {% if role.component == '05' %}공시{% else %}뉴스{% endif %} 집계 신호">
+              {% for candidate in screening_runs %}
+              <li class="batch-news-signal-row batch-news-signal-{{ candidate.status.value }}">
+                <header><span class="candidate-rank">{{ '%02d' | format(candidate.candidate_rank) }}</span><strong>{{ candidate.ticker }}</strong><span class="status-badge status-{{ candidate.status.value }}">{{ candidate.status.value }}</span></header>
+                {% set signal = namespace(found=false) %}
+                {% for candidate_role in candidate.detail.roles if candidate_role.component == role.component %}
+                {% set signal.found = true %}
+                <div class="batch-news-signal-result">
+                  <p><span>{{ role.component }} {% if role.component == "05" %}공시{% else %}뉴스{% endif %} 집계</span><strong>{{ candidate_role.summary or "집계 신호가 생성되지 않았습니다." }}</strong></p>
+                  {% if candidate_role.facts %}<dl>{% for label, value in candidate_role.facts %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>{% else %}<p class="batch-news-signal-empty">저장된 집계 필드가 없습니다. 파이프라인 상태와 실패 단계를 확인하세요.</p>{% endif %}
+                </div>
+                {% endfor %}
+                {% if not signal.found %}<div class="batch-news-signal-result"><p><span>{{ role.component }} 집계</span><strong>{{ role.component }}단계 결과 없음</strong></p><p class="batch-news-signal-empty">후보가 이 분석 전에 종료되어 <code>{% if role.component == "05" %}tb_disclosure_signal{% else %}tb_news_signal{% endif %}</code> 행을 만들지 못했습니다.</p></div>{% endif %}
+              </li>
+              {% endfor %}
+            </ol>
+            </details>
+          </section>
+          {% endif %}
+          <section class="role-trace-map" aria-label="{{ role.component }} 입력, 처리 규칙, 저장 위치">
+            <h4><span>{{ role.component }}</span> 데이터 계보와 계산 규칙</h4>
+            <div class="trace-grid">
+              {% if role.component == "01" %}
+              <article><small>① 수집 입력</small><strong>NASDAQ Screener 공개 응답</strong><p>종목명·티커·시가총액·최근가·거래량을 받습니다. public 모드는 NASDAQ API, fixture 모드는 네트워크 없는 1종목 계약 검증입니다.</p></article>
+              <article><small>② 선정 규칙</small><strong>유효 보통주 50개</strong><code>market_cap &gt; 0 → ticker 중복 제거 → 응답 순서 상위 50</code><p>단일 티커 실행만 요청 종목을 경계 안에 보장하며, 자동 배치는 특정 티커를 강제로 넣지 않습니다.</p></article>
+              <article><small>③ 저장·전달</small><strong><code>tb_universe</code></strong><p><code>(as_of_date, ticker)</code>를 기본키로 저장하고 02 기술 분석으로 전달합니다.</p></article>
+              {% elif role.component == "02" %}
+              <article><small>① 수집 입력</small><strong>01 후보의 일봉 OHLCV</strong><p>최근 약 400일을 요청하고 50거래일 이상 확보된 종목을 최대 20개까지 분석합니다. 5개씩 병렬 수집합니다.</p></article>
+              <article><small>② 계산 공식</small><strong>추세·모멘텀·변동성</strong><code>RETₙ=(Cₜ/Cₜ₋ₙ−1)×100<br>VOL_RATIO=Vₜ/AVG(V₂₀)<br>ATR%=AVG(TR₁₄)/Cₜ×100<br>MACD=EMA₁₂−EMA₂₆<br>UP=Cₜ&gt;MA₂₀&gt;MA₅₀</code><p>기술점수는 추세 0.20 + 20일 모멘텀 최대 0.35 + 52주 상대강도 최대 0.25 + RSI 품질 최대 0.20입니다.</p></article>
+              <article><small>③ 저장·전달</small><strong><code>tb_technical</code></strong><p>03에서 선택된 종목의 지표를 <code>(trade_date, ticker)</code> 기준으로 저장합니다.</p></article>
+              {% elif role.component == "03" %}
+              <article><small>① 입력</small><strong>02 기술 스냅샷 20개</strong><p>추세·20일 수익률·52주 고점비·RSI를 같은 결정론적 식으로 순위화합니다.</p></article>
+              <article><small>② 순위 공식</small><strong>상위 20개 상세 후보</strong><code>SCORE=min(1, trend[0.25/0.10/0] + clamp(RET20/40,0,0.35) + clamp(HIGH252×0.25,0,0.25) + max(0,0.15−|RSI−60|/400))</code><p>점수 내림차순, 동점이면 티커 오름차순으로 20개를 고릅니다.</p></article>
+              <article><small>③ 저장·전달</small><strong><code>tb_daily_pick</code></strong><p>순위·버킷·점수·유니버스 기준일을 저장하고 후보별 04–11 실행을 생성합니다.</p></article>
+              {% elif role.component == "04" %}
+              <article><small>① 수집 입력</small><strong>FRED DFF 금리</strong><p>public 모드는 실효연방기금금리(DFF)를 사용합니다. VIX·NASDAQ·S&amp;P500·달러는 1차 MVP 기준값입니다.</p></article>
+              <article><small>② 계산 공식</small><strong>시장 위험 국면</strong><code>risk_score=clamp(DFF/12,0,1)<br>≤0.30 risk_on · ≥0.70 risk_off · 그 외 neutral</code><p>위험점수는 이후 주문 하드 게이트에 전달됩니다.</p></article>
+              <article><small>③ 저장·전달</small><strong><code>tb_macro</code></strong><p>관측 시각별 국면·위험점수·구성 지표를 저장합니다.</p></article>
+              {% elif role.component == "05" %}
+              <article><small>① 원문 수집</small><strong>SEC EDGAR submissions</strong><p>SEC company-tickers에서 티커→CIK를 찾고 <code>data.sec.gov/submissions/CIK##########.json</code>의 recent 목록을 가져옵니다.</p></article>
+              <article><small>② 선정·분석</small><strong>recent 첫 공시를 대표 분석</strong><code>recent[0] → form + primaryDocument + filedAt → LLM → sentiment / importance / risk / hard_block</code><p>나머지 공시도 원문 계보로 보존하고 모델·프롬프트·정책·입력 해시를 남깁니다.</p></article>
+              <article><small>③ 원문과 신호 저장</small><strong><code>tb_disclosure</code> → <code>tb_disclosure_signal</code></strong><p>소비한 원문은 <code>filing_no</code>로 append-only 저장하고 실행 대표 신호는 <code>(ticker, cycle_ts)</code>로 저장합니다.</p></article>
+              {% elif role.component == "06" %}
+              <article><small>① 원문 수집</small><strong>Google News RSS</strong><p>티커와 회사명 검색으로 제목·요약·발행시각·URL만 수집합니다. 기사 본문은 크롤링하지 않습니다.</p></article>
+              <article><small>② 관련성 공식</small><strong>중복 제거 후 대표 1건</strong><code>score=티커 제목 50 + 티커 요약 25 + 회사명 제목 40 + 회사명 요약 20<br>score ≥ 20만 관련<br>동점: 점수↓ → 최신시각↓ → 정규 URL↑</code><p>GUID 또는 URL의 쿼리·해시 조각을 제거해 중복을 판정하며 모든 포함·제외 이유를 남깁니다.</p></article>
+              <article><small>③ 원문과 신호 저장</small><strong><code>tb_news</code> → <code>tb_news_signal</code></strong><p>원문 결과는 <code>(news_key,ticker)</code>, 대표 집계 신호는 <code>(ticker,cycle_ts)</code>로 저장합니다.</p></article>
+              {% elif role.component == "07" %}
+              <article><small>① 입력</small><strong>기술 + 공시 + 뉴스 + 모델</strong><p>02·05·06 점수와 전략가 모델점수를 받고 근거 ID를 부모 계보로 연결합니다.</p></article>
+              <article><small>② 판단 공식</small><strong>매수 확신도와 코드 게이트</strong><code>conviction=(technical + disclosure + news + model)/4<br>BUY ⇔ daily_pick=true AND conviction ≥ max(0.60,0.70)</code><p>모델 문장과 최종 코드 결정을 분리해 임계값 우회를 막습니다.</p></article>
+              <article><small>③ 저장·전달</small><strong><code>tb_strategist_signals</code></strong><p><code>(ticker,cycle_ts,inv_type)</code>별 제안·확신도·요약·근거를 저장합니다.</p></article>
+              {% elif role.component == "08" %}
+              <article><small>① 입력</small><strong>전략가 제안과 원 근거</strong><p>BUY 제안, 확신도, 현재가, 거시 국면, 공시·뉴스 시각을 독립 검증합니다.</p></article>
+              <article><small>② 검증 규칙</small><strong>하드 게이트 우선</strong><code>BUY 아님 → HOLD<br>하드 규칙 위반 → REJECT<br>그 외 PASS ⇔ critic_model_score ≥ 0.70</code><p>신선도·이벤트 충돌·근거 누락을 먼저 검사하고 모델 반론을 적용합니다.</p></article>
+              <article><small>③ 저장·전달</small><strong><code>tb_critic_verdict</code></strong><p><code>signal_id</code>마다 판정·반대 근거·결정 계층·확신도를 저장합니다.</p></article>
+              {% elif role.component == "09" %}
+              <article><small>① 입력</small><strong>비평 승인 + 계좌·정책 한도</strong><p>현재가, 앱 주문 노출 한도, 일일 신규 주문 한도, 거시 위험과 기존 주문 여부를 확인합니다.</p></article>
+              <article><small>② 수량·가격 공식</small><strong>위험예산과 상한 중 작은 값</strong><code>allocation=min(equity×0.04/0.15, equity×0.25)<br>qty=floor(allocation/current_price)<br>stop=price×0.85 · take=price×1.20</code><p>게이트 하나라도 실패하면 수량 0과 보류 사유를 남깁니다.</p></article>
+              <article><small>③ 예약 저장</small><strong><code>tb_account</code> + <code>tb_order</code></strong><p>안정적인 idempotency key로 주문 노출 금액을 원자적으로 예약합니다.</p></article>
+              {% elif role.component == "10" %}
+              <article><small>① 입력</small><strong>09 주문안</strong><p>종목·수량·진입·손절·익절과 <code>q-a{account}-s{signal}</code> 중복방지 ID를 브로커 계약에 전달합니다.</p></article>
+              <article><small>② 체결 규칙</small><strong>Mock 또는 Alpaca Paper</strong><code>동일 idempotency_key → 기존 주문 재사용<br>filled → quantity×fill_price 만큼 현금 차감</code><p>두 안전 잠금이 켜진 경우에만 Paper 전송하며 Live endpoint는 거부합니다.</p></article>
+              <article><small>③ 체결 저장</small><strong><code>tb_order</code> → <code>tb_fill</code> → <code>tb_account</code></strong><p>주문 상태 대조, 고유 fill 저장, 로컬 계좌 현금·포지션 반영을 원자적으로 처리합니다.</p></article>
+              {% else %}
+              <article><small>① 입력</small><strong>전략·주문 최종 결과</strong><p>BUY는 체결가, HOLD는 판단 당시 종가를 기준가격으로 리뷰 대상을 등록합니다.</p></article>
+              <article><small>② 사후 평가 공식</small><strong>거래일 T+1~T+5</strong><code>RETₙ=(Closeₙ/BasePrice−1)×100<br>MDD=min(0, RET₁…RET₅)<br>BUY hit ⇔ RET₅&gt;0 · HOLD hit ⇔ RET₅≤0</code><p>NYSE 거래일 종가 5개가 모두 있을 때만 최종화합니다.</p></article>
+              <article><small>③ 1차 실행 범위</small><strong>대상 등록 · 자동 리뷰 없음</strong><p>파이프라인은 대기 상태까지만 남깁니다. 운영자가 처리 API를 호출할 때만 <code>tb_review_price_snapshots</code>에 종가를 멱등 저장하고, T+5 이후 <code>tb_review</code>를 확정합니다.</p></article>
+              {% endif %}
+            </div>
+          </section>
+          {% if role.component in ["05", "06", "07", "08"] %}
+          <details class="schema-flow-detail">
+            <summary>
+              <span><strong>DB 스키마와 실행 전달값 보기</strong><small>{% if role.component == "05" %}공시 원문 → 공시 신호 → 전략가{% elif role.component == "06" %}뉴스 원문 → 뉴스 신호 → 전략가{% elif role.component == "07" %}검증 점수 → 전략 판단 저장{% else %}전략 판단 → 독립 비평 저장{% endif %}</small></span>
+            </summary>
+            <div class="schema-flow-body">
+              {% if role.component == "05" %}
+              <article class="schema-table-card"><header><code>tb_disclosure</code><span>소비한 공시 원문 · append-only</span></header><dl><div><dt>PK · 중복</dt><dd><code>id PK</code> · <code>filing_no UNIQUE</code></dd></div><div><dt>SEC 원문</dt><dd>ticker, trade_date, form_type, filing_title, filed_at, source_ref</dd></div><div><dt>분석값</dt><dd>event_type, sentiment_score, importance, risk_score, confidence</dd></div><div><dt>계보</dt><dd>evidence_id, model_provider, model_name, prompt_version, input_hash</dd></div></dl></article>
+              <span class="schema-arrow" aria-hidden="true">→</span>
+              <article class="schema-table-card"><header><code>tb_disclosure_signal</code><span>종목·실행별 대표 공시 신호</span></header><dl><div><dt>PK · 실행 키</dt><dd><code>tds_id PK</code> · <code>UNIQUE(ticker, cycle_ts)</code></dd></div><div><dt>원문 FK</dt><dd><code>filing_no → tb_disclosure.filing_no</code></dd></div><div><dt>판단 필드</dt><dd>has_signal, hard_block, reason, confidence</dd></div><div><dt>확장 필드</dt><dd>sentiment_score, importance, risk_score, summary</dd></div></dl></article>
+              {% elif role.component == "06" %}
+              <article class="schema-table-card"><header><code>tb_news</code><span>수집 기사별 원문·선정 기록</span></header><dl><div><dt>PK · 중복</dt><dd><code>id PK</code> · <code>UNIQUE(news_key, ticker)</code></dd></div><div><dt>RSS 원문</dt><dd>title, source, url, published_at</dd></div><div><dt>선정 과정</dt><dd>grade, is_dropped, drop_reason</dd></div><div><dt>분석값</dt><dd>event_type, sentiment_score, importance, risk_score, confidence</dd></div></dl></article>
+              <span class="schema-arrow" aria-hidden="true">→</span>
+              <article class="schema-table-card"><header><code>tb_news_signal</code><span>종목·실행별 대표 뉴스 신호</span></header><dl><div><dt>PK · 실행 키</dt><dd><code>tns_id PK</code> · <code>UNIQUE(ticker, cycle_ts)</code></dd></div><div><dt>대표 원문 FK</dt><dd><code>rep_news_id → tb_news.id</code></dd></div><div><dt>집계 필드</dt><dd>news_count, importance, peak_importance, sentiment_score, risk_score</dd></div><div><dt>판단·계보</dt><dd>reason, summary, confidence, hard_block, evidence_id, model_name</dd></div></dl></article>
+              {% elif role.component == "07" %}
+              <article class="schema-table-card schema-context-card"><header><code>PipelineContext</code><span>이번 실행의 검증된 입력</span></header><dl><div><dt>02 기술</dt><dd>technical_score</dd></div><div><dt>05 공시</dt><dd>disclosure_score + disclosure evidence</dd></div><div><dt>06 뉴스</dt><dd>news_score + news evidence</dd></div><div><dt>전략 모델</dt><dd>model score + structured rationale</dd></div></dl></article>
+              <span class="schema-arrow" aria-hidden="true">→</span>
+              <article class="schema-table-card"><header><code>tb_strategist_signals</code><span>전략가 최종 제안</span></header><dl><div><dt>PK · 실행 키</dt><dd><code>id PK</code> · <code>UNIQUE(ticker, cycle_ts, inv_type)</code></dd></div><div><dt>결론</dt><dd>side, conviction, signal_consensus</dd></div><div><dt>설명</dt><dd>summary, bull_case, key_risk, evidence</dd></div><div><dt>가격·계보</dt><dd>decision_close, current_price, source/model versions</dd></div></dl></article>
+              {% else %}
+              <article class="schema-table-card"><header><code>tb_strategist_signals</code><span>비평 대상</span></header><dl><div><dt>전략 PK</dt><dd><code>id PK</code> → critic.signal_id</dd></div><div><dt>검증 입력</dt><dd>side, conviction, summary, evidence, key_risk</dd></div></dl></article>
+              <span class="schema-arrow" aria-hidden="true">→</span>
+              <article class="schema-table-card"><header><code>tb_critic_verdict</code><span>신호별 독립 판정</span></header><dl><div><dt>PK · 전략 FK</dt><dd><code>id PK</code> · <code>signal_id UNIQUE → tb_strategist_signals.id</code></dd></div><div><dt>판정</dt><dd>decision, is_agreed, category, confidence</dd></div><div><dt>반대 근거</dt><dd>objection, decided_layer, skipped_rules</dd></div><div><dt>추적</dt><dd>ticker, source, created_at</dd></div></dl></article>
+              {% endif %}
+              <aside class="schema-runtime-note"><strong>실제 실행 경로</strong><p>{% if role.component in ["05", "06"] %}분석기는 구조화 결과를 위 테이블에 영구 기록하는 동시에 점수를 실행 컨텍스트에 넣습니다. 전략가는 DB를 다시 조회하지 않고 이 검증된 컨텍스트 값을 바로 사용합니다. 이번 실행 전달 점수: <b>{% if role.component == "05" %}{{ latest.detail.disclosure.score if latest.detail.disclosure.score is not none else "기록 없음" }}{% else %}{{ latest.detail.news.score if latest.detail.news.score is not none else "기록 없음" }}{% endif %}</b>.{% elif role.component == "07" %}전략가는 네 입력 점수의 평균과 코드 게이트로 제안을 만들고 <code>tb_strategist_signals</code>에 남깁니다. 현재 원장에서 확인되는 공시 입력은 <b>{{ latest.detail.disclosure.score if latest.detail.disclosure.score is not none else "기록 없음" }}</b>, 뉴스 입력은 <b>{{ latest.detail.news.score if latest.detail.news.score is not none else "기록 없음" }}</b>입니다. 새 실행부터는 아래 ‘이번 실행 상세값’에 네 점수가 각각 남습니다.{% else %}비평가는 전략가 신호와 연결된 원 근거를 검증하며, 거절 사유는 <code>objection</code>에 저장되어 09의 주문 보류 사유로 이어집니다.{% endif %} PostgreSQL 기록은 새로고침 후에도 유지되는 감사 원장입니다.</p></aside>
+            </div>
+          </details>
+          {% endif %}
+          {% if role.component == "05" %}
+          <section class="role-method-panel" aria-label="공시 수집 및 분석 기준">
+            <h4>공시를 어디서, 어떤 기준으로 봤나</h4>
+            <dl><div><dt>수집 출처</dt><dd>{% if settings.data_mode.value == "public" %}SEC 공식 company ticker 목록으로 CIK를 확인한 뒤 EDGAR submissions JSON에서 최근 제출 목록을 가져옵니다.{% else %}현재 fixture 모드에서는 네트워크를 호출하지 않고, 실제 SEC 공시와 같은 필드를 가진 내장 시연 데이터를 사용합니다.{% endif %}</dd></div><div><dt>선정 기준</dt><dd>{% if settings.data_mode.value == "public" %}SEC recent 목록의 첫 공시를 대표 분석 대상으로 삼고, 나머지도 양식·문서명·제출일·원문 출처와 함께 남깁니다.{% else %}고정된 시연 공시 한 건을 대표 분석 대상으로 사용해 이후 판단 계약을 재현합니다.{% endif %}</dd></div><div><dt>분석 항목</dt><dd>공시 양식과 문서 정보로 중요도·감성·위험·하드 차단 여부를 구조화하고 모델·프롬프트·정책 계보를 보존합니다.</dd></div></dl>
+          </section>
+          {% elif role.component == "06" %}
+          <section class="role-method-panel" aria-label="뉴스 수집 및 분석 기준">
+            <h4>뉴스를 어디서, 어떤 기준으로 골랐나</h4>
+            <dl><div><dt>수집 출처</dt><dd>{% if settings.data_mode.value == "public" %}Google News RSS에서 종목 티커 또는 회사명으로 검색하며 본문은 크롤링하지 않고 제목·요약·발행 시각·URL만 사용합니다.{% else %}현재 fixture 모드에서는 네트워크를 호출하지 않고, 실제 뉴스와 같은 제목·요약·발행 시각 필드를 가진 내장 시연 데이터를 사용합니다.{% endif %}</dd></div><div><dt>관련성 기준</dt><dd>{% if settings.data_mode.value == "public" %}제목과 요약의 티커·회사명 일치 점수로 관련·제외를 구분하고, 관련성 점수와 최신 발행 시각 순으로 대표 뉴스를 정합니다.{% else %}고정된 시연 뉴스 한 건을 대표 자료로 사용해 뉴스 분석과 후속 판단 계약을 재현합니다.{% endif %}</dd></div><div><dt>분석 항목</dt><dd>대표 뉴스의 사건 유형·중요도·감성·위험·출처 신뢰도를 분석하고 전체 수집 건의 선정·제외 이유도 남깁니다.</dd></div></dl>
+          </section>
+          {% elif role.component == "07" %}
+          <section class="role-method-panel role-method-decision" aria-label="전략가 판단 기준">
+            <h4>전략가는 무엇을 근거로 결론냈나</h4>
+            <dl><div><dt>입력 근거</dt><dd>기술 점수, 공시 점수, 뉴스 점수와 이 세 근거를 읽은 모델 점수를 하나의 판단 컨텍스트로 합칩니다.</dd></div><div><dt>판단 방식</dt><dd>네 점수의 평균으로 확신도를 계산하고, 오늘의 후보 선정 여부와 최소 확신도 기준을 코드 게이트로 적용합니다.</dd></div><div><dt>남기는 내용</dt><dd>최종 매수·보유 제안, 확신도, 게이트 통과 여부, 차단 요인과 판단 근거를 기록해 모델 의견과 코드 결정을 구분합니다.</dd></div></dl>
+          </section>
+          {% elif role.component == "08" %}
+          <section class="role-method-panel role-method-critic" aria-label="비평가 검증 기준">
+            <h4>비평가는 어떤 관점으로 반박했나</h4>
+            <dl><div><dt>검증 대상</dt><dd>전략가 제안과 확신도, 연결된 공시·뉴스·거시 근거 및 코드 게이트 결과를 독립적으로 다시 확인합니다.</dd></div><div><dt>비평 기준</dt><dd>근거 충돌, 신뢰도 부족, 위험 신호, 하드 규칙 위반을 살펴 승인·거절과 반대 근거를 분리해 기록합니다.</dd></div><div><dt>남기는 내용</dt><dd>판정, 비평 카테고리, 결정 계층, 확신도, 건너뛴 규칙과 구체적인 반대 근거를 보존합니다.</dd></div></dl>
+          </section>
+          {% elif role.component == "09" %}
+          <section class="role-method-panel role-method-risk" aria-label="리스크 및 포트폴리오 계산 기준">
+            <h4>리스크와 포트폴리오는 어떻게 주문안을 만들었나</h4>
+            <dl><div><dt>승인 조건</dt><dd>비평가 승인, 계좌 식별, 앱 주문 노출 한도와 일일 신규 주문 상한을 모두 통과해야 주문 수량을 만듭니다.</dd></div><div><dt>가격 설계</dt><dd>현재가를 진입 기준으로 두고 정책의 손절·익절 비율을 적용해 진입가·손절가·익절가와 수량을 계산합니다.</dd></div><div><dt>보류 처리</dt><dd>승인이나 한도가 부족하면 수량을 0으로 두고 보류 사유를 남겨 주문 단계가 외부 제출을 시도하지 않게 합니다.</dd></div></dl>
+          </section>
+          {% elif role.component == "10" %}
+          <section class="role-method-panel role-method-order" aria-label="주문 및 체결 처리 기준">
+            <h4>주문과 체결은 무엇을 확인했나</h4>
+            <dl><div><dt>주문 입력</dt><dd>09에서 확정한 종목·수량·진입가·손절가·익절가와 안정적인 중복 방지 ID를 브로커 계약에 전달합니다.</dd></div><div><dt>현재 MVP</dt><dd>{% if settings.broker_mode.value == "mock" or not settings.trading_enabled %}로컬 mock 브로커가 외부 주문 없이 체결을 모사하고 모의계좌 원장에 주문·체결을 기록합니다.{% else %}Alpaca Paper 전용 경계로 주문을 보내고 응답 상태를 로컬 원장과 대조합니다.{% endif %}</dd></div><div><dt>남기는 내용</dt><dd>주문 상태, 수량, 평균 체결가, 주문 ID와 클라이언트 주문 ID를 보존해 재실행과 중복 제출을 구분합니다.</dd></div></dl>
+          </section>
+          {% endif %}
           {% if role.component == "09" %}
           <div class="decision-strip decision-risk">
             <span>최종 매매 설계</span>
@@ -292,17 +681,22 @@
           </div>
           {% elif role.component == "11" %}
           <div class="decision-strip decision-review">
-            <span>사후 평가 일정</span>
-            <strong>{{ role.summary or "체결 또는 보류 결과를 기다리고 있습니다." }}</strong>
-            <p>T+1~T+5 가격을 추적합니다. 이후 수익률, 최대&nbsp;낙폭, 판단 일치도를 평가해 교훈을 기록합니다.</p>
+            <span>1차 MVP · 리뷰 예약만 수행</span>
+            <strong>11 / 11 완료는 T+5 리뷰 완료가 아니라 대상 등록 완료입니다.</strong>
+            <p>내장 스케줄러나 daemon은 없습니다. 기본 실행에서는 <code>tb_review_price_snapshots</code>나 <code>tb_review</code>를 만들지 않습니다. PostgreSQL 모드에서 운영자가 처리 API를 호출할 때만 T+1~T+5 종가를 저장하고 최종 평가를 확정합니다.</p>
           </div>
           {% endif %}
           {% if role.facts %}
-          <dl class="role-facts">
-            {% for label, value in role.facts %}
-            <div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>
-            {% endfor %}
-          </dl>
+          <details class="data-disclosure data-disclosure-facts">
+            <summary><span><strong>이번 실행 상세값</strong><small>점수·판정·저장값을 확인합니다</small></span><b><span>{{ role.facts | length }}개</span><em><i class="disclosure-closed-label">펼쳐 보기</i><i class="disclosure-open-label">접기</i></em></b></summary>
+            <div class="data-disclosure-body">
+              <dl class="role-facts">
+                {% for label, value in role.facts %}
+                <div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>
+                {% endfor %}
+              </dl>
+            </div>
+          </details>
           {% endif %}
           {% if role.component == "06" and role.news_selection %}
           <div class="news-selection-summary" aria-label="뉴스 선별 집계">
@@ -312,23 +706,28 @@
             <div><span>대표 분석</span><strong>{{ role.news_selection.representative_count }}</strong></div>
           </div>
           {% if role.news_selection.items %}
-          <div class="role-items-heading"><h4>전체 뉴스 선별 결과</h4><span>{{ role.news_selection.items | length }}개 항목</span></div>
-          <ol class="news-selection-list" aria-label="뉴스 선별 상세 항목">
-            {% for item in role.news_selection.items %}<li class="news-item news-{{ item.status }}{% if item.is_representative %} news-representative{% endif %}">
-              <div class="news-item-status"><span>{% if item.is_representative %}{{ item.representative_label }} · {% endif %}{{ item.status }}</span><strong>{% if item.relevance_evaluated %}관련성 {{ item.score }}{% else %}관련성 점수 미산정{% endif %}</strong></div>
-              <h5>{{ item.title }}</h5>
-              <dl><div><dt>선정 근거</dt><dd>{% if item.representative_explanation %}{{ item.representative_explanation }}{% elif item.reasons %}{{ item.reasons | join(', ') }}{% else %}관련성 기준 미충족{% endif %}</dd></div><div><dt>발행</dt><dd>{{ item.published_at }}</dd></div><div><dt>출처</dt><dd>{% if item.reference.href %}<a href="{{ item.reference.href }}" rel="noreferrer noopener">{{ item.reference.label }}</a>{% else %}{{ item.reference.label }}{% endif %}</dd></div></dl>
-            </li>{% endfor %}
-          </ol>
+          <details class="data-disclosure data-disclosure-list">
+            <summary><span><strong>전체 뉴스 선별 결과</strong><small>관련·제외 사유와 출처를 모두 확인합니다</small></span><b><span>{{ role.news_selection.items | length }}개</span><em><i class="disclosure-closed-label">펼쳐 보기</i><i class="disclosure-open-label">접기</i></em></b></summary>
+            <div class="data-disclosure-body">
+              <ol class="news-selection-list" aria-label="뉴스 선별 상세 항목">
+                {% for item in role.news_selection.items %}<li class="news-item news-{{ item.status }}{% if item.is_representative %} news-representative{% endif %}">
+                  <div class="news-item-status"><span>{% if item.is_representative %}{{ item.representative_label }} · {% endif %}{{ item.status }}</span><strong>{% if item.relevance_evaluated %}관련성 {{ item.score }}{% else %}관련성 점수 미산정{% endif %}</strong></div>
+                  <h5>{{ item.title }}</h5>
+                  <dl><div><dt>선정 근거</dt><dd>{% if item.representative_explanation %}{{ item.representative_explanation }}{% elif item.reasons %}{{ item.reasons | join(', ') }}{% else %}관련성 기준 미충족{% endif %}</dd></div><div><dt>발행</dt><dd>{{ item.published_at }}</dd></div><div><dt>출처</dt><dd>{% if item.reference.href %}<a href="{{ item.reference.href }}" rel="noreferrer noopener">{{ item.reference.label }}</a>{% else %}{{ item.reference.label }}{% endif %}</dd></div></dl>
+                </li>{% endfor %}
+              </ol>
+            </div>
+          </details>
           {% endif %}
           {% elif role.items %}
-          <div class="role-items-heading">
-            <h4>상세 처리 결과</h4>
-            <span>{{ role.items | length }}개 항목</span>
-          </div>
-          <ol class="role-item-list" aria-label="{{ role.component }} 상세 항목">
-            {% for item in role.items %}<li>{{ item }}</li>{% endfor %}
-          </ol>
+          <details class="data-disclosure data-disclosure-list">
+            <summary><span><strong>상세 처리 결과</strong><small>{{ role.title }}에서 생성한 전체 항목</small></span><b><span>{{ role.items | length }}개</span><em><i class="disclosure-closed-label">펼쳐 보기</i><i class="disclosure-open-label">접기</i></em></b></summary>
+            <div class="data-disclosure-body">
+              <ol class="role-item-list" aria-label="{{ role.component }} 상세 항목">
+                {% for item in role.items %}<li>{{ item }}</li>{% endfor %}
+              </ol>
+            </div>
+          </details>
           {% elif role.status == "completed" and not role.facts %}
           <p class="role-detail-empty">이 역할은 요약 체크포인트만 남겼습니다.</p>
           {% endif %}
@@ -432,23 +831,55 @@
     {% endif %}
 
     <section class="history-panel" aria-labelledby="history-title">
-      <h2 id="history-title">최근 실행</h2>
-      {% if runs %}
-      <div class="table-wrap" aria-label="최근 실행 기록">
-        <table>
-          <caption>최근 파이프라인 실행 기록</caption>
-          <thead><tr><th scope="col">종목</th><th scope="col">사이클</th><th scope="col">상태</th><th scope="col">판단</th><th scope="col">체결</th></tr></thead>
-          <tbody>
-            {% for run in runs %}
-            <tr><td data-label="종목"><strong>{{ run.ticker }}</strong></td><td data-label="사이클">{{ run.cycle_ts.strftime('%Y-%m-%d %H:%M') }}</td><td data-label="상태"><span class="status-badge status-{{ run.status.value }}">{{ run.status.value }}</span></td><td data-label="판단">{{ run.side or '-' }}</td><td data-label="체결">{% if run.order %}{{ run.order.reconciliation_status }}{% else %}-{% endif %}</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
+      <div class="section-heading compact-heading">
+        <div><p class="section-label">PostgreSQL 운영·감사 기록</p><h2 id="history-title">파이프라인 실행 이력</h2></div>
+        <p>자동 배치 한 번은 같은 시각으로 후보별 최대 20건을 기록합니다. 과거 단일 종목 테스트와 실패 이력도 삭제하지 않고 함께 보존합니다.</p>
       </div>
+      {% if runs %}
+      <details class="data-disclosure history-disclosure">
+        <summary><span><strong>저장된 실행 행 전체 보기</strong><small>같은 사이클 후보와 과거 단일 종목 테스트 포함</small></span><b><span>{{ runs | length }}건</span><em><i class="disclosure-closed-label">펼쳐 보기</i><i class="disclosure-open-label">접기</i></em></b></summary>
+        <div class="data-disclosure-body">
+          <div class="table-wrap" aria-label="최근 실행 기록">
+            <table>
+              <caption>PostgreSQL에 보존된 최근 파이프라인 실행 이력</caption>
+              <thead><tr><th scope="col">종목</th><th scope="col">사이클</th><th scope="col">상태</th><th scope="col">판단</th><th scope="col">체결</th></tr></thead>
+              <tbody>
+                {% for run in runs %}
+                <tr><td data-label="종목"><strong>{{ run.ticker }}</strong></td><td data-label="사이클">{{ run.cycle_ts.strftime('%Y-%m-%d %H:%M') }}</td><td data-label="상태"><span class="status-badge status-{{ run.status.value }}">{{ run.status.value }}</span></td><td data-label="판단">{{ run.side or '-' }}</td><td data-label="체결">{% if run.order %}{{ run.order.reconciliation_status }}{% else %}-{% endif %}</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
       {% else %}
       <p class="muted">저장된 실행이 없습니다.</p>
       {% endif %}
     </section>
   </main>
+  <script>
+    (() => {
+      const links = [...document.querySelectorAll(".page-toc a[href^='#']")];
+      if (!links.length) return;
+      const byId = new Map(links.map((link) => [link.hash.slice(1), link]));
+      const targets = [...byId.keys()].map((id) => document.getElementById(id)).filter(Boolean);
+      let scheduled = false;
+      const update = () => {
+        scheduled = false;
+        const threshold = window.innerHeight * 0.22;
+        const current = targets.reduce((selected, target) => target.getBoundingClientRect().top <= threshold ? target : selected, targets[0]);
+        links.forEach((link) => link.removeAttribute("aria-current"));
+        if (current) byId.get(current.id)?.setAttribute("aria-current", "location");
+      };
+      const schedule = () => {
+        if (scheduled) return;
+        scheduled = true;
+        requestAnimationFrame(update);
+      };
+      update();
+      window.addEventListener("scroll", schedule, { passive: true });
+      window.addEventListener("resize", schedule, { passive: true });
+    })();
+  </script>
 </body>
 </html>

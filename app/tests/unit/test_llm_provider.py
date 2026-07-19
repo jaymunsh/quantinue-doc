@@ -46,6 +46,40 @@ class WireModelSettingsRequest(BaseModel):
     max_completion_tokens: int | None = None
 
 
+class WireJsonSchema(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    strict: bool
+
+
+class WireResponseFormat(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    type: str
+    json_schema: WireJsonSchema
+
+
+class WireToolFunction(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+
+
+class WireTool(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    type: str
+    function: WireToolFunction
+
+
+class WireStructuredOutputRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    response_format: WireResponseFormat | None = None
+    tools: tuple[WireTool, ...] = ()
+
+
 @pytest.mark.anyio
 async def test_deterministic_adapter_returns_schema_bound_metadata() -> None:
     analyzer = DeterministicAnalyzer(model_name="fixture-v1")
@@ -269,6 +303,63 @@ async def test_local_mode_disables_reasoning_and_caps_structured_output() -> Non
 
     assert observed_requests[0].reasoning_effort == "none"
     assert observed_requests[0].max_tokens == 256
+
+
+@pytest.mark.anyio
+async def test_local_mode_uses_native_json_schema_when_server_ignores_result_tools() -> None:
+    observed_requests: list[WireStructuredOutputRequest] = []
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        observed_requests.append(WireStructuredOutputRequest.model_validate_json(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "id": "chatcmpl-local-native-output",
+                "object": "chat.completion",
+                "created": 1,
+                "model": "contract-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "finish_reason": "stop",
+                        "message": {
+                            "role": "assistant",
+                            "content": json.dumps(
+                                {
+                                    "score": 0.55,
+                                    "label": "neutral",
+                                    "reason": "계약 응답",
+                                }
+                            ),
+                        },
+                    }
+                ],
+                "usage": {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
+            },
+        )
+
+    values = {
+        "llm_mode": LlmMode.LOCAL,
+        "local_llm_api_key": "wire-placeholder",
+        "local_llm_model": "contract-model",
+        "local_llm_base_url": "http://local.test/v1",
+    }
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http_client:
+        sdk = AsyncOpenAI(
+            api_key="wire-placeholder",
+            base_url="http://local.test/v1",
+            http_client=http_client,
+        )
+        analyzer = build_llm_analyzer(Settings.model_validate(values), openai_client=sdk)
+
+        result = await analyzer.analyze(AnalysisTask.DISCLOSURE, "same contract input")
+
+    assert result.label == "neutral"
+    assert len(observed_requests) == 1
+    assert observed_requests[0].tools == ()
+    assert observed_requests[0].response_format is not None
+    assert observed_requests[0].response_format.type == "json_schema"
+    assert observed_requests[0].response_format.json_schema.strict is True
 
 
 @pytest.mark.anyio

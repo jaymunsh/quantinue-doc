@@ -168,7 +168,14 @@ async def test_http_adapters_parse_public_feeds_at_wire_boundary() -> None:
                                 "marketCap": "1,000",
                                 "lastsale": "$150.25",
                                 "volume": "4,200",
-                            }
+                            },
+                            {
+                                "symbol": "BRK/A",
+                                "name": "Unsupported path ticker",
+                                "marketCap": "900",
+                                "lastsale": "$700",
+                                "volume": "100",
+                            },
                         ]
                     }
                 }
@@ -222,6 +229,13 @@ async def test_http_adapters_parse_public_feeds_at_wire_boundary() -> None:
                 "</item></channel></rss>"
             ),
         ),
+        "/company_tickers.json": httpx2.Response(
+            200,
+            json={
+                "0": {"cik_str": 1045810, "ticker": "NVDA", "title": "NVIDIA CORP"},
+                "1": {"cik_str": 789019, "ticker": "MSFT", "title": "MICROSOFT CORP"},
+            },
+        ),
     }
 
     def handler(request: httpx2.Request) -> httpx2.Response:
@@ -234,6 +248,7 @@ async def test_http_adapters_parse_public_feeds_at_wire_boundary() -> None:
         macro_url="https://wire.test/macro",
         sec_url="https://wire.test/sec/{cik}.json",
         rss_url="https://wire.test/feed.xml",
+        company_tickers_url="https://wire.test/company_tickers.json",
     )
 
     # When
@@ -242,17 +257,22 @@ async def test_http_adapters_parse_public_feeds_at_wire_boundary() -> None:
     candles = await source.candles("NVDA", "run-2")
     macro = await source.macro("DFF", "run-2")
     filings = await source.sec_submissions("0001045810", "run-2")
+    cik = await source.cik_for_ticker("nvda", "run-2")
+    msft_cik = await source.cik_for_ticker("MSFT", "run-2")
     news = await source.rss("run-2")
     await source.aclose()
 
     assert client.is_closed
 
     # Then
+    assert tuple(item.ticker for item in universe) == ("NVDA",)
     assert universe[0].market_cap == Decimal(1000)
     assert universe[0].volume == 4200
     assert candles[0].close == Decimal(151)
     assert macro[0].value == Decimal("4.25")
     assert filings[0].form == "8-K"
+    assert cik == "0001045810"
+    assert msft_cik == "0000789019"
     assert news[0].snippet == "Short snippet"
     assert all(
         item.provenance.captured_at == observed
@@ -300,6 +320,41 @@ async def test_ticker_news_builds_exact_google_search_query_and_parses_guid() ->
     assert requested[0].url.params["ceid"] == "US:en"
     assert items[0].guid == "story-1"
     assert items[0].provenance.source == "google-news-rss"
+
+
+@pytest.mark.anyio
+async def test_ticker_news_converts_rss_description_markup_to_plain_text() -> None:
+    # Given
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(
+            200,
+            request=request,
+            text=(
+                "<rss><channel><item><title>Tesla update</title>"
+                "<description>&lt;a href=&quot;https://news.example/story&quot;&gt;"
+                "BofA Maintains Tesla With Buy Rating&lt;/a&gt;&amp;nbsp;&amp;nbsp;"
+                "&lt;font color=&quot;#6f6f6f&quot;&gt;富途牛牛&lt;/font&gt;</description>"
+                "<link>https://news.example/story</link><guid>story-html</guid>"
+                "<pubDate>Fri, 10 Jul 2026 20:00:00 GMT</pubDate>"
+                "</item></channel></rss>"
+            ),
+        )
+
+    source = HttpMarketData(
+        build_http_client(transport=httpx2.MockTransport(handler)),
+        MarketDataEndpoints.defaults(),
+    )
+
+    # When
+    items = await source.ticker_news(
+        TickerNewsQuery(ticker="TSLA", company_name="Tesla, Inc."), "ticker-html"
+    )
+    await source.aclose()
+
+    # Then
+    assert items[0].snippet == "BofA Maintains Tesla With Buy Rating 富途牛牛"
+    assert "<a" not in items[0].snippet
+    assert "&nbsp;" not in items[0].snippet
 
 
 @pytest.mark.anyio

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
@@ -136,7 +136,11 @@ class _Domain:
         del as_of, max_age_minutes
         if self._macro is None:
             return None
-        return MacroSnapshot(regime=self._macro[0], risk_score=self._macro[1])
+        return MacroSnapshot(
+            regime=self._macro[0],
+            risk_score=self._macro[1],
+            as_of=datetime.combine(_AS_OF, time(), tzinfo=UTC),
+        )
 
     async def open_positions(self) -> tuple[OpenPosition, ...]:
         return self._positions
@@ -618,3 +622,97 @@ async def test_overconfidence_raises_the_bar_the_proposal_must_clear() -> None:
     # Then
     assert calm.verdicts[0].decision == "pass"
     assert overconfident.verdicts[0].decision == "reject"
+
+
+# --- 판단 서사와 계보 (잔여 작업 B) ------------------------------------------
+# 구 role_07이 채우던 bull_case·key_risk를 새 분석 잡이 버리고 있었다.
+# 프롬프트는 이미 그 내용을 만들므로, 구조화 출력에 실어 원장까지 잇는다.
+
+
+class _NarrativeAnalyzer(_Analyzer):
+    """An analyzer whose strategy output carries the narrative fields."""
+
+    async def analyze(
+        self, task: AnalysisTask, prompt: str, *, profile: str | None = None
+    ) -> AnalysisResult:
+        result = await super().analyze(task, prompt, profile=profile)
+        if task is not AnalysisTask.STRATEGY:
+            return result
+        return result.model_copy(
+            update={"bull_case": "20일 돌파와 거래량 확인", "key_risk": "시장 국면 반전"}
+        )
+
+
+@pytest.mark.anyio
+async def test_the_models_narrative_lands_in_the_ledger() -> None:
+    """모델이 만든 강세 논거·핵심 리스크가 원장에 앉는다 — 버리지 않는다."""
+    # Given
+    domain = _Domain((_subject("AAA", 1),))
+
+    # When
+    _ = await _job(domain, _NarrativeAnalyzer(strategy=0.9)).run(as_of=_AS_OF, session=_SESSION)
+
+    # Then
+    saved = domain.signals[0]
+    assert saved.bull_case == "20일 돌파와 거래량 확인"
+    assert saved.key_risk == "시장 국면 반전"
+
+
+@pytest.mark.anyio
+async def test_a_model_that_omits_the_narrative_does_not_kill_the_analysis() -> None:
+    """서사는 부가물이다 — 필드가 비어도 판단과 저장은 그대로 성립한다."""
+    # Given: 기본 _Analyzer는 서사 필드를 채우지 않는다
+    domain = _Domain((_subject("AAA", 1),))
+
+    # When
+    outcomes = (await _job(domain, _Analyzer(strategy=0.9)).run(
+        as_of=_AS_OF, session=_SESSION
+    )).outcomes
+
+    # Then
+    assert len(outcomes) == 1
+    assert domain.signals[0].bull_case is None
+    assert domain.signals[0].key_risk is None
+
+
+@pytest.mark.anyio
+async def test_the_macro_row_that_was_read_is_recorded_as_lineage() -> None:
+    """판단이 어느 국면 관측 위에서 내려졌는지가 원장에 남아야 한다."""
+    # Given
+    domain = _Domain((_subject("AAA", 1),), macro=("neutral", 0.3))
+
+    # When
+    _ = await _job(domain, _Analyzer(strategy=0.9)).run(as_of=_AS_OF, session=_SESSION)
+
+    # Then
+    assert domain.signals[0].src_macro_at == datetime.combine(_AS_OF, time(), tzinfo=UTC)
+
+
+@pytest.mark.anyio
+async def test_no_macro_means_no_fabricated_lineage() -> None:
+    """읽은 국면이 없으면 계보도 없다 — 지어내지 않는다."""
+    # Given
+    domain = _Domain((_subject("AAA", 1),))
+
+    # When
+    _ = await _job(domain, _Analyzer(strategy=0.9)).run(as_of=_AS_OF, session=_SESSION)
+
+    # Then
+    assert domain.signals[0].src_macro_at is None
+
+
+@pytest.mark.anyio
+async def test_model_lineage_is_recorded_with_the_judgement() -> None:
+    """어느 모델·어느 프롬프트 버전이 판단했는지는 재현의 전제다."""
+    # Given
+    domain = _Domain((_subject("AAA", 1),))
+
+    # When
+    _ = await _job(domain, _Analyzer(strategy=0.9)).run(as_of=_AS_OF, session=_SESSION)
+
+    # Then
+    saved = domain.signals[0]
+    assert saved.model_name == "test"
+    assert saved.model_provider == "mock"
+    assert saved.prompt_version == "v1"
+    assert saved.input_hash == "0" * 64

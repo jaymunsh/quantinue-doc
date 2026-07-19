@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "active_work_id": null,
+  "active_work_id": "automatic-multi-candidate-pipeline",
   "works": {
     "quantinue-mvp-implementation": {
       "work_id": "quantinue-mvp-implementation",
@@ -22,6 +22,30 @@
       "work_id": "quantinue-live-progress",
       "active_plan": ".omo/plans/quantinue-live-progress.md",
       "plan_name": "quantinue-live-progress",
+      "session_ids": ["codex:root"],
+      "status": "complete",
+      "worktree_path": null
+    },
+    "quantinue-capital-limit": {
+      "work_id": "quantinue-capital-limit",
+      "active_plan": ".omo/plans/quantinue-capital-limit.md",
+      "plan_name": "quantinue-capital-limit",
+      "session_ids": ["codex:root"],
+      "status": "complete",
+      "worktree_path": null
+    },
+    "first-mvp-visual-completion": {
+      "work_id": "first-mvp-visual-completion",
+      "active_plan": ".omo/plans/first-mvp-visual-completion.md",
+      "plan_name": "first-mvp-visual-completion",
+      "session_ids": ["codex:root"],
+      "status": "complete",
+      "worktree_path": null
+    },
+    "automatic-multi-candidate-pipeline": {
+      "work_id": "automatic-multi-candidate-pipeline",
+      "active_plan": ".omo/plans/automatic-multi-candidate-pipeline.md",
+      "plan_name": "automatic-multi-candidate-pipeline",
       "session_ids": ["codex:root"],
       "status": "complete",
       "worktree_path": null

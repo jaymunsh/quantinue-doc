@@ -29,7 +29,7 @@ class Provenance(BoundaryModel):
 class SecuritySnapshot(BoundaryModel):
     """One equity row returned by the universe screener."""
 
-    ticker: str = Field(min_length=1, max_length=12)
+    ticker: str = Field(pattern=r"^[A-Z0-9.-]{1,12}$")
     name: str = Field(min_length=1)
     market_cap: Decimal = Field(ge=0)
     last_price: Decimal = Field(ge=0)
@@ -117,6 +117,15 @@ class TickerNewsMarketData(Protocol):
 
     async def ticker_news(self, query: TickerNewsQuery, execution_id: str) -> tuple[NewsItem, ...]:
         """Return fetched ticker-search RSS items without selecting a representative."""
+        ...
+
+
+@runtime_checkable
+class SecIdentityMarketData(Protocol):
+    """Ticker-to-CIK lookup implemented by complete market-data adapters."""
+
+    async def cik_for_ticker(self, ticker: str, execution_id: str) -> str:
+        """Return one ten-digit SEC CIK for a canonical ticker."""
         ...
 
 

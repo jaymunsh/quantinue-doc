@@ -264,6 +264,8 @@ def test_the_page_separates_the_two_investment_profiles() -> None:
             side="buy",
             conviction=Decimal("0.800"),
             summary="공격형 판단",
+            bull_case="상대강도 상위",
+            key_risk="국면 반전",
             verdict_decision="pass",
             verdict_confidence=Decimal("0.700"),
             objection="반박 없음",
@@ -274,6 +276,8 @@ def test_the_page_separates_the_two_investment_profiles() -> None:
             side="hold",
             conviction=Decimal("0.500"),
             summary="안전형 판단",
+            bull_case=None,
+            key_risk=None,
             verdict_decision="reject",
             verdict_confidence=Decimal("0.600"),
             objection="거래량이 평균의 절반",
@@ -289,6 +293,9 @@ def test_the_page_separates_the_two_investment_profiles() -> None:
     assert "aggressive" in body
     assert "conservative" in body
     assert "거래량이 평균의 절반" in body
+    # 판단 서사(잔여 작업 B): 모델이 만든 근거·리스크가 화면에 도달한다.
+    assert "근거: 상대강도 상위" in body
+    assert "리스크: 국면 반전" in body
 
 
 def test_the_api_answers_with_the_same_day_the_page_draws() -> None:

@@ -139,6 +139,23 @@ class PostgresRunStore(PostgresDomainLifecycleMixin, PostgresRunReadMixin):
         await anyio.sleep(0.01)
         return await self.get_by_key(key)
 
+    async def seed_context(self, key: str, context: PipelineContext) -> None:
+        """Persist shared discovery state before candidate-specific work."""
+        connection = self._claims[key]
+        run_id = await run_id_for(connection, self._table("pipeline_runs"), key)
+        checkpoints = self._table("pipeline_checkpoints")
+        _ = await connection.execute(
+            insert(checkpoints)
+            .values(
+                run_id=run_id,
+                component="04",
+                payload=encode_context(context),
+                payload_hash=hashlib.sha256(CONTEXT_ADAPTER.dump_json(context)).hexdigest(),
+            )
+            .on_conflict_do_nothing(index_elements=["run_id", "component"])
+        )
+        await connection.commit()
+
     async def start_attempt(
         self, key: str, component: str, started_at: datetime
     ) -> PersistedAttempt:

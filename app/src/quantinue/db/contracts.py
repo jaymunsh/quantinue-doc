@@ -194,6 +194,10 @@ class RunStore(Protocol):
         """Wait for the current claimant."""
         ...
 
+    async def seed_context(self, key: str, context: PipelineContext) -> None:
+        """Persist shared discovery state before candidate-specific work."""
+        ...
+
     async def complete_stage(
         self,
         key: str,

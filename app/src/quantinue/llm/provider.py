@@ -225,6 +225,9 @@ def build_llm_analyzer(settings: Settings, openai_client: AsyncOpenAI | None = N
                 model_name,
                 provider=OpenAIProvider(openai_client=client),
                 profile=OpenAIModelProfile(
+                    supports_tools=False,
+                    supports_json_schema_output=True,
+                    default_structured_output_mode="native",
                     openai_chat_supports_max_completion_tokens=False,
                 ),
                 settings=model_settings,

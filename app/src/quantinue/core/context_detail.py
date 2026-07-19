@@ -185,6 +185,9 @@ class _DetailContext(Protocol):
     def account_id(self) -> int | None: ...
 
     @property
+    def technical_score(self) -> float | None: ...
+
+    @property
     def disclosure_score(self) -> float | None: ...
 
     @property
@@ -276,7 +279,6 @@ def _role_details(context: _DetailContext) -> tuple[RoleDetail, ...]:
     news_output = context.news_output
     disclosure_analysis = context.disclosure_analysis
     news_analysis = context.news_analysis
-    strategy = context.strategy_output
     critic = context.critic_verdict
     order = context.order
     review = context.review
@@ -312,13 +314,13 @@ def _role_details(context: _DetailContext) -> tuple[RoleDetail, ...]:
             facts=_news_facts(news, news_output, news_analysis),
             news_selection=_news_selection(context.news_sources, news),
         ),
-        _role("07", "전략가", completed, _strategy_facts(strategy)),
+        _role("07", "전략가", completed, _strategy_facts(context)),
         _role("08", "비평가", completed, _critic_facts(critic)),
         _role("09", "리스크·포트폴리오", completed, _risk_facts(context)),
         _role("10", "주문·체결", completed, _order_facts(order)),
         _role(
             "11",
-            "T+5 리뷰",
+            "리뷰 예약",
             completed,
             _review_facts(review),
             (
@@ -603,10 +605,27 @@ def _news_facts(
     )
 
 
-def _strategy_facts(value: _StrategyDetailOutput | None) -> tuple[tuple[str, str], ...]:
+def _strategy_facts(context: _DetailContext) -> tuple[tuple[str, str], ...]:
+    value = context.strategy_output
     if value is None:
         return ()
+    input_scores = (
+        context.technical_score,
+        context.disclosure_score,
+        context.news_score,
+    )
+    model_score = None
+    if all(score is not None for score in input_scores):
+        model_score = round(
+            value.conviction * 4 - sum(score for score in input_scores if score is not None),
+            3,
+        )
     return _facts(
+        ("기술 입력 점수", context.technical_score),
+        ("공시 입력 점수", context.disclosure_score),
+        ("뉴스 입력 점수", context.news_score),
+        ("모델 기여 점수(역산)", model_score),
+        ("확신도 산식", "(기술 + 공시 + 뉴스 + 모델) / 4"),
         ("제안", value.side),
         ("확신도", value.conviction),
         ("코드 게이트", "통과" if value.gate_passed else "차단"),

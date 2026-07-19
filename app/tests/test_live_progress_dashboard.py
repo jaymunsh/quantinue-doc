@@ -63,7 +63,7 @@ def test_terminal_dashboard_does_not_include_live_polling_script() -> None:
     # Then
     assert response.status_code == 200
     assert 'id="live-pipeline"' not in response.text
-    assert 'fetch("/api/runs"' not in response.text
+    assert "data-live-run-id" not in response.text
 
 
 def test_dashboard_prefers_an_active_same_minute_run_over_terminal_history() -> None:

@@ -19,7 +19,7 @@ PUBLIC_UNIVERSE_LIMIT: Final = 50
 
 
 def _select_public_universe(
-    snapshots: tuple[SecuritySnapshot, ...], requested_ticker: str
+    snapshots: tuple[SecuritySnapshot, ...], requested_ticker: str | None
 ) -> tuple[SecuritySnapshot, ...]:
     unique: dict[str, SecuritySnapshot] = {}
     for snapshot in snapshots:
@@ -30,6 +30,8 @@ def _select_public_universe(
         field = "universe"
         reason = "no eligible securities"
         raise ValidationFailureError(field, reason)
+    if requested_ticker is None:
+        return eligible[:PUBLIC_UNIVERSE_LIMIT]
     requested = unique.get(requested_ticker)
     if requested is None:
         field = "universe"
@@ -107,7 +109,10 @@ class UniverseScreener:
                 evidence=evidence,
             )
         snapshots = await self.market_data.screener(str(context.run_id))
-        selected = _select_public_universe(snapshots, context.request.ticker)
+        selected = _select_public_universe(
+            snapshots,
+            None if context.request.automatic else context.request.ticker,
+        )
         snapshot = selected[0]
         result = UniverseScreenerOutput(
             run_id=context.run_id,

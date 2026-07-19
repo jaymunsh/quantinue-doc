@@ -45,3 +45,20 @@ async def test_pipeline_returns_existing_run_for_same_cycle() -> None:
     # Then
     assert second.run_id == first.run_id
     assert len(second.stages) == 11
+
+
+@pytest.mark.anyio
+async def test_screening_discovers_once_and_completes_fixture_candidate() -> None:
+    # Given
+    orchestrator = build_default_orchestrator()
+    request = PipelineRequest(
+        ticker="NVDA",
+        cycle_ts=datetime(2026, 7, 13, 14, 0, tzinfo=UTC),
+    )
+
+    # When
+    results = await orchestrator.run_screening(request)
+
+    # Then
+    assert tuple(run.ticker for run in results) == ("NVDA",)
+    assert tuple(len(run.stages) for run in results) == (11,)

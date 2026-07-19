@@ -226,3 +226,37 @@ async def test_pipeline_persists_real_domain_ids_and_reconciles_reserved_order()
         role.component
         for role in TerminalRunDetailView.model_validate_json(terminal_detail.content).roles
     ) == tuple(f"{component:02d}" for component in range(1, 12))
+
+
+@pytest.mark.anyio
+@pytest.mark.skipif(_URL is None, reason="disposable PostgreSQL URL not provided")
+async def test_automatic_candidate_seeds_discovery_domain_rows_before_role08() -> None:
+    assert _URL is not None
+    store = PostgresRunStore(_URL)
+    await store.initialize()
+    orchestrator = PipelineOrchestrator(
+        build_roles(DeterministicAnalyzer(), MockBroker(), store=store), store
+    )
+    cycle = datetime(2026, 7, 3, 13, 0, tzinfo=UTC)
+
+    runs = await orchestrator.run_screening(PipelineRequest(ticker="NVDA", cycle_ts=cycle))
+
+    assert len(runs) == 1
+    assert runs[0].automatic is True
+    assert runs[0].candidate_rank == 1
+    engine = create_async_engine(_URL)
+    try:
+        async with engine.connect() as connection:
+            signal_query = text(
+                "SELECT count(1) FROM tb_strategist_signals WHERE ticker=:t AND cycle_ts=:c"
+            )
+            signal_count = _INT.validate_python(
+                await connection.scalar(
+                    signal_query,
+                    {"t": "NVDA", "c": cycle},
+                )
+            )
+            assert signal_count == 1
+    finally:
+        await engine.dispose()
+        await store.close()

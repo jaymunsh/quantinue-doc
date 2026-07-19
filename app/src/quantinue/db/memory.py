@@ -107,6 +107,10 @@ class InMemoryRunStore(MemoryCompletedBuyMixin):
             await event.wait()
         return self._runs.get(key, terminal)
 
+    async def seed_context(self, key: str, context: PipelineContext) -> None:
+        """Persist shared discovery state before candidate-specific work."""
+        self._contexts[key] = context
+
     async def start_attempt(
         self, key: str, component: str, started_at: datetime
     ) -> PersistedAttempt:

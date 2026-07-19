@@ -10,6 +10,7 @@ from quantinue.db.domain_records import (
     CompletedBuyWrite,
     CriticVerdictWrite,
     OrderReconciliation,
+    SourceRecordsWrite,
     StrategistSignalWrite,
 )
 
@@ -70,9 +71,23 @@ async def persist_domain_stage(
         await domain.save_macro(result.macro_output)
     if component == "08":
         price = Decimal(str(result.last_price or 0))
+        daily_pick = next(
+            (
+                pick
+                for pick in (
+                    result.daily_screener_output.picks
+                    if result.daily_screener_output is not None
+                    else ()
+                )
+                if pick.ticker == result.request.ticker
+            ),
+            None,
+        )
         signal = StrategistSignalWrite(
             run_id=str(result.run_id),
-            trade_date=result.request.cycle_ts.date(),
+            trade_date=(
+                daily_pick.trade_date if daily_pick is not None else result.request.cycle_ts.date()
+            ),
             ticker=result.request.ticker,
             cycle_ts=result.request.cycle_ts,
             side=result.side or "hold",
@@ -83,8 +98,16 @@ async def persist_domain_stage(
             disclosure_score=Decimal(str(result.disclosure_score or 0)),
             news_score=Decimal(str(result.news_score or 0)),
         )
-        if result.disclosure_source is not None and result.news_source is not None:
-            await domain.save_source_records(signal, result.disclosure_source, result.news_source)
+        if result.disclosure_source is not None and result.news_sources:
+            await domain.save_source_records(
+                SourceRecordsWrite(
+                    signal=signal,
+                    disclosures=result.disclosure_sources or (result.disclosure_source,),
+                    news=result.news_sources,
+                    representative_disclosure=result.disclosure_source,
+                    representative_news=result.news_source,
+                )
+            )
         signal_id = await domain.save_signal(signal)
         account_id = await domain.save_account(account)
         _ = await domain.save_verdict(

@@ -78,7 +78,16 @@ async def test_mock_build_path_returns_the_common_schema_and_metadata() -> None:
 
     result = await analyzer.analyze(AnalysisTask.DISCLOSURE, "same contract input")
 
-    assert result.model_dump().keys() == {"score", "label", "reason", "metadata"}
+    # bull_case·key_risk는 전략 태스크만 채우는 서사 필드다(잔여 작업 B) —
+    # 스키마에는 있되 서사 없는 태스크에서는 None이어야 한다.
+    assert result.model_dump().keys() == {
+        "score",
+        "label",
+        "reason",
+        "bull_case",
+        "key_risk",
+        "metadata",
+    }
     assert result.metadata.input_hash == sha256(b"same contract input").hexdigest()
     assert result.metadata.prompt_version
     assert result.metadata.policy_version
@@ -201,7 +210,16 @@ async def test_remote_build_paths_share_schema_and_metadata_contract(mode: LlmMo
         analyzer = build_llm_analyzer(Settings.model_validate(values), openai_client=sdk)
         result = await analyzer.analyze(AnalysisTask.DISCLOSURE, "same contract input")
 
-    assert result.model_dump().keys() == {"score", "label", "reason", "metadata"}
+    # bull_case·key_risk는 전략 태스크만 채우는 서사 필드다(잔여 작업 B) —
+    # 스키마에는 있되 서사 없는 태스크에서는 None이어야 한다.
+    assert result.model_dump().keys() == {
+        "score",
+        "label",
+        "reason",
+        "bull_case",
+        "key_risk",
+        "metadata",
+    }
     assert result.metadata.model == "contract-model"
     assert result.metadata.input_hash == sha256(b"same contract input").hexdigest()
     assert result.metadata.prompt_version

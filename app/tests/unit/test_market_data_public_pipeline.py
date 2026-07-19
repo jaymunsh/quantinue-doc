@@ -57,6 +57,9 @@ def _public_response(request: httpx2.Request) -> httpx2.Response:
         return httpx2.Response(200, json=payload, request=request)
     if host == "fred.stlouisfed.org":
         return httpx2.Response(200, text="DATE,DFF\n2026-07-10,4.25\n", request=request)
+    if host == "www.sec.gov" and request.url.path.endswith("company_tickers.json"):
+        payload = {"0": {"cik_str": 1045810, "ticker": "NVDA", "title": "NVIDIA CORP"}}
+        return httpx2.Response(200, json=payload, request=request)
     if host == "data.sec.gov":
         recent = {
             "accessionNumber": ["0001"],
@@ -74,12 +77,12 @@ def _public_response(request: httpx2.Request) -> httpx2.Response:
             "<guid>nvda-news-1</guid>"
             "<pubDate>Fri, 10 Jul 2026 20:00:00 GMT</pubDate></item></channel></rss>"
         )
-        return httpx2.Response(200, text=rss, request=request)
-    rss = (
-        "<rss><channel><item><title>NVIDIA update</title>"
-        "<link>https://example.test/nvda</link><description>Short snippet</description>"
-        "<pubDate>Fri, 10 Jul 2026 20:00:00 GMT</pubDate></item></channel></rss>"
-    )
+    else:
+        rss = (
+            "<rss><channel><item><title>NVIDIA update</title>"
+            "<link>https://example.test/nvda</link><description>Short snippet</description>"
+            "<pubDate>Fri, 10 Jul 2026 20:00:00 GMT</pubDate></item></channel></rss>"
+        )
     return httpx2.Response(200, text=rss, request=request)
 
 

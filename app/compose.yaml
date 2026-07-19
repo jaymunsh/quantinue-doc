@@ -21,12 +21,13 @@ services:
   web:
     build: .
     environment:
+      QUANTINUE_DATA_MODE: ${QUANTINUE_DATA_MODE:-public}
       QUANTINUE_DATABASE_MODE: postgres
       QUANTINUE_DATABASE_URL: postgresql+asyncpg://quantinue:quantinue@db:5432/quantinue
       QUANTINUE_LLM_MODE: local
-      QUANTINUE_LOCAL_LLM_BASE_URL: http://host.docker.internal:11434/v1
-      QUANTINUE_LOCAL_LLM_API_KEY: local-not-secret
-      QUANTINUE_LOCAL_LLM_MODEL: qwen3.6:35b-a3b-nvfp4
+      QUANTINUE_LOCAL_LLM_BASE_URL: ${QUANTINUE_LOCAL_LLM_BASE_URL:-http://host.docker.internal:8888/v1}
+      QUANTINUE_LOCAL_LLM_API_KEY: ${QUANTINUE_LOCAL_LLM_API_KEY:?set QUANTINUE_LOCAL_LLM_API_KEY in .env}
+      QUANTINUE_LOCAL_LLM_MODEL: ${QUANTINUE_LOCAL_LLM_MODEL:-Qwen3.6-35B-A3B-OptiQ-4bit}
       QUANTINUE_LLM_TIMEOUT_SECONDS: "300"
       QUANTINUE_BROKER_MODE: mock
       QUANTINUE_TRADING_ENABLED: "false"

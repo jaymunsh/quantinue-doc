@@ -266,6 +266,8 @@ def _judgement(
         side=side,
         conviction=Decimal(conviction),
         summary="fixture",
+        bull_case=None,
+        key_risk=None,
         verdict_decision=verdict,
         verdict_confidence=None if verdict is None else Decimal("0.700"),
         objection=None if verdict is None else "반박문",

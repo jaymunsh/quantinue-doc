@@ -242,6 +242,8 @@
               <span class="judgement-verdict">{{ item.verdict_decision or "평결 없음" }}</span>
             </div>
             <p class="judgement-summary">{{ item.summary }}</p>
+            {% if item.bull_case %}<p class="judgement-bull">근거: {{ item.bull_case }}</p>{% endif %}
+            {% if item.key_risk %}<p class="judgement-risk">리스크: {{ item.key_risk }}</p>{% endif %}
             {% if item.objection %}<p class="judgement-objection">반박: {{ item.objection }}</p>{% endif %}
           </li>
           {% endfor %}

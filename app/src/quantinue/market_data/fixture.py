@@ -83,6 +83,11 @@ class FixtureMarketData:
             ),
         )
 
+    async def cik_for_ticker(self, ticker: str, execution_id: str) -> str:
+        """Return the fixture company's SEC identity."""
+        del ticker, execution_id
+        return "0001045810"
+
     async def rss(self, execution_id: str) -> tuple[NewsItem, ...]:
         """Return one stable RSS item."""
         return (

@@ -307,3 +307,5 @@ class ControlRoomRun(BaseModel):
     detail: TerminalRunDetailView
     order: OrderView | None
     review: ReviewView | None
+    automatic: bool = False
+    candidate_rank: int | None = Field(default=None, ge=1, le=50)

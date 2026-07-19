@@ -5,7 +5,11 @@ from fastapi.testclient import TestClient
 from pydantic import TypeAdapter
 from typing_extensions import override
 
-from quantinue.api.presentation import control_room_run, source_reference_view
+from quantinue.api.presentation import (
+    control_room_run,
+    source_reference_view,
+    terminal_run_detail_view,
+)
 from quantinue.api.schemas import ControlRoomRun, TerminalRunDetailView
 from quantinue.core.contracts import PipelineRun, RunId, RunStatus
 from quantinue.core.terminal_detail import (
@@ -54,6 +58,33 @@ def test_role_detail_status_tracks_latest_runtime_attempt() -> None:
     )
 
     assert view.detail.roles[0].status == "failed"
+
+
+def test_terminal_detail_view_plain_texts_legacy_news_markup() -> None:
+    # Given
+    detail = TerminalRunDetail(
+        news=CollectionFact(
+            title="Tesla update",
+            summary=(
+                '<a href="https://news.example/story">BofA Maintains Tesla</a>'
+                '&nbsp;<font color="#6f6f6f">富途牛牛</font>'
+            ),
+        ),
+        roles=(
+            RoleDetail(
+                component="06",
+                title="뉴스 분석",
+                facts=(("요약", '<a href="https://news.example/story">Tesla story</a>'),),
+            ),
+        ),
+    )
+
+    # When
+    view = terminal_run_detail_view(detail)
+
+    # Then
+    assert view.news.summary == "BofA Maintains Tesla 富途牛牛"
+    assert view.roles[0].facts == (("요약", "Tesla story"),)
 
 
 @pytest.mark.parametrize(

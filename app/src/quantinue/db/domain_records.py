@@ -6,6 +6,8 @@ from decimal import Decimal
 
 from typing_extensions import override
 
+from quantinue.core.contracts import DisclosureSourceRecord, NewsSourceRecord
+
 
 @dataclass(frozen=True, slots=True)
 class StrategistSignalWrite:
@@ -23,6 +25,17 @@ class StrategistSignalWrite:
     disclosure_score: Decimal = Decimal(0)
     news_score: Decimal = Decimal(0)
     inv_type: str = "conservative"
+
+
+@dataclass(frozen=True, slots=True)
+class SourceRecordsWrite:
+    """Complete raw source collections plus their canonical representatives."""
+
+    signal: StrategistSignalWrite
+    disclosures: tuple[DisclosureSourceRecord, ...]
+    news: tuple[NewsSourceRecord, ...]
+    representative_disclosure: DisclosureSourceRecord
+    representative_news: NewsSourceRecord | None
 
 
 @dataclass(frozen=True, slots=True)

@@ -2,26 +2,17 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, ClassVar, Final, Protocol
 
 import anyio
-import httpx2
 import structlog
-from pydantic import ValidationError
-from sqlalchemy.exc import SQLAlchemyError
 
 from quantinue.core.context_detail import terminal_detail_from_context
-from quantinue.core.contracts import PipelineContext, PipelineRequest, PipelineRun, RunStatus
+from quantinue.core.contracts import PipelineContext, PipelineRequest, PipelineRun, RunId, RunStatus
 from quantinue.core.errors import (
-    AuthenticationFailureError,
-    HardRiskFailureError,
-    HttpFailureError,
     MissingStageDataError,
-    RetryExhaustedError,
-    TradingDisabledError,
-    TransientFailureError,
-    ValidationFailureError,
 )
 from quantinue.db.store import AttemptFailure
 from quantinue.orchestration.domain_lifecycle import DomainLifecycle, NoopDomainLifecycle
@@ -32,6 +23,7 @@ from quantinue.orchestration.policy import (
     PipelinePolicy,
 )
 from quantinue.orchestration.retry import RetryPolicy, Sleeper
+from quantinue.roles.role_02_technical_analysis.service import technical_score
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -68,6 +60,80 @@ class AsyncCloseable(Protocol):
         ...
 
 
+def _rebind_candidate_seed(
+    seed: PipelineContext,
+    request: PipelineRequest,
+    run_id: RunId,
+) -> PipelineContext:
+    source_run_id = str(seed.run_id)
+    target_run_id = str(run_id)
+
+    def evidence_ids(values: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(value.replace(source_run_id, target_run_id, 1) for value in values)
+
+    evidence_trace = tuple(
+        item.model_copy(
+            update={
+                "run_id": run_id,
+                "evidence_id": item.evidence_id.replace(source_run_id, target_run_id, 1),
+                "parent_evidence_ids": evidence_ids(item.parent_evidence_ids),
+            }
+        )
+        for item in seed.evidence_trace
+    )
+    universe_output = seed.universe_output
+    if universe_output is not None:
+        universe_output = universe_output.model_copy(
+            update={
+                "run_id": target_run_id,
+                "members": tuple(
+                    item.model_copy(update={"evidence_ids": evidence_ids(item.evidence_ids)})
+                    for item in universe_output.members
+                ),
+            }
+        )
+    technical_output = seed.technical_output
+    if technical_output is not None:
+        technical_output = technical_output.model_copy(
+            update={
+                "run_id": target_run_id,
+                "snapshots": tuple(
+                    item.model_copy(update={"evidence_ids": evidence_ids(item.evidence_ids)})
+                    for item in technical_output.snapshots
+                ),
+            }
+        )
+    daily_output = seed.daily_screener_output
+    if daily_output is not None:
+        daily_output = daily_output.model_copy(
+            update={
+                "run_id": target_run_id,
+                "picks": tuple(
+                    item.model_copy(update={"evidence_ids": evidence_ids(item.evidence_ids)})
+                    for item in daily_output.picks
+                ),
+            }
+        )
+    macro_output = seed.macro_output
+    if macro_output is not None:
+        macro_output = macro_output.model_copy(
+            update={
+                "run_id": target_run_id,
+                "evidence_ids": evidence_ids(macro_output.evidence_ids),
+            }
+        )
+    return replace(
+        seed,
+        run_id=run_id,
+        request=request,
+        evidence_trace=evidence_trace,
+        universe_output=universe_output,
+        technical_output=technical_output,
+        daily_screener_output=daily_output,
+        macro_output=macro_output,
+    )
+
+
 class PipelineOrchestrator:
     """Run roles sequentially and persist one idempotent outcome."""
 
@@ -102,6 +168,59 @@ class PipelineOrchestrator:
 
     async def run(self, request: PipelineRequest) -> PipelineRun:
         """Execute all roles or return a prior run for the same cycle."""
+        return await self._run_claimed(request)
+
+    async def run_screening(self, request: PipelineRequest) -> tuple[PipelineRun, ...]:
+        """Discover once, then execute the candidate-specific roles in rank order."""
+        request = request.model_copy(update={"automatic": True})
+        discovery = PipelineContext(request=request)
+        for role in self._roles[:4]:
+            previous = discovery
+            discovery = await _execute_before_deadline(
+                role, discovery, self._policy.role_timeout_seconds
+            )
+            discovery = await self._domain_lifecycle.stage_completed(
+                role.component, previous, discovery
+            )
+        daily = discovery.daily_screener_output
+        technical = discovery.technical_output
+        if daily is None or technical is None:
+            component = "03"
+            field_name = "daily_screener_output"
+            raise MissingStageDataError(component, field_name)
+        snapshots = {item.ticker: item for item in technical.snapshots}
+        completed: list[PipelineRun] = []
+        for pick in daily.picks:
+            snapshot = snapshots.get(pick.ticker)
+            if snapshot is None:
+                component = "03"
+                field_name = f"technical_snapshot:{pick.ticker}"
+                raise MissingStageDataError(component, field_name)
+            candidate_request = PipelineRequest(
+                ticker=pick.ticker,
+                cycle_ts=request.cycle_ts,
+                automatic=True,
+            )
+            seed = replace(
+                discovery,
+                request=candidate_request,
+                last_price=snapshot.close,
+                technical_score=technical_score(snapshot),
+                is_daily_pick=True,
+                candidate_rank=pick.rank,
+            )
+            try:
+                completed.append(await self._run_claimed(candidate_request, seed=seed))
+            except Exception:  # noqa: BLE001 - candidate boundary isolates failed siblings.
+                await self._logger.aexception("pipeline.candidate.failed", ticker=pick.ticker)
+        return tuple(completed)
+
+    async def _run_claimed(
+        self,
+        request: PipelineRequest,
+        *,
+        seed: PipelineContext | None = None,
+    ) -> PipelineRun:
         key = str(deterministic_run_key(request.ticker, request.cycle_ts))
         claim = await self._store.claim(key, request, resume_failed=self._policy.resume_failed)
         while not claim.acquired:
@@ -115,11 +234,18 @@ class PipelineOrchestrator:
         if context is None:
             msg = "acquired run claim must include a checkpoint context"
             raise RuntimeError(msg)
-        await self._logger.ainfo(
-            "pipeline.run.started", run_id=context.run_id, ticker=request.ticker
-        )
         released = False
         try:
+            if seed is not None and not context.stages:
+                context = _rebind_candidate_seed(seed, request, context.run_id)
+                for component in ("01", "03", "04"):
+                    context = await self._domain_lifecycle.stage_completed(
+                        component, context, context
+                    )
+                await self._store.seed_context(key, context)
+            await self._logger.ainfo(
+                "pipeline.run.started", run_id=context.run_id, ticker=request.ticker
+            )
             for role in self._roles[len(context.stages) :]:
                 context = await self._execute_role(key, context, role)
             run = context.to_run()
@@ -157,28 +283,7 @@ class PipelineOrchestrator:
                     role.component, context, result
                 )
                 await self._store.complete_stage(key, result, attempt)
-            except (
-                AuthenticationFailureError,
-                HardRiskFailureError,
-                HttpFailureError,
-                MissingStageDataError,
-                RetryExhaustedError,
-                TradingDisabledError,
-                TransientFailureError,
-                ValidationFailureError,
-                ValidationError,
-                httpx2.TransportError,
-                ConnectionError,
-                OSError,
-                RuntimeError,
-                TypeError,
-                AttributeError,
-                LookupError,
-                ArithmeticError,
-                AssertionError,
-                TimeoutError,
-                SQLAlchemyError,
-            ) as error:
+            except Exception as error:
                 decision = classify_failure(error)
                 has_budget = attempt_no < retry.max_attempts
                 if decision.retryable and has_budget:
@@ -216,6 +321,8 @@ class PipelineOrchestrator:
             detail=terminal_detail_from_context(context),
             order=context.order,
             review=context.review,
+            automatic=context.request.automatic,
+            candidate_rank=context.candidate_rank,
         )
         await self._store.finish_run(key, failed, resumable=resumable)
 

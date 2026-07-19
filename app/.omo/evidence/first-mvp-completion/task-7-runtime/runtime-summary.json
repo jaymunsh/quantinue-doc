@@ -1,0 +1,56 @@
+{
+  "verdict": "PASS",
+  "public_local_memory": {
+    "run_id": "155fe0d9b6814e819dd78925d02079ec",
+    "status": "completed",
+    "stage_count": 11,
+    "selection_counts": {"universe": 50, "technical": 20, "daily": 10},
+    "news": {
+      "fetched": 100,
+      "relevant": 93,
+      "excluded": 7,
+      "representative": 1,
+      "observed_reasons": ["ticker_title", "ticker_snippet", "below_minimum_score"]
+    },
+    "model": {"provider": "local", "name": "qwen3.6:35b-a3b-nvfp4"},
+    "broker": "mock",
+    "external_trading": false,
+    "decision": "hold",
+    "order": null,
+    "portfolio_cash": "1000000.00"
+  },
+  "postgres_compose": {
+    "project": "app",
+    "database_host_port": 5444,
+    "run_id": "416846b9a4cb461f8f4a73bbd6c10a5c",
+    "status": "completed",
+    "stage_count": 11,
+    "decision": "buy",
+    "order_status": "filled",
+    "ticker": "NVDA",
+    "quantity": 1,
+    "fill_price": "128.40",
+    "cash_after": "999871.60",
+    "restart_equality": true,
+    "local_container_connectivity": {
+      "run_id": "840be9bb03ef4aac964ae23793593b10",
+      "health_llm": "local",
+      "health_broker": "mock",
+      "external_trading": false,
+      "ollama_http_200_calls": 3,
+      "model": "qwen3.6:35b-a3b-nvfp4"
+    }
+  },
+  "browser": {
+    "viewports": [1440, 768, 375],
+    "horizontal_overflow": false,
+    "console_or_page_errors": 0,
+    "public_news_rows": 100,
+    "persisted_fill_visible": true
+  },
+  "safety": {
+    "alpaca_requests": 0,
+    "prohibited_host_port_inspected": false,
+    "secrets_recorded": false
+  }
+}

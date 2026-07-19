@@ -7,13 +7,13 @@ from sqlalchemy import MetaData, Table, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from quantinue.core.contracts import DisclosureSourceRecord, NewsSourceRecord
 from quantinue.db.contracts import AppOrderExposureStatus
 from quantinue.db.domain_records import (
     AccountWrite,
     CompletedBuyWrite,
     CriticVerdictWrite,
     OrderReconciliation,
+    SourceRecordsWrite,
     StrategistSignalWrite,
 )
 from quantinue.db.domain_sources import save_source_records
@@ -156,12 +156,7 @@ class PostgresDomainRepository:
                 }
             ).value
 
-    async def save_source_records(
-        self,
-        value: StrategistSignalWrite,
-        disclosure_source: DisclosureSourceRecord,
-        news_source: NewsSourceRecord,
-    ) -> None:
+    async def save_source_records(self, value: SourceRecordsWrite) -> None:
         """Delegate the atomic source transaction to its focused module."""
         tables = (
             self._table("tb_disclosure"),
@@ -169,7 +164,7 @@ class PostgresDomainRepository:
             self._table("tb_disclosure_signal"),
             self._table("tb_news_signal"),
         )
-        await save_source_records(self._engine, tables, value, disclosure_source, news_source)
+        await save_source_records(self._engine, tables, value)
 
     async def save_verdict(self, value: CriticVerdictWrite) -> int:
         """Insert or reuse the unique critic verdict for a signal."""

@@ -48,9 +48,9 @@ PACKAGE_DIR = Path(__file__).parent
 DASHBOARD_CSS = (PACKAGE_DIR / "web" / "static" / "dashboard.css").read_text(encoding="utf-8")
 
 
-def _pipeline_request(ticker: str) -> PipelineRequest:
+def _pipeline_request(ticker: str, *, automatic: bool = False) -> PipelineRequest:
     cycle_ts = datetime.now(UTC).replace(second=0, microsecond=0)
-    return PipelineRequest(ticker=ticker, cycle_ts=cycle_ts)
+    return PipelineRequest(ticker=ticker, cycle_ts=cycle_ts, automatic=automatic)
 
 
 def create_app(  # noqa: C901, PLR0915
@@ -118,7 +118,7 @@ def create_app(  # noqa: C901, PLR0915
     app.include_router(build_run_detail_router(selected_store))
 
     async def recent_control_room_runs() -> tuple[ControlRoomRun, ...]:
-        runs = await selected_store.list_recent()
+        runs = await selected_store.list_recent(limit=100)
         active_runs = await selected_store.list_active()
         view_items: list[ControlRoomRun] = []
         for run in runs:
@@ -151,7 +151,7 @@ def create_app(  # noqa: C901, PLR0915
     @app.get("/", response_class=HTMLResponse)
     async def dashboard(request: Request, error: str | None = None) -> HTMLResponse:
         views = await recent_control_room_runs()
-        durable_runs = await selected_store.list_recent()
+        durable_runs = await selected_store.list_recent(limit=100)
         durable_account_id = next(
             (run.account_id for run in durable_runs if run.account_id is not None),
             None,
@@ -170,6 +170,23 @@ def create_app(  # noqa: C901, PLR0915
             )
         )
         completed_stages = views[0].progress if views else 0
+        latest_screening_cycle = next(
+            (item.cycle_ts for item in views if item.automatic and item.candidate_rank is not None),
+            None,
+        )
+        screening_runs = tuple(
+            sorted(
+                (
+                    item
+                    for item in views
+                    if latest_screening_cycle is not None
+                    and item.cycle_ts == latest_screening_cycle
+                    and item.automatic
+                    and item.candidate_rank is not None
+                ),
+                key=lambda item: item.candidate_rank or 51,
+            )
+        )
         return templates.TemplateResponse(
             request=request,
             name="dashboard.html",
@@ -177,6 +194,7 @@ def create_app(  # noqa: C901, PLR0915
                 "runs": views,
                 "latest": views[0] if views else None,
                 "completed_stages": completed_stages,
+                "screening_runs": screening_runs,
                 "exposure_summary": exposure_summary,
                 "portfolio": portfolio,
                 "dashboard_css": DASHBOARD_CSS,
@@ -189,19 +207,26 @@ def create_app(  # noqa: C901, PLR0915
     @app.post("/runs", response_class=RedirectResponse)
     async def run_from_form(
         request: Request,
-        ticker: Annotated[str, Form()] = "NVDA",
+        ticker: Annotated[str | None, Form()] = None,
         control_room_token: Annotated[str, Form()] = "",
     ) -> RedirectResponse:
         if access is not None:
             access.require(request, control_room_token)
-        try:
-            payload = RunCreate(ticker=ticker)
-        except ValidationError:
-            return RedirectResponse(
-                url="/?error=invalid_ticker", status_code=status.HTTP_303_SEE_OTHER
+        if ticker is None:
+            request_payload = _pipeline_request(
+                selected_settings.default_ticker,
+                automatic=True,
             )
-        request_payload = _pipeline_request(payload.ticker)
-        _ = _live_run_runtime().start(request_payload)
+            _ = _live_run_runtime().start_screening(request_payload)
+        else:
+            try:
+                payload = RunCreate(ticker=ticker)
+            except ValidationError:
+                return RedirectResponse(
+                    url="/?error=invalid_ticker", status_code=status.HTTP_303_SEE_OTHER
+                )
+            request_payload = _pipeline_request(payload.ticker)
+            _ = _live_run_runtime().start(request_payload)
         return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
     @app.post("/api/runs", response_model=PipelineRun, status_code=status.HTTP_201_CREATED)

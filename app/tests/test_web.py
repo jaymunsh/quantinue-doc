@@ -48,6 +48,16 @@ class StateRunStore(InMemoryRunStore):
         return (self._state_attempt,) if run_id == self._state_run.run_id else ()
 
 
+class MultipleRunsStore(InMemoryRunStore):
+    def __init__(self, runs: tuple[PipelineRun, ...]) -> None:
+        super().__init__()
+        self._recent_runs = runs
+
+    @override
+    async def list_recent(self, limit: int = 20) -> tuple[PipelineRun, ...]:
+        return self._recent_runs[:limit]
+
+
 class ExposureSummaryStore(InMemoryRunStore):
     def __init__(self, summary: AppOrderExposureSummary, account_id: int) -> None:
         super().__init__()
@@ -170,9 +180,170 @@ def test_dashboard_explains_every_pipeline_role() -> None:
         dashboard = client.get("/")
 
     assert dashboard.status_code == 200
-    assert "1차 MVP 분석 유니버스 50개를 안정적으로 선정" in dashboard.text
-    assert "일봉 가격과 거래량으로 추세·모멘텀·변동성 지표" in dashboard.text
-    assert "T+1~T+5 가격을 추적" in dashboard.text
+    expected_copy = (
+        "1차 MVP 분석 유니버스 50개를 안정적으로 선정",
+        "일봉 가격과 거래량으로 추세·모멘텀·변동성 지표",
+        "T+1~T+5 가격과 수익률",
+        "이 화면은 이렇게 읽으면 됩니다",
+        "공시를 어디서, 어떤 기준으로 봤나",
+        "뉴스를 어디서, 어떤 기준으로 골랐나",
+        "전략가는 무엇을 근거로 결론냈나",
+        "비평가는 어떤 관점으로 반박했나",
+        "리스크와 포트폴리오는 어떻게 주문안을 만들었나",
+        "주문과 체결은 무엇을 확인했나",
+        "T+5 리뷰 완료가 아니라 대상 등록 완료",
+        "리뷰 예약",
+        "등록 완료",
+        "운영자가 처리 API를 호출하면 T+1~T+5",
+        "내장 시연 데이터",
+        "단일 티커 진단 실행 · NVDA",
+        "데이터 계보와 계산 규칙",
+        "VOL_RATIO=Vₜ/AVG(V₂₀)",
+        "tb_disclosure",
+        "tb_disclosure_signal",
+        "tb_news",
+        "tb_news_signal",
+        "tb_strategist_signals",
+        "tb_critic_verdict",
+        "DB 스키마와 실행 전달값 보기",
+        "rep_news_id",
+        "전략가는 DB를 다시 조회하지 않고",
+        "뉴스 입력 점수",
+        "이번 실행 상세값",
+        "전체 뉴스 선별 결과",
+        "펼쳐 보기",
+    )
+    assert all(copy in dashboard.text for copy in expected_copy)
+    assert 'class="data-disclosure ' in dashboard.text
+    assert "tb_review_price_snapshots" in dashboard.text
+    assert 'class="page-toc"' in dashboard.text
+    assert 'href="#runtime-overview"' in dashboard.text
+    assert 'href="#role-01"' in dashboard.text
+    assert 'href="#role-11"' in dashboard.text
+    assert 'id="role-06"' in dashboard.text
+    assert "투자 판단" in dashboard.text
+    assert "전 과정" in dashboard.text
+    assert "1차 기준 구성" in dashboard.text
+    assert "수익률을 증명하거나 완전 자동매매를" in dashboard.text
+    assert "운영하는 것이 아니라" in dashboard.text
+    assert "AI를 핵심 엔진으로 전면 활용하지 않음" in dashboard.text
+    assert "입력부터 결과까지" in dashboard.text
+    assert "1차 MVP의 완료 기준" in dashboard.text
+    assert "대표 1건만 정밀 분석" in dashboard.text
+    assert "파이프라인 실행 이력" in dashboard.text
+    assert "후보별 최대 20건" in dashboard.text
+    assert "저장된 실행 행 전체 보기" in dashboard.text
+
+
+def test_dashboard_places_candidate_drilldown_after_run_and_account_overviews() -> None:
+    run = PipelineRun.model_construct(
+        run_id=RunId("batch-layout"),
+        ticker="NVDA",
+        cycle_ts=datetime(2026, 7, 17, tzinfo=UTC),
+        status=RunStatus.COMPLETED,
+        stages=(),
+        automatic=True,
+        candidate_rank=1,
+    )
+    app = create_app(store=MultipleRunsStore((run,)))
+
+    with TestClient(app) as client:
+        dashboard = client.get("/")
+
+    assert dashboard.status_code == 200
+    summary_position = dashboard.text.index('class="summary-grid"')
+    portfolio_position = dashboard.text.index('id="simulated-portfolio"')
+    candidates_position = dashboard.text.index('class="candidate-board"')
+    assert summary_position < portfolio_position < candidates_position
+
+
+def test_dashboard_default_run_has_no_ticker_input_and_explains_automatic_screening() -> None:
+    # Given
+    app = create_app()
+
+    # When
+    with TestClient(app) as client:
+        dashboard = client.get("/")
+
+    # Then
+    assert dashboard.status_code == 200
+    assert 'name="ticker"' not in dashboard.text
+    assert "50개 → 20개 → 20개" in dashboard.text
+    assert "20개 후보 자동 분석" in dashboard.text
+    assert "실시간 분석 안내" in dashboard.text
+    assert "공개 시장에서 1차 분석 유니버스 50개를 선정합니다" in dashboard.text
+    assert "data-run-launch-feedback" in dashboard.text
+    assert 'fetch("/api/runs"' in dashboard.text
+    assert "prefers-reduced-motion: reduce" in dashboard.text
+    assert 'item.setAttribute("aria-label"' in dashboard.text
+    assert "startedMinute" in dashboard.text
+    assert "startedAt - 5000" not in dashboard.text
+
+
+def test_ticker_free_form_runs_screening_and_renders_candidate_board() -> None:
+    # Given
+    app = create_app()
+
+    # When
+    with TestClient(app) as client:
+        started = client.post("/runs", follow_redirects=False)
+        dashboard = client.get("/")
+        for _ in range(20):
+            if "후보 전체 분석 기록" in dashboard.text:
+                break
+            dashboard = client.get("/")
+
+    # Then
+    assert started.status_code == 303
+    assert "후보별 판단 현황" in dashboard.text
+    assert "후보 전체 분석 기록" in dashboard.text
+    assert "09 리스크 · 10 주문 · 11 리뷰 예약" in dashboard.text
+    assert "공시 분석" in dashboard.text
+    assert "뉴스 분석" in dashboard.text
+    assert "tb_news_signal" in dashboard.text
+    assert "tb_disclosure_signal" in dashboard.text
+    assert "20개 요약" in dashboard.text
+    assert "신호 요약 보기" in dashboard.text
+    assert '<details class="batch-source-signal-detail">' in dashboard.text
+    assert dashboard.text.index('id="role-05"') < dashboard.text.index('id="batch-05-signal-title"')
+    assert dashboard.text.index('id="role-06"') < dashboard.text.index('id="batch-06-signal-title"')
+
+
+def test_newer_single_ticker_run_does_not_hide_latest_automatic_batch() -> None:
+    batch_at = datetime(2026, 7, 16, 1, tzinfo=UTC)
+    manual_at = batch_at + timedelta(hours=1)
+    runs = (
+        *(
+            PipelineRun.model_construct(
+                run_id=RunId(f"batch-{rank}"),
+                ticker=f"T{rank:02d}",
+                cycle_ts=batch_at,
+                status=RunStatus.COMPLETED,
+                stages=(),
+                automatic=True,
+                candidate_rank=rank,
+            )
+            for rank in range(1, 4)
+        ),
+        PipelineRun.model_construct(
+            run_id=RunId("manual-nvda"),
+            ticker="NVDA",
+            cycle_ts=manual_at,
+            status=RunStatus.COMPLETED,
+            stages=(),
+            automatic=False,
+        ),
+    )
+    app = create_app(store=MultipleRunsStore(runs))
+
+    with TestClient(app) as client:
+        dashboard = client.get("/")
+
+    assert dashboard.status_code == 200
+    assert "3 / 20" in dashboard.text
+    assert "T01" in dashboard.text
+    assert "T02" in dashboard.text
+    assert "T03" in dashboard.text
 
 
 def test_invalid_form_ticker_returns_to_control_room_with_an_accessible_error() -> None:
@@ -314,7 +485,7 @@ def test_empty_dashboard_has_accessible_operational_landmarks() -> None:
     assert response.status_code == 200
     assert response.headers["content-encoding"] == "gzip"
     assert 'href="#main"' in response.text
-    assert 'aria-label="현재 안전 모드"' in response.text
+    assert 'aria-label="현재 실행 계약"' in response.text
     assert 'aria-live="polite"' in response.text
     assert 'class="table-wrap" tabindex' not in response.text
     assert '<link rel="stylesheet"' not in response.text
@@ -398,6 +569,29 @@ def test_dashboard_and_api_render_truthful_local_portfolio() -> None:
     assert payload.positions[0].mark_price == Decimal("125.00")
     assert payload.positions[0].unrealized_pnl == Decimal("50.00")
     assert payload.realized_pnl_label == "해당 없음 · 1차 매수 전용"
+
+
+def test_dashboard_labels_enabled_alpaca_paper_boundary_truthfully() -> None:
+    settings = Settings.model_validate(
+        {
+            "broker_mode": "alpaca",
+            "trading_enabled": True,
+            "alpaca_api_key": "test-paper-key",
+            "alpaca_secret_key": "test-paper-credential",
+            "control_room_token": "test-control-token",
+        }
+    )
+    app = create_app(settings=settings)
+
+    with TestClient(app) as client:
+        dashboard = client.get("/")
+
+    assert dashboard.status_code == 200
+    assert "MEMORY + Alpaca Paper 주문 경계" in dashboard.text
+    assert "Alpaca Paper broker" in dashboard.text
+    assert "Paper 주문 ON" in dashboard.text
+    assert "Paper 계정으로 주문을 전송" in dashboard.text
+    assert "모의 체결합니다" not in dashboard.text
 
 
 def test_timed_out_attempt_projects_as_safe_failed_stage() -> None:
