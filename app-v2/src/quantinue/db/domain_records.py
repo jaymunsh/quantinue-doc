@@ -151,3 +151,22 @@ class CloseOrderReservation:
     reference_price: Decimal
     closes_order_id: int
     idempotency_key: str
+
+
+@dataclass(frozen=True, slots=True)
+class DailyBarWrite:
+    """One exchange session's OHLCV for one ticker.
+
+    ``source``를 함께 담는 이유: 시세 소스가 폴백 체인(Alpaca → Stooq → …)이라
+    같은 날 다른 소스가 섞일 수 있고, 값이 이상할 때 어디서 왔는지 물을 수
+    있어야 한다.
+    """
+
+    trade_date: date
+    ticker: str
+    open: Decimal
+    high: Decimal
+    low: Decimal
+    close: Decimal
+    volume: int
+    source: str

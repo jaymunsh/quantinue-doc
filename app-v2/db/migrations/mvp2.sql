@@ -188,3 +188,15 @@ BEGIN
   ALTER TABLE tb_order ADD CONSTRAINT tb_order_close_target_check
     CHECK (order_type <> 'close' OR closes_order_id IS NOT NULL);
 END $$;
+
+
+-- Phase 2: 일봉 원장. 신규 테이블이라 무손실 — 기존 행에 손대지 않는다.
+CREATE TABLE IF NOT EXISTS tb_daily_bar (
+  trade_date DATE NOT NULL, ticker TEXT NOT NULL,
+  open NUMERIC NOT NULL CHECK (open > 0), high NUMERIC NOT NULL CHECK (high > 0),
+  low NUMERIC NOT NULL CHECK (low > 0), close NUMERIC NOT NULL CHECK (close > 0),
+  volume BIGINT NOT NULL CHECK (volume >= 0), source TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (trade_date, ticker),
+  CHECK (low <= open AND open <= high), CHECK (low <= close AND close <= high)
+);

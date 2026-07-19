@@ -29,6 +29,7 @@ TABLES = {
     "tb_user",
     "tb_llm_usage",
     "tb_benchmark_price",
+    "tb_daily_bar",
     "tb_order_plan",
 }
 PK = {
@@ -55,6 +56,7 @@ PK = {
     "tb_user": ("user_id",),
     "tb_llm_usage": ("id",),
     "tb_benchmark_price": ("price_date", "ticker"),
+    "tb_daily_bar": ("trade_date", "ticker"),
 }
 UNIQUE = {
     "tb_disclosure": {("filing_no",)},
@@ -203,6 +205,17 @@ CHECKS = {
         ("rank",): ("rank >= 1", "rank <= 50"),
     },
     "tb_technical": {("close",): ("close >",), ("trend",): ("'up'", "'no_data'")},
+    "tb_daily_bar": {
+        ("open",): ("open >",),
+        ("high",): ("high >",),
+        ("low",): ("low >",),
+        ("close",): ("close >",),
+        ("volume",): ("volume >=",),
+        # 봉의 내적 정합성 — 시가·종가가 저가와 고가 사이에 있어야 한다.
+        # 이게 깨진 봉은 브래킷 발동 판정을 거짓으로 만든다.
+        ("low", "open", "high"): ("low <= open", "open <= high"),
+        ("low", "close", "high"): ("low <= close", "close <= high"),
+    },
     "tb_macro": {
         ("regime",): ("'risk_on'", "'risk_off'"),
         ("risk_score",): ("risk_score >=", "risk_score <="),

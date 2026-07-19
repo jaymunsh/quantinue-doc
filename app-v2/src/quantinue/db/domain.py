@@ -8,6 +8,7 @@ from sqlalchemy import ColumnElement, MetaData, Table, and_, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
+from quantinue.broker.bracket_trigger import DailyRange
 from quantinue.core.contracts import DisclosureSourceRecord, NewsSourceRecord
 from quantinue.db.contracts import AppOrderExposureStatus
 from quantinue.db.domain_records import (
@@ -16,13 +17,14 @@ from quantinue.db.domain_records import (
     CloseOrderReservation,
     CompletedFillWrite,
     CriticVerdictWrite,
+    DailyBarWrite,
     OrderPlanWrite,
     OrderReconciliation,
     StrategistSignalWrite,
 )
 from quantinue.db.domain_sources import save_source_records
 from quantinue.db.postgres_accounting import initialize_account, record_completed_fill
-from quantinue.roles.exits import OpenPosition
+from quantinue.roles.exits import DailyObservation, OpenPosition
 from quantinue.roles.role_01_universe_screener.contracts import UniverseScreenerOutput
 from quantinue.roles.role_02_technical_analysis.contracts import TechnicalAnalysisOutput
 from quantinue.roles.role_03_daily_screener.contracts import DailyScreenerOutput
@@ -40,6 +42,7 @@ _TABLES = (
     "tb_strategist_signals",
     "tb_critic_verdict",
     "tb_order_plan",
+    "tb_daily_bar",
     "tb_account",
     "tb_order",
     "tb_fill",
@@ -147,6 +150,86 @@ class PostgresDomainRepository:
         )
         async with self._engine.begin() as connection:
             _ = await connection.execute(statement)
+
+    async def save_daily_bars(self, bars: tuple[DailyBarWrite, ...]) -> None:
+        """Upsert one session's bars, letting a later collection correct an earlier one.
+
+        증분 적재는 같은 날을 두 번 받을 수 있다(재시도·정정). PK가 하루 1행을
+        고정하고, 충돌 시 **최신 값이 이긴다** — 거래소 정정이 반영되어야 하고,
+        먼저 들어온 값을 지키면 틀린 값이 영구히 남는다.
+        """
+        if not bars:
+            return
+        table = self._table("tb_daily_bar")
+        async with self._engine.begin() as connection:
+            for bar in bars:
+                fields = {
+                    "open": bar.open,
+                    "high": bar.high,
+                    "low": bar.low,
+                    "close": bar.close,
+                    "volume": bar.volume,
+                    "source": bar.source,
+                }
+                _ = await connection.execute(
+                    insert(table)
+                    .values(trade_date=bar.trade_date, ticker=bar.ticker, **fields)
+                    .on_conflict_do_update(
+                        index_elements=["trade_date", "ticker"], set_=fields
+                    )
+                )
+
+    async def daily_bars(
+        self, trade_date: date, tickers: tuple[str, ...]
+    ) -> dict[str, DailyBarWrite]:
+        """Read the requested session's bars, omitting whatever was never collected.
+
+        없는 종목을 0이나 전일 값으로 채우지 않는다. 청산 잡은 관측이 없으면
+        아무것도 하지 않게 되어 있는데, 여기서 지어내면 그 안전장치가 무력해진다.
+        """
+        if not tickers:
+            return {}
+        table = self._table("tb_daily_bar")
+        async with self._engine.begin() as connection:
+            rows = (
+                await connection.execute(
+                    select(table).where(
+                        table.c.trade_date == trade_date,
+                        table.c.ticker.in_(tickers),
+                    )
+                )
+            ).all()
+        return {
+            row.ticker: DailyBarWrite(
+                trade_date=row.trade_date,
+                ticker=row.ticker,
+                open=Decimal(str(row.open)),
+                high=Decimal(str(row.high)),
+                low=Decimal(str(row.low)),
+                close=Decimal(str(row.close)),
+                volume=int(row.volume),
+                source=row.source,
+            )
+            for row in rows
+        }
+
+    async def exit_observations(
+        self, trade_date: date, tickers: tuple[str, ...]
+    ) -> dict[str, DailyObservation]:
+        """Project stored bars into what the exit rules consume.
+
+        일봉이 청산의 두 입력을 동시에 준다: 고저는 브래킷 발동 판정에,
+        종가는 시간 청산의 기준가에. 하드 이벤트는 아직 여기서 오지 않는다 —
+        공시·뉴스 일괄 수집(Phase 2 후반)이 붙으면 그때 합류한다.
+        """
+        bars = await self.daily_bars(trade_date, tickers)
+        return {
+            ticker: DailyObservation(
+                day_range=DailyRange(low=bar.low, high=bar.high),
+                last_price=bar.close,
+            )
+            for ticker, bar in bars.items()
+        }
 
     async def active_accounts(self) -> tuple[AccountRiskState, ...]:
         """Return every account that subscribes to this cycle, in stable order.

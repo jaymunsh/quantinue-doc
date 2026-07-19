@@ -223,6 +223,19 @@ CREATE TABLE IF NOT EXISTS tb_llm_usage (
   est_cost_usd NUMERIC NOT NULL CHECK (est_cost_usd >= 0), run_id TEXT
 );
 
+-- 일봉 원장. 스크리닝 랭킹·브래킷 발동 판정·시가평가가 전부 여기서 온다.
+-- 종목당 1콜로 받던 것을 배치 1콜로 바꾸는 근거이자, 같은 날을 두 번 받아도
+-- 값이 흔들리지 않게 하는 자리다(PK로 하루 1행 고정).
+CREATE TABLE IF NOT EXISTS tb_daily_bar (
+  trade_date DATE NOT NULL, ticker TEXT NOT NULL,
+  open NUMERIC NOT NULL CHECK (open > 0), high NUMERIC NOT NULL CHECK (high > 0),
+  low NUMERIC NOT NULL CHECK (low > 0), close NUMERIC NOT NULL CHECK (close > 0),
+  volume BIGINT NOT NULL CHECK (volume >= 0), source TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (trade_date, ticker),
+  CHECK (low <= open AND open <= high), CHECK (low <= close AND close <= high)
+);
+
 CREATE TABLE IF NOT EXISTS tb_benchmark_price (
   price_date DATE NOT NULL, ticker TEXT NOT NULL, close NUMERIC NOT NULL CHECK (close > 0),
   PRIMARY KEY (price_date, ticker)
