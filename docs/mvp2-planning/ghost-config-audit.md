@@ -41,8 +41,29 @@
 | `min_cash_ratio`(0.10/0.30) | 소비자 0 |
 | `risk_off_action` | 소비자 0 |
 
-role_09는 이것들 대신 **자체 상수**(`RISK_FRACTION`·`POSITION_CAP_FRACTION`)로 사이징한다.
-→ **M6-2 서킷브레이커의 실체**. ⚠️ **실 페이퍼 무장 전에 알고 있어야 할 사실** — 한도 없이 도는 상태로 T+5 학습 데이터가 쌓인다.
+role_09는 이것들 대신 **자체 상수**(`RISK_FRACTION` 0.04 · `POSITION_CAP_FRACTION` 0.25)로 사이징한다.
+→ **M6-2 서킷브레이커의 실체**.
+
+#### ⚠️ 다만 "한도가 아예 없다"는 아니다 — 실제 작동 중인 한도와 그 크기
+
+작동하는 한도는 둘이다: `daily_new_order_cap`과 `max_app_order_exposure_usd`. 그런데 **후자가 사이징의 `equity`로 그대로 쓰인다**(`role_09/service.py:101` — `equity=float(self.max_app_order_exposure_usd)`). 즉 "앱이 계획한 주문 노출의 상한"이 "계좌 자본"으로 취급된다. 현재 `.env` 실값:
+
+```
+QUANTINUE_MAX_APP_ORDER_EXPOSURE_USD=1000000.00   # 백만 달러
+QUANTINUE_DAILY_NEW_ORDER_CAP=5
+```
+
+여기서 나오는 실제 주문 크기:
+
+```
+포지션당 배분  = min(1,000,000 × 0.04 / 0.15, 1,000,000 × 0.25)
+               = min($266,667, $250,000) = $250,000
+일일 신규 최대 = $250,000 × 5 = $1,250,000
+```
+
+**첫 실 페이퍼 주문이 종목당 약 $250,000 규모로 나간다**(실제로는 Alpaca 페이퍼 계좌 매수여력에 걸려 거부되거나 부분 체결될 수 있다). 이건 "한도 미적용"보다 훨씬 구체적인 문제이고, W0-7 전에 `QUANTINUE_MAX_APP_ORDER_EXPOSURE_USD`를 **의도한 계좌 규모로 낮추는 것만으로** 즉시 통제된다.
+
+> 📌 `max_app_order_exposure_usd`를 equity로 쓰는 것 자체가 개념 혼동이다(노출 상한 ≠ 자본). M6-3 시뮬 멀티계좌에서 계좌별 실 equity로 분리해야 한다.
 
 ### 3. `conservative` 프로필은 도달 불가
 

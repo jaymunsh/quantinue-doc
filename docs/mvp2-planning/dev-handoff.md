@@ -31,7 +31,9 @@
 ### 다음 할 일
 1. **월요일 개장 시(KST 22:30)**: playbook **W0-7**(실 페이퍼 무장 — ⚠️ 사용자 확인 필수) → **W0-8**(스모크·첫 체결) → T+5 시계 가동
 2. ✅ **드라이런 완료** (AAPL, HTTP 201, 01→11 완주) — 실행에서만 드러나는 결함 2건 수정(SEC UA 403 · NASDAQ과 UA 충돌). **단 갭 가드·late_entry·halted는 크리틱 선차단으로 미발동 — 유닛 검증만 된 상태**. block 매체도 표본에 차단 도메인이 없어 미실측. 상세: `m4-scope-decisions.md` §드라이런 실측
-3. ⚠️ **W0-7 전에 알고 있을 것**: 성향별 리스크 한도(`max_positions`·`daily_loss_limit`·`min_cash_ratio`·`max_weight`)가 **현재 하나도 적용되지 않는다**(M6-2 본체). 페이퍼라 손실은 가짜지만 **T+5 학습 데이터는 진짜로 쌓인다** — 한도 없이 돌린 결과로 학습하게 된다. 상세: `ghost-config-audit.md`
+3. 🚨 **W0-7 전에 반드시 확인**: 현재 설정이면 **첫 주문이 종목당 약 $250,000 규모**로 나간다. `.env`의 `QUANTINUE_MAX_APP_ORDER_EXPOSURE_USD=1000000.00`이 사이징의 `equity`로 그대로 쓰이기 때문(`role_09/service.py:101`). 포지션당 = min(equity×0.04/0.15, equity×0.25) = $250K · 일일 5건 = $1.25M.
+   → **무장 전에 이 값을 의도한 계좌 규모로 낮출 것.** 그것만으로 즉시 통제된다.
+   부수적으로 성향별 한도(`max_positions`·`daily_loss_limit`·`min_cash_ratio`·`max_weight`)는 미적용 상태(M6-2 본체). 상세: `ghost-config-audit.md` §2
 4. ⚠️ **배포 전**: `QUANTINUE_HTTP_USER_AGENT`를 실제 연락 가능한 주소로 설정(SEC 공정접근 — 기본값은 동작하나 응답 불가)
 5. 이후 **M5 매도**(최대 설계 작업 — 착수 시 첫 태스크는 매도 주문 표현 설계) → M6 계좌·서킷
 
