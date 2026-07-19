@@ -72,6 +72,8 @@ class _Domain:
         self._observations = dict(observations or {})
         self._coverage = dict(coverage or {})
         self.observation_calls: list[tuple[date, tuple[str, ...]]] = []
+        self.sell_signals: dict[str, frozenset[str]] = {}
+        self.sell_signal_calls: list[tuple[date, tuple[str, ...]]] = []
 
     async def bar_coverage(self) -> dict[str, date]:
         return dict(self._coverage)
@@ -84,6 +86,12 @@ class _Domain:
     ) -> dict[str, DailyObservation]:
         self.observation_calls.append((trade_date, tickers))
         return dict(self._observations)
+
+    async def approved_sell_profiles(
+        self, as_of: date, tickers: tuple[str, ...]
+    ) -> dict[str, frozenset[str]]:
+        self.sell_signal_calls.append((as_of, tickers))
+        return dict(self.sell_signals)
 
 
 class _ExitJob:
@@ -649,3 +657,49 @@ async def test_a_day_with_no_news_is_not_an_error() -> None:
     # Then
     assert domain.saved == [()]
     assert "0" in detail
+
+
+@pytest.mark.anyio
+async def test_todays_approved_sell_signals_reach_the_exit_rules() -> None:
+    """3층 soft path의 배선. 판단은 **오늘** 나오고 시세는 **직전 세션** 것이라
+    두 날짜가 다르다 — 관측을 조립하는 자리가 여기인 이유다."""
+    # Given
+    domain = _Domain({"HELD": DailyObservation(last_price=Decimal(100))})
+    domain.sell_signals = {"HELD": frozenset({"aggressive"})}
+    exit_job = _ExitJob()
+
+    # When
+    job = build_exit_job(
+        domain=domain,
+        exit_job=exit_job,
+        tickers=_held("HELD"),
+        calendar=NyseCalendar(),
+    )
+    _ = await job.run(_MONDAY)
+
+    # Then: 시세는 금요일 것을 묻고, 판단은 월요일 것을 묻는다
+    assert domain.observation_calls == [(_FRIDAY, ("HELD",))]
+    assert domain.sell_signal_calls == [(_MONDAY, ("HELD",))]
+    observations = exit_job.calls[0][1]
+    assert observations["HELD"].sell_signal_profiles == frozenset({"aggressive"})
+
+
+@pytest.mark.anyio
+async def test_a_sell_signal_on_a_ticker_with_no_observation_is_not_invented() -> None:
+    """봉도 하드 이벤트도 없는 종목에 판단만 있다 — 시세 없이 팔 수는 없다."""
+    # Given
+    domain = _Domain({})
+    domain.sell_signals = {"HELD": frozenset({"aggressive"})}
+    exit_job = _ExitJob()
+
+    # When
+    job = build_exit_job(
+        domain=domain,
+        exit_job=exit_job,
+        tickers=_held("HELD"),
+        calendar=NyseCalendar(),
+    )
+    _ = await job.run(_MONDAY)
+
+    # Then
+    assert exit_job.calls[0][1] == {}

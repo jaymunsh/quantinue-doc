@@ -658,6 +658,44 @@ class PostgresDomainRepository:
             for ticker in observed
         }
 
+    async def approved_sell_profiles(
+        self, as_of: date, tickers: tuple[str, ...]
+    ) -> dict[str, frozenset[str]]:
+        """Return which personas' sell judgements survived the critic today.
+
+        청산 3층의 soft path다 — 하드 이벤트가 없는 논지 붕괴는 여기로만 나간다.
+
+        **크리틱을 통과한 것만 센다.** 매도는 되돌릴 수 없으므로, 반박당한
+        판단으로 파는 것은 반박을 안 한 것보다 나쁘다(패닉 매도 방어선).
+        조인이 곧 필터라서, 크리틱 행이 없는 시그널은 자연히 빠진다 — 청산
+        잡 자신이 남기는 기계적 sell 시그널(``run_id='exit:...'``)이 정확히
+        그런 행이고, 그래서 자기가 만든 시그널을 다시 읽어 두 번 파는 일이 없다.
+
+        성향을 접지 않고 집합으로 돌려주는 이유: 포지션도 성향별이라 어느
+        성향이 팔라고 했는지가 곧 어느 계좌를 닫을지다.
+        """
+        if not tickers:
+            return {}
+        signals = self._table("tb_strategist_signals")
+        verdicts = self._table("tb_critic_verdict")
+        async with self._engine.begin() as connection:
+            rows = (
+                await connection.execute(
+                    select(signals.c.ticker, signals.c.inv_type)
+                    .join(verdicts, verdicts.c.signal_id == signals.c.id)
+                    .where(
+                        signals.c.trade_date == as_of,
+                        signals.c.ticker.in_(tickers),
+                        signals.c.side == "sell",
+                        verdicts.c.decision == "pass",
+                    )
+                )
+            ).all()
+        found: dict[str, set[str]] = {}
+        for row in rows:
+            found.setdefault(row.ticker, set()).add(row.inv_type)
+        return {ticker: frozenset(profiles) for ticker, profiles in found.items()}
+
     async def reserve_job_run(self, job_name: str, slot_date: date) -> bool:
         """Claim today's slot for one job, returning whether this caller won it.
 

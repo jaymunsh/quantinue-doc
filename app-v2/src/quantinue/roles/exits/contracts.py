@@ -38,6 +38,10 @@ class ExitReason(StrEnum):
     TAKE_PROFIT = "take_profit"
     TIME = "time"
     THESIS_BREAK = "thesis_break"
+    # 하드 이벤트(사실)와 이름을 가르는 이유: 같은 "논지 붕괴"라도 SEC 폼이
+    # 판정한 것과 모델이 판단한 것은 신뢰도가 다르고, role_11이 T+5에 채점할 때
+    # 둘을 섞으면 "우리 판단이 옳았나"를 물을 수 없다.
+    THESIS_SOFT = "thesis_soft"
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +81,10 @@ class DailyObservation:
     day_range: DailyRange | None = None
     last_price: Decimal | None = None
     has_hard_event: bool = False
+    # 오늘 이 종목에 **승인된 매도 판단**을 낸 성향들. 종목이 아니라 성향별인
+    # 이유는 포지션도 성향별이기 때문이다 — 공격형 계좌를 안전형의 판단으로
+    # 팔면 그 계좌는 동의한 적 없는 매도를 당한다.
+    sell_signal_profiles: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,7 +133,7 @@ def decide_exit(
 ) -> ExitDecision | None:
     """Return the exit this position earned today, or None to keep holding.
 
-    **우선순위: 브래킷 > 논지 붕괴 > 시간.**
+    **우선순위: 브래킷 > 하드 이벤트 > 판단(soft) > 시간.**
 
     브래킷이 가장 앞인 이유는 시간 순서다 — 보호 주문은 거래소에 상주하며
     장중에 발동하는데, 우리가 악재를 수집하는 건 그 뒤다. 실 브로커였다면 이미
@@ -157,7 +165,19 @@ def decide_exit(
         )
     if observation.last_price is None:
         # 시세를 못 받은 날은 아무것도 하지 않는다 — 관측 부재는 신호가 아니다.
+        # 아래 두 갈래(soft 판단·시간)는 하드 이벤트와 달리 진입가로 대체할
+        # 근거가 없다: 판단은 그날 종가를 보고 내려졌고, 시간 청산은 "지금
+        # 얼마인지"를 모르면 손익을 기록할 수 없다.
         return None
+    if position.inv_type in observation.sell_signal_profiles:
+        # 3층 soft path — 07의 매도 판단이 크리틱을 통과한 경우다. 시간 청산보다
+        # 앞에 두는 이유는 사유의 정보량이다: 둘 다 해당할 때 "10일 지나서
+        # 팔았다"고 기록하면 T+5 학습이 실제 원인을 못 배운다.
+        return ExitDecision(
+            position=position,
+            reason=ExitReason.THESIS_SOFT,
+            reference_price=observation.last_price,
+        )
     if business_days_held(position.filled_on, as_of, calendar=calendar) >= time_exit_bdays:
         return ExitDecision(
             position=position,

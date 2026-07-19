@@ -106,6 +106,45 @@ async def _seed_holding(
     return int(account_id or 0), ticker
 
 
+async def _seed_sell_judgement(
+    database_url: str, ticker: str, as_of: date, inv_type: str, decision: str
+) -> None:
+    """Record what the analysis job would have written: a judged sell, then a verdict."""
+    engine = create_async_engine(database_url)
+    async with engine.begin() as connection:
+        _ = await connection.execute(
+            text(
+                """INSERT INTO tb_daily_pick(
+                    trade_date,ticker,universe_as_of,bucket,rank,sector,score)
+                VALUES (:day,:ticker,:entry,'backfill',1,'test',1)
+                ON CONFLICT DO NOTHING"""
+            ),
+            {"day": as_of, "ticker": ticker, "entry": _ENTRY_DAY},
+        )
+        signal_id = await connection.scalar(
+            text(
+                _INSERT_SIGNAL.replace("'buy'", "'sell'")
+            ),
+            {
+                "day": as_of,
+                "ticker": ticker,
+                "cycle": datetime(2026, 7, 9, 12, tzinfo=UTC),
+                "inv_type": inv_type,
+            },
+        )
+        _ = await connection.execute(
+            text(
+                """INSERT INTO tb_critic_verdict(
+                    signal_id,ticker,decision,category,objection,confidence,
+                    decided_layer,verdict_source)
+                VALUES (:signal,:ticker,:decision,'model_review','fixture',0.0,
+                    'gate','fresh')"""
+            ),
+            {"signal": signal_id, "ticker": ticker, "decision": decision},
+        )
+    await engine.dispose()
+
+
 def _stopped_out(ticker: str) -> dict[str, DailyObservation]:
     """A day whose low pierced the 85 stop."""
     return {
@@ -366,4 +405,85 @@ async def test_the_close_signal_inherits_the_persona_that_opened_the_position() 
         )
     await engine.dispose()
     assert inv_type == "conservative"
+    await store.close()
+
+
+@pytest.mark.anyio
+async def test_an_approved_sell_judgement_closes_the_position() -> None:
+    """3층 soft path 왕복 — 하드 이벤트 없이 **판단만으로** 팔리는 유일한 경로.
+
+    이 연결이 없으면 07이 sell을 내도 원장에는 아무 일도 일어나지 않고,
+    논지가 무너진 포지션이 시간 청산(10영업일)까지 방치된다.
+    """
+    # Given: 보유 + 오늘 그 종목에 승인된 aggressive 매도 판단
+    assert DATABASE_URL is not None
+    _, ticker = await _seed_holding(DATABASE_URL, "soft")
+    as_of = date(2026, 7, 9)
+    await _seed_sell_judgement(DATABASE_URL, ticker, as_of, "aggressive", "pass")
+    store = PostgresRunStore(DATABASE_URL)
+    await store.initialize()
+    judged = await store.domain.approved_sell_profiles(as_of, (ticker,))
+    job = ExitJob(store=store, broker=MockBroker(), time_exit_bdays=10)
+
+    # When: 브래킷도 하드 이벤트도 없는 평범한 날
+    closed = await job.run(
+        as_of=as_of,
+        observations={
+            ticker: DailyObservation(
+                day_range=DailyRange(low=Decimal("95.00"), high=Decimal("101.00")),
+                last_price=Decimal("96.00"),
+                sell_signal_profiles=judged.get(ticker, frozenset()),
+            )
+        },
+    )
+
+    # Then
+    assert [decision.reason for decision in closed] == [ExitReason.THESIS_SOFT]
+    assert closed[0].reference_price == Decimal("96.00")
+    await store.close()
+
+
+@pytest.mark.anyio
+async def test_a_rejected_sell_judgement_does_not_reach_the_exit_rules() -> None:
+    """매도는 되돌릴 수 없다 — 반박당한 판단으로 파는 것은 반박을 안 한 것보다 나쁘다."""
+    # Given
+    assert DATABASE_URL is not None
+    _, ticker = await _seed_holding(DATABASE_URL, "rej")
+    as_of = date(2026, 7, 9)
+    await _seed_sell_judgement(DATABASE_URL, ticker, as_of, "aggressive", "reject")
+    store = PostgresRunStore(DATABASE_URL)
+    await store.initialize()
+
+    # When
+    judged = await store.domain.approved_sell_profiles(as_of, (ticker,))
+
+    # Then
+    assert judged == {}
+    await store.close()
+
+
+@pytest.mark.anyio
+async def test_the_exit_jobs_own_sell_signals_are_not_read_back() -> None:
+    """청산이 남기는 기계적 sell 시그널을 자기가 다시 읽으면 두 번 판다.
+
+    크리틱 조인이 그 필터다 — 기계적 청산에는 평결 행이 없다.
+    """
+    # Given: 하드 이벤트로 한 번 팔린 뒤 원장에 남은 sell 시그널
+    assert DATABASE_URL is not None
+    _, ticker = await _seed_holding(DATABASE_URL, "mech")
+    as_of = date(2026, 7, 9)
+    store = PostgresRunStore(DATABASE_URL)
+    await store.initialize()
+    job = ExitJob(store=store, broker=MockBroker(), time_exit_bdays=10)
+    closed = await job.run(
+        as_of=as_of,
+        observations={ticker: DailyObservation(last_price=Decimal(90), has_hard_event=True)},
+    )
+    assert len(closed) == 1
+
+    # When
+    judged = await store.domain.approved_sell_profiles(as_of, (ticker,))
+
+    # Then
+    assert judged == {}
     await store.close()

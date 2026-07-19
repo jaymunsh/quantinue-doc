@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Final, Protocol, TypeAlias
@@ -77,6 +77,12 @@ class _ObservationSource(Protocol):
         self, trade_date: date, tickers: tuple[str, ...]
     ) -> dict[str, DailyObservation]:
         """Project stored bars into what the exit rules consume."""
+        ...
+
+    async def approved_sell_profiles(
+        self, as_of: date, tickers: tuple[str, ...]
+    ) -> dict[str, frozenset[str]]:
+        """Return which personas' sell judgements survived the critic today."""
         ...
 
 
@@ -480,7 +486,15 @@ def build_exit_job(
     calendar: NyseCalendar,
     name: str = "exits",
 ) -> JobDefinition:
-    """Apply the exit rules to the holdings, using the stored bars as evidence."""
+    """Apply the exit rules to the holdings, using the stored bars as evidence.
+
+    관측을 두 날짜에서 조립한다: 시세·하드 이벤트는 **직전 세션**의 사실이고,
+    매도 판단은 **오늘** 분석 잡이 낸 것이다. 잡 등록 순서가 분석 → 청산인
+    이유가 여기 있다 — 오늘 판단이 오늘 청산에 닿으려면 그 전에 나와 있어야 한다.
+
+    판단이 있어도 관측이 없는 종목은 더하지 않는다. 없는 관측을 지어내면
+    "시세를 못 받은 날은 아무것도 하지 않는다"는 규칙이 무력해진다.
+    """
 
     async def run(as_of: date) -> str:
         held = await tickers(as_of)
@@ -488,6 +502,11 @@ def build_exit_job(
             return "no holdings"
         session = calendar.previous_trading_day(as_of)
         observations = await domain.exit_observations(session, held)
+        judged = await domain.approved_sell_profiles(as_of, held)
+        observations = {
+            ticker: replace(observation, sell_signal_profiles=judged.get(ticker, frozenset()))
+            for ticker, observation in observations.items()
+        }
         closed = await exit_job.run(as_of=as_of, observations=observations)
         return f"{len(closed)}/{len(held)} closed"
 
