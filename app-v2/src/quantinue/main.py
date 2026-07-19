@@ -38,6 +38,7 @@ from quantinue.orchestration.factory import (
     build_default_orchestrator,
     build_market_data,
 )
+from quantinue.orchestration.job_factory import build_job_runner
 from quantinue.orchestration.policy import load_mvp2_config, load_pipeline_document
 from quantinue.orchestration.scheduler import CycleScheduler, TickDecision
 from quantinue.orchestration.slots import slot_of
@@ -108,6 +109,8 @@ def create_app(  # noqa: C901, PLR0915
         trigger=_scheduled_trigger,
     )
     last_scheduler_decision: TickDecision | None = None
+    # 잡 루프는 11단계 사이클과 독립이다 — 분석이 실패한 날에도 청산은 돈다.
+    job_runner = build_job_runner(selected_settings, mvp2_config, store=selected_store)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
@@ -120,6 +123,8 @@ def create_app(  # noqa: C901, PLR0915
                 await review_runtime.initialize()
             if mvp2_config.schedule.enabled:
                 task_group.start_soon(cycle_scheduler.run_forever)
+            if job_runner is not None and mvp2_config.jobs.enabled:
+                task_group.start_soon(job_runner.run_forever)
             try:
                 yield
             finally:

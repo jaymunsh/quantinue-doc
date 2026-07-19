@@ -86,6 +86,11 @@ class JobRunner:
         self._calendar = calendar or NyseCalendar()
         self._logger: structlog.stdlib.BoundLogger = structlog.get_logger("jobs")
 
+    @property
+    def jobs(self) -> tuple[JobDefinition, ...]:
+        """Registered jobs in execution order — the order is a data dependency."""
+        return self._jobs
+
     async def tick(self, now: datetime) -> tuple[JobOutcome, ...]:
         """Decide and run whatever is due, returning one outcome per job."""
         if not self._config.enabled:

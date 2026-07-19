@@ -98,6 +98,21 @@ mvp2:
     llm_depth: 20
   exits:
     time_exit_bdays: 10
+  # 배경 잡 루프. 주기는 전부 여기 소유이고 기본은 느슨하다(D3) — 30분으로
+  # 조이는 건 아래 숫자를 바꾸는 일이지 코드를 고치는 일이 아니어야 한다.
+  # 선언이 없는 잡은 기본 일 1회로 돈다.
+  jobs:
+    enabled: false
+    tick_seconds: 60
+    cadences:
+      daily_bars:
+        interval_days: 1
+      exits:
+        interval_days: 1
+  market_data:
+    # 한 요청에 넣을 종목 수. Alpaca 분당 호출 한도는 공식 문서에서 확인되지
+    # 않았다 — 추정해 박지 않고 URL 길이가 안전한 값에서 시작한다.
+    symbols_per_request: 200
   budget:
     daily_llm_usd: 3.0
 phase_2:

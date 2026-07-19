@@ -106,3 +106,60 @@ async def test_last_success_of_an_unknown_job_is_absent() -> None:
     # Then
     assert last is None
     await store.close()
+
+
+@pytest.mark.anyio
+async def test_a_failed_slot_can_be_reclaimed_the_same_day() -> None:
+    """수집이 한 번 실패했다고 하루를 묵은 봉으로 보내면 안 된다."""
+    # Given
+    assert DATABASE_URL is not None
+    store = PostgresRunStore(DATABASE_URL)
+    await store.initialize()
+    _ = await store.domain.reserve_job_run("ledger-retry", _DAY)
+    await store.domain.finish_job_run(
+        "ledger-retry", _DAY, succeeded=False, detail="transient"
+    )
+
+    # When
+    retried = await store.domain.reserve_job_run("ledger-retry", _DAY)
+    await store.domain.finish_job_run("ledger-retry", _DAY, succeeded=True)
+
+    # Then
+    assert retried is True
+    assert await store.domain.last_job_success("ledger-retry") == _DAY
+    await store.close()
+
+
+@pytest.mark.anyio
+async def test_a_succeeded_slot_is_never_reclaimed() -> None:
+    """재시도를 여는 것이 성공까지 다시 열어서는 안 된다."""
+    # Given
+    assert DATABASE_URL is not None
+    store = PostgresRunStore(DATABASE_URL)
+    await store.initialize()
+    _ = await store.domain.reserve_job_run("ledger-done", _DAY)
+    await store.domain.finish_job_run("ledger-done", _DAY, succeeded=True)
+
+    # When
+    again = await store.domain.reserve_job_run("ledger-done", _DAY)
+
+    # Then
+    assert again is False
+    await store.close()
+
+
+@pytest.mark.anyio
+async def test_a_running_slot_is_never_reclaimed() -> None:
+    """아직 도는 잡을 다시 집으면 같은 날 두 번 돈다."""
+    # Given
+    assert DATABASE_URL is not None
+    store = PostgresRunStore(DATABASE_URL)
+    await store.initialize()
+    _ = await store.domain.reserve_job_run("ledger-running", _DAY)
+
+    # When
+    again = await store.domain.reserve_job_run("ledger-running", _DAY)
+
+    # Then
+    assert again is False
+    await store.close()

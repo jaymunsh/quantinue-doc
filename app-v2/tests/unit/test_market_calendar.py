@@ -81,3 +81,20 @@ def test_is_market_open(calendar: NyseCalendar) -> None:
 def test_naive_moment_is_rejected(calendar: NyseCalendar) -> None:
     with pytest.raises(ValueError, match="timezone"):
         calendar.is_market_open(datetime(2026, 7, 20, 14, 0))  # noqa: DTZ001
+
+
+def test_previous_trading_day_skips_weekend(calendar: NyseCalendar) -> None:
+    # Monday 07-20의 직전 세션은 금요일 07-17이다.
+    assert calendar.previous_trading_day(date(2026, 7, 20)) == date(2026, 7, 17)
+
+
+def test_previous_trading_day_skips_holiday(calendar: NyseCalendar) -> None:
+    # 07-03(독립기념일 관측)은 휴장 → Mon 07-06의 직전 세션은 Thu 07-02.
+    assert calendar.previous_trading_day(date(2026, 7, 6)) == date(2026, 7, 2)
+
+
+def test_previous_trading_day_of_a_non_trading_day_is_the_last_session(
+    calendar: NyseCalendar,
+) -> None:
+    # 토요일에 물어도 마지막으로 닫힌 세션을 준다.
+    assert calendar.previous_trading_day(date(2026, 7, 18)) == date(2026, 7, 17)

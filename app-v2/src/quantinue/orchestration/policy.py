@@ -282,6 +282,17 @@ class ExitsConfig(BaseModel):
     time_exit_bdays: int = Field(default=10, gt=0, le=250)
 
 
+class MarketDataConfig(BaseModel):
+    """Request shaping for the batch market-data adapters."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # 한 요청에 넣을 종목 수. Alpaca는 종목 수 상한을 문서화하지 않았고 분당
+    # 호출 한도도 공식 문서에서 확인되지 않았다 — 추정해 박는 대신 URL 길이가
+    # 안전한 값에서 시작하고, 실측 후 여기서 조인다.
+    symbols_per_request: int = Field(default=200, gt=0, le=2_000)
+
+
 class JobCadenceConfig(BaseModel):
     """How often one background job runs, measured in days."""
 
@@ -345,6 +356,7 @@ class Mvp2Config(BaseModel):
     disclosure: DisclosureConfig = DisclosureConfig()
     exits: ExitsConfig = ExitsConfig()
     jobs: JobsConfig = JobsConfig()
+    market_data: MarketDataConfig = MarketDataConfig()
     budget: BudgetConfig = BudgetConfig()
 
 

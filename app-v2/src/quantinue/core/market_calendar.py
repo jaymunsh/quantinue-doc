@@ -74,6 +74,18 @@ class NyseCalendar:
                 remaining -= 1
         return current
 
+    def previous_trading_day(self, day: date) -> date:
+        """Return the last session that closed strictly before the given date.
+
+        일간 잡은 "오늘"이 아니라 **마지막으로 닫힌 세션**을 다룬다. 잡은 보통
+        개장 전에 도는데 그때 오늘 봉은 아직 존재하지 않기 때문이다 — 오늘로
+        물으면 매일 빈손으로 돌아온다.
+        """
+        current = day - timedelta(days=1)
+        while not self.is_trading_day(current):
+            current -= timedelta(days=1)
+        return current
+
     def is_market_open(self, moment: datetime) -> bool:
         """Return whether the regular session is open at this moment."""
         return self.current_session(moment) is Session.REGULAR

@@ -238,12 +238,22 @@ class PostgresDomainRepository:
         스케줄러는 60초마다 깨어나므로 "이미 돌았나"를 앱 메모리로 판단하면
         재시작 한 번에 무너진다. PK 충돌을 예약 실패로 읽으면 판정이 DB에
         있게 되고, 프로세스가 여럿이어도 잡 본문은 한 번만 돈다.
+
+        단 **실패한 슬롯은 같은 날 다시 집을 수 있다**. 예약 행이 남는다는
+        이유로 재시도를 막으면, 수집이 한 번 실패한 날은 하루 종일 묵은 봉으로
+        청산 판단을 하게 된다 — 일시적 장애가 하루짜리 눈감기로 번진다.
+        ``running``과 ``succeeded``는 그대로 잠긴다: 도는 중인 걸 다시 집으면
+        같은 날 두 번 돌고, 끝난 걸 다시 집으면 주기가 무의미해진다.
         """
         table = self._table("tb_job_run")
         statement = (
             insert(table)
             .values(job_name=job_name, slot_date=slot_date, status="running")
-            .on_conflict_do_nothing(index_elements=["job_name", "slot_date"])
+            .on_conflict_do_update(
+                index_elements=["job_name", "slot_date"],
+                set_={"status": "running", "detail": None, "finished_at": None},
+                where=table.c.status == "failed",
+            )
         )
         async with self._engine.begin() as connection:
             result = await connection.execute(statement)

@@ -24,13 +24,15 @@ class _Ledger:
     def __init__(self, successes: dict[str, date] | None = None) -> None:
         self.successes = dict(successes or {})
         self.reserved: set[tuple[str, date]] = set()
+        self.failed: set[tuple[str, date]] = set()
         self.finished: list[tuple[str, date, bool, str | None]] = []
 
     async def reserve_job_run(self, job_name: str, slot_date: date) -> bool:
         key = (job_name, slot_date)
-        if key in self.reserved:
+        if key in self.reserved and key not in self.failed:
             return False
         self.reserved.add(key)
+        self.failed.discard(key)
         return True
 
     async def finish_job_run(
@@ -44,6 +46,8 @@ class _Ledger:
         self.finished.append((job_name, slot_date, succeeded, detail))
         if succeeded:
             self.successes[job_name] = slot_date
+        else:
+            self.failed.add((job_name, slot_date))
 
     async def last_job_success(self, job_name: str) -> date | None:
         return self.successes.get(job_name)
@@ -174,7 +178,7 @@ async def test_one_job_can_be_switched_off_without_touching_the_others() -> None
 
 
 @pytest.mark.anyio
-async def test_a_failing_job_is_recorded_as_failed_and_retried_tomorrow() -> None:
+async def test_a_failing_job_is_recorded_as_failed_and_not_counted_as_success() -> None:
     """실패를 성공으로 세면 다음 주기까지 재시도가 막힌다."""
     # Given
     ledger = _Ledger()
@@ -250,4 +254,48 @@ async def test_the_slot_date_is_the_new_york_session_not_the_utc_date() -> None:
     _ = await runner.tick(datetime(2026, 7, 21, 1, 0, tzinfo=UTC))
 
     # Then
+    assert calls == [date(2026, 7, 20)]
+
+
+@pytest.mark.anyio
+async def test_a_failed_job_retries_on_the_next_tick_not_tomorrow() -> None:
+    """수집이 한 번 실패했다고 하루를 묵은 봉으로 보내면 안 된다."""
+    # Given: 첫 틱은 실패, 두 번째 틱은 성공하는 잡
+    attempts: list[date] = []
+
+    async def flaky(as_of: date) -> str:
+        attempts.append(as_of)
+        if len(attempts) == 1:
+            msg = "transient"
+            raise RuntimeError(msg)
+        return "recovered"
+
+    ledger = _Ledger()
+    runner = _runner([JobDefinition(name="collect", run=flaky)], ledger)
+    first = await runner.tick(_MONDAY)
+
+    # When: 같은 날 다음 틱
+    second = await runner.tick(_MONDAY.replace(hour=14))
+
+    # Then
+    assert [o.reason for o in first] == ["failed"]
+    assert [o.reason for o in second] == ["ran"]
+    assert attempts == [date(2026, 7, 20), date(2026, 7, 20)]
+    assert await ledger.last_job_success("collect") == date(2026, 7, 20)
+
+
+@pytest.mark.anyio
+async def test_a_succeeded_job_is_not_reclaimed_by_a_later_tick() -> None:
+    """재시도를 여는 것이 성공까지 다시 열어서는 안 된다."""
+    # Given
+    calls: list[date] = []
+    ledger = _Ledger()
+    runner = _runner([_recorder("collect", calls)], ledger)
+    _ = await runner.tick(_MONDAY)
+
+    # When
+    outcomes = await runner.tick(_MONDAY.replace(hour=15))
+
+    # Then: 주기 게이트에서 먼저 걸리고, 예약까지 가지도 않는다
+    assert [o.reason for o in outcomes] == ["not_due"]
     assert calls == [date(2026, 7, 20)]
