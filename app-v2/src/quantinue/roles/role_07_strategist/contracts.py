@@ -8,6 +8,8 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_core import PydanticCustomError
 
+from quantinue.orchestration.policy import GatesConfig, ProfileConfig
+
 SnapshotMaxAge = timedelta(minutes=5)
 MIN_CONVICTION = 0.6
 
@@ -31,6 +33,8 @@ class StrategyInput(BaseModel):
     disclosure_score: float = Field(ge=0, le=1)
     news_score: float = Field(ge=0, le=1)
     is_daily_pick: bool
+    source_trust: float = Field(default=1.0, ge=0, le=1)
+    macro_risk_score: float = Field(default=0.0, ge=0, le=1)
     disclosure_hard_blocked: bool = False
     news_hard_blocked: bool = False
     disclosure_snapshot_at: datetime
@@ -83,7 +87,7 @@ class StrategyInput(BaseModel):
         }
         return cls.model_validate({**values, **changes})
 
-    def blockers(self) -> tuple[str, ...]:
+    def blockers(self, gates: GatesConfig | None = None) -> tuple[str, ...]:
         """Return deterministic blockers before any model recommendation."""
         blockers: list[str] = []
         if self.disclosure_hard_blocked or self.news_hard_blocked:
@@ -93,6 +97,9 @@ class StrategyInput(BaseModel):
             blockers.append("stale_disclosure_snapshot")
         if cycle - self.news_snapshot_at.astimezone(UTC) > SnapshotMaxAge:
             blockers.append("stale_news_snapshot")
+        if gates is not None and self.disclosure_score <= gates.hard_negative_max:
+            # 강한 악재는 아무리 확신도가 높아도 매수를 막는다.
+            blockers.append("hard_negative_sentiment")
         return tuple(blockers)
 
 
@@ -118,17 +125,40 @@ class StrategyOutput(BaseModel):
             raise ContractViolation("buy requires code gate proof")
         return self
 
+    @staticmethod
+    def vote_conviction(
+        source: StrategyInput, gates: GatesConfig, model_score: float | None = None
+    ) -> float:
+        """Average the surviving signal votes, then apply the macro deduction.
+
+        A news score sourced below the trust floor loses its vote entirely
+        rather than being down-weighted, so an unreliable outlet cannot lift a
+        decision at all.
+        """
+        votes = [source.technical_score, source.disclosure_score]
+        if source.source_trust >= gates.source_trust_min:
+            votes.append(source.news_score)
+        if model_score is not None:
+            votes.append(model_score)
+        raw = sum(votes) / len(votes)
+        penalised = raw - gates.macro_penalty(source.macro_risk_score)
+        return round(min(1.0, max(0.0, penalised)), 3)
+
     @classmethod
-    def from_model(
+    def from_model(  # noqa: PLR0913 - each gate input is an explicit seam
         cls,
         source: StrategyInput,
         conviction: float,
         summary: str,
+        *,
+        gates: GatesConfig | None = None,
+        profile: ProfileConfig | None = None,
         minimum_confidence: float = MIN_CONVICTION,
     ) -> Self:
         """Apply hard gates after schema-valid model output."""
-        blockers = source.blockers()
-        can_buy = source.is_daily_pick and conviction >= minimum_confidence and not blockers
+        blockers = source.blockers(gates)
+        threshold = profile.buy_threshold if profile is not None else minimum_confidence
+        can_buy = source.is_daily_pick and conviction >= threshold and not blockers
         return cls(
             run_id=source.run_id,
             ticker=source.ticker,

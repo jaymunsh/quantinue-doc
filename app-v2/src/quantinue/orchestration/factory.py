@@ -21,7 +21,9 @@ from quantinue.market_data import (
 from quantinue.orchestration.pipeline import PipelineOrchestrator, PipelineRole
 from quantinue.orchestration.policy import (
     DEFAULT_PIPELINE_POLICY,
+    GatesConfig,
     PipelinePolicy,
+    ProfileConfig,
     ScreeningConfig,
     load_mvp2_config,
     load_pipeline_policy,
@@ -39,6 +41,10 @@ from quantinue.roles.role_10_order_execution.service import OrderExecution
 from quantinue.roles.role_11_reviewer.service import Reviewer
 
 DEFAULT_SCREENING: Final[ScreeningConfig] = ScreeningConfig()
+DEFAULT_GATES: Final[GatesConfig] = GatesConfig()
+DEFAULT_PROFILE: Final[ProfileConfig] = ProfileConfig()
+# 단일 계좌 기준 성향. 계좌별 성향 루프는 M6에서 도입한다.
+DEFAULT_PROFILE_NAME: Final[str] = "aggressive"
 
 
 def build_market_data(
@@ -73,6 +79,8 @@ def build_roles(  # noqa: PLR0913 - one composition seam per replaceable collabo
     store: RunStore | None = None,
     policy: PipelinePolicy = DEFAULT_PIPELINE_POLICY,
     screening: ScreeningConfig = DEFAULT_SCREENING,
+    gates: GatesConfig = DEFAULT_GATES,
+    profile: ProfileConfig = DEFAULT_PROFILE,
 ) -> tuple[PipelineRole, ...]:
     """Compose the replaceable role implementations in canonical order."""
     selected_store = store or InMemoryRunStore()
@@ -87,6 +95,8 @@ def build_roles(  # noqa: PLR0913 - one composition seam per replaceable collabo
             analyzer,
             policy.thresholds.minimum_confidence,
             policy.thresholds.strategist_buy_score,
+            gates,
+            profile,
         ),
         Critic(
             analyzer,
@@ -158,7 +168,8 @@ def build_configured_orchestrator(
         case unreachable_data_mode:
             assert_never(unreachable_data_mode)
     config_path = Path(__file__).parents[3] / "config" / "pipeline.yaml"
-    screening = load_mvp2_config(config_path).screening
+    mvp2 = load_mvp2_config(config_path)
+    screening = mvp2.screening
     policy = load_pipeline_policy(config_path).model_copy(
         update={
             "daily_new_order_cap": settings.daily_new_order_cap,
@@ -174,6 +185,8 @@ def build_configured_orchestrator(
             store,
             policy,
             screening,
+            mvp2.gates,
+            mvp2.profiles[DEFAULT_PROFILE_NAME],
         ),
         store,
         policy=policy,

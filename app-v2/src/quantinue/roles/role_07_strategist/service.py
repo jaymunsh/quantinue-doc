@@ -1,14 +1,18 @@
 """Combine upstream evidence into one buy or hold proposal."""
 
 from dataclasses import dataclass, replace
-from typing import ClassVar
+from typing import ClassVar, Final
 
 from quantinue.core.contracts import PipelineContext
 from quantinue.core.ontology import EvidenceKind
 from quantinue.core.schemas import Evidence
 from quantinue.core.typing import require_value
 from quantinue.llm.provider import AnalysisTask, LlmAnalyzer
+from quantinue.orchestration.policy import GatesConfig, ProfileConfig
 from quantinue.roles.role_07_strategist.contracts import StrategyInput, StrategyOutput
+
+DEFAULT_GATES: Final[GatesConfig] = GatesConfig()
+DEFAULT_PROFILE: Final[ProfileConfig] = ProfileConfig()
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,6 +22,8 @@ class Strategist:
     analyzer: LlmAnalyzer
     minimum_confidence: float = 0.60
     strategist_buy_score: float = 0.70
+    gates: GatesConfig = DEFAULT_GATES
+    profile: ProfileConfig = DEFAULT_PROFILE
     component: ClassVar[str] = "07"
     name: ClassVar[str] = "전략 종합"
 
@@ -38,6 +44,7 @@ class Strategist:
             disclosure_score=disclosure,
             news_score=news,
             is_daily_pick=context.is_daily_pick,
+            macro_risk_score=context.macro_risk_score or 0.0,
             disclosure_snapshot_at=context.request.cycle_ts,
             news_snapshot_at=context.request.cycle_ts,
             evidence_ids=(
@@ -50,12 +57,15 @@ class Strategist:
             AnalysisTask.STRATEGY,
             f"technical={technical}, disclosure={disclosure}, news={news}",
         )
-        conviction = round((technical + disclosure + news + model_result.score) / 4, 3)
+        conviction = StrategyOutput.vote_conviction(
+            strategy_input, self.gates, model_result.score
+        )
         gated = StrategyOutput.from_model(
             strategy_input,
             conviction,
             model_result.reason,
-            max(self.minimum_confidence, self.strategist_buy_score),
+            gates=self.gates,
+            profile=self.profile,
         )
         side = gated.side
         updated = replace(
