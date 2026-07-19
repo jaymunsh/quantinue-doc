@@ -16,7 +16,7 @@ from quantinue.db.contracts import (
     RunStore,
     parse_app_order_money,
 )
-from quantinue.orchestration.policy import GatesConfig
+from quantinue.orchestration.policy import GatesConfig, ProfileConfig
 from quantinue.roles.role_09_risk_portfolio.contracts import (
     RiskPortfolioInput,
     build_order_plan,
@@ -39,6 +39,23 @@ class RiskPortfolio:
     take_profit_ratio: float = 0.20
     gates: GatesConfig = field(default_factory=GatesConfig)
     calendar: NyseCalendar = field(default_factory=NyseCalendar)
+    profile: ProfileConfig = field(default_factory=ProfileConfig)
+
+    def _recent_return(self, context: PipelineContext) -> float | None:
+        """Return role 02's five-day run-up as a fraction.
+
+        role 02 reports `ret_5d` in percent; the profile threshold is a
+        fraction. Normalising here keeps the unit conversion in one place
+        instead of leaving a silent 100x mismatch at the comparison.
+        """
+        output = context.technical_output
+        if output is None:
+            return None
+        ticker = context.request.ticker
+        snapshot = next((item for item in output.snapshots if item.ticker == ticker), None)
+        if snapshot is None:
+            return None
+        return snapshot.ret_5d / 100
 
     def _reference_gap(self, context: PipelineContext) -> float | None:
         """Measure the gap from the analysis reference close, inside the window only.
@@ -79,11 +96,13 @@ class RiskPortfolio:
                 daily_new_order_cap=self.daily_new_order_cap,
                 risk_score=context.macro_risk_score or 0,
                 reference_gap=self._reference_gap(context),
+                recent_return=self._recent_return(context),
             ),
             stop_loss_ratio=self.stop_loss_ratio,
             take_profit_ratio=self.take_profit_ratio,
             maximum_risk_score=self.maximum_risk_score,
             premarket_gap_max=self.gates.premarket_gap_max,
+            late_entry_max=self.profile.late_entry_max,
         )
         if plan.quantity > 0:
             reserved = await self.store.reserve_daily_new_order(
@@ -122,6 +141,9 @@ class RiskPortfolio:
             summary = f"주문 보류 · {summary}"
         if plan.quantity == 0 and plan.skipped_reason == "daily_order_cap":
             summary = "수량 0, 앱 주문 계획 노출 한도 또는 일일 신규 주문 한도 도달"
+        if plan.skipped_reason == "late_entry":
+            run_up = self._recent_return(context) or 0.0
+            summary = f"주문 보류 · 5일 상승 {run_up:.1%} > {self.profile.late_entry_max:.1%}"
         if plan.skipped_reason == "premarket_gap":
             gap = self._reference_gap(context) or 0.0
             summary = f"주문 보류 · 기준가 대비 갭 {gap:.1%} > {self.gates.premarket_gap_max:.1%}"

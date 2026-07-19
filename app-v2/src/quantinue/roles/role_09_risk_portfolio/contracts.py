@@ -32,6 +32,8 @@ class RiskPortfolioInput(LateStageEvidenceInput):
     risk_score: float = Field(default=0, ge=0, le=1)
     reference_gap: float | None = Field(default=None, ge=0)
     """Absolute move from the analysis reference close, or None when unmeasured."""
+    recent_return: float | None = None
+    """Recent run-up as a fraction (0.15 = +15%), or None when unavailable."""
 
 
 class RiskPortfolioOutput(BaseModel):
@@ -58,6 +60,7 @@ class RiskPortfolioOutput(BaseModel):
             "daily_order_cap",
             "risk_limit",
             "premarket_gap",
+            "late_entry",
         ]
         | None
     )
@@ -86,12 +89,13 @@ def gap_guard_applies(now: datetime, session_open: datetime, open_minutes: int) 
     return now < session_open + timedelta(minutes=open_minutes)
 
 
-def build_order_plan(
+def build_order_plan(  # noqa: PLR0913 - each gate threshold is an explicit seam
     request: RiskPortfolioInput,
     stop_loss_ratio: float = STOP_FRACTION,
     take_profit_ratio: float = TAKE_PROFIT_FRACTION,
     maximum_risk_score: float = 1.0,
     premarket_gap_max: float | None = None,
+    late_entry_max: float | None = None,
 ) -> RiskPortfolioOutput:
     """Apply hard gates then size by risk budget subject to the position cap."""
     reason: (
@@ -104,6 +108,7 @@ def build_order_plan(
             "daily_order_cap",
             "risk_limit",
             "premarket_gap",
+            "late_entry",
         ]
         | None
     ) = None
@@ -118,6 +123,13 @@ def build_order_plan(
     ):
         # 기준가가 무너지면 진입가·손절·익절이 전부 무의미해진다.
         reason = "premarket_gap"
+    elif (
+        late_entry_max is not None
+        and request.recent_return is not None
+        and request.recent_return > late_entry_max
+    ):
+        # 이미 달린 뒤에 올라타면 남은 상승분보다 손절까지의 거리가 길다.
+        reason = "late_entry"
     elif request.event_within_two_days:
         reason = "event_window"
     elif request.has_position:

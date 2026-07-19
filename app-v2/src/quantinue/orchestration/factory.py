@@ -112,6 +112,7 @@ def build_roles(  # noqa: PLR0913 - one composition seam per replaceable collabo
             stop_loss_ratio=policy.stop_loss_ratio,
             take_profit_ratio=policy.take_profit_ratio,
             gates=gates,
+            profile=profile,
         ),
         OrderExecution(broker, selected_store),
         Reviewer(),
