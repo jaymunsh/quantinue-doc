@@ -48,6 +48,7 @@
 - 문턱·주기·한도는 `config/pipeline.yaml` 소유. 코드 리터럴 금지.
 - **유령 금지**: 새 config 키·DB 컬럼은 소비자와 같은 커밋. 스키마 변경 시 4곳 미러(schema.sql · migrations/mvp2.sql · schema_sql_expectations.py · 정본 HTML).
 - 로직 확정 시 정본 HTML `#logic` 미러 + changelog.
+- **주석 규칙(2026-07-19 확정, 문성혁 지시)**: 핵심 로직 — 특히 `roles/`(에이전트) — 에는 **"왜 이렇게 했는가"를 설명하는 친절한 주석**을 단다. 기존 관행 준수: **docstring은 영어 한 줄, 판단 근거·트레이드오프·함정을 적는 인라인 주석은 한국어**(선례: `market_data/http_client.py:29-35`, `role_07/contracts.py:105`, `role_10/service.py:56`). "무엇을"이 아니라 **"왜, 그리고 왜 다른 방식이 아닌지"**를 적을 것 — 코드를 읽으면 무엇을 하는지는 보이지만 왜는 안 보인다.
 - `app/`(1차)은 다른 작업자 WIP — 절대 불간섭.
 
 ## 4. Phase 1 — 청산 수호 (착수점)

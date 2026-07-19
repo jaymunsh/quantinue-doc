@@ -268,8 +268,10 @@ def project_buy_only_portfolio(
             (Decimal(fill.quantity) * fill.price for fill in bought),
             start=Decimal(0),
         )
-        # Average-cost basis: a sale carries out its share of the cost, so the
-        # remainder stays valued at the same unit cost it was bought at.
+        # 평균원가법 — 매도분이 자기 몫의 원가를 들고 나가므로 남은 수량은
+        # 산 값 그대로 평가된다. 선입선출(FIFO)이 아닌 이유: T+5 회전이라
+        # 같은 종목을 여러 번 나눠 담는 경우가 드물어 차이가 거의 없고,
+        # 로트 단위 추적을 안 해도 되어 원장이 단순해진다.
         cost_basis = bought_cost * Decimal(quantity) / Decimal(bought_quantity)
         latest_fill = max(ticker_fills, key=lambda fill: fill.filled_at)
         mark = completed_marks.get(
