@@ -241,7 +241,7 @@ def test_order_submission_supports_pre_submit_claim_without_domain_ids() -> None
         submission_id=SubmissionId(1),
         client_order_id="quantinue-claim-1",
         state=SubmissionState.CLAIMED,
-        owner_token="owner-token",  # noqa: S106 - non-secret lease fixture
+        owner_token="owner-token",
         claimed_at=NOW,
         stale_after=NOW + timedelta(minutes=5),
         run_id=None,

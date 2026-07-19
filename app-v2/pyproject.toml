@@ -61,7 +61,9 @@ select = ["ALL"]
 ignore = ["COM812", "ISC001", "D203", "D213", "CPY001", "TD002", "TD003", "FIX002"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101", "ARG", "PLR2004", "SLF001", "D"]
+# S105/S106/S107: 테스트 픽스처의 가짜 자격증명·페이지 커서를 하드코딩
+# 비밀번호로 오탐한다. 진짜 비밀은 .env에 있고 gitignore된다.
+"tests/**/*.py" = ["S101", "S105", "S106", "S107", "ARG", "PLR2004", "SLF001", "D"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
