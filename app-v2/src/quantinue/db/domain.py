@@ -15,6 +15,7 @@ from quantinue.db.contracts import AppOrderExposureStatus
 from quantinue.db.domain_records import (
     AccountRiskState,
     AccountWrite,
+    BuyCandidate,
     CloseOrderReservation,
     CompletedFillWrite,
     CriticVerdictWrite,
@@ -778,6 +779,72 @@ class PostgresDomainRepository:
         for row in rows:
             found.setdefault(row.ticker, set()).add(row.inv_type)
         return {ticker: frozenset(profiles) for ticker, profiles in found.items()}
+
+    async def approved_buy_candidates(
+        self, as_of: date
+    ) -> dict[str, tuple[BuyCandidate, ...]]:
+        """Return today's critic-approved buys per persona, best first.
+
+        ``approved_sell_profiles``의 매수 쌍이다 — 조인이 곧 필터라서 크리틱
+        행이 없거나 기각된 제안은 자연히 빠진다. 반박당한 판단으로 사는 것은
+        반박을 안 한 것보다 나쁘다.
+
+        ``cycle_ts = 자정``은 새 분석 잡의 계약이다(analysis/job.py). 구 11단계
+        러너는 같은 테이블에 장중 슬롯 시각으로 쓰므로(D6 점진 교체 중 공존),
+        이 조건이 구 러너의 판단을 배분에서 걸러낸다 — 러너 삭제 후에도 참인
+        조건이라 그때 지울 필요가 없다.
+
+        정렬은 확신도 단독, 동률만 스크리닝 랭크로 깬다. 확신도에 스크리닝
+        점수를 다시 섞으면 결함 12(픽은 정의상 점수 상위라 하방이 산술적으로
+        막히던 것)를 매수 방향에서 반복하게 된다.
+        """
+        signals = self._table("tb_strategist_signals")
+        verdicts = self._table("tb_critic_verdict")
+        picks = self._table("tb_daily_pick")
+        statement = (
+            select(
+                signals.c.id,
+                signals.c.ticker,
+                signals.c.inv_type,
+                signals.c.conviction,
+                signals.c.decision_close,
+                picks.c.rank,
+            )
+            .join(verdicts, verdicts.c.signal_id == signals.c.id)
+            .outerjoin(
+                picks,
+                and_(
+                    picks.c.trade_date == signals.c.trade_date,
+                    picks.c.ticker == signals.c.ticker,
+                ),
+            )
+            .where(
+                signals.c.trade_date == as_of,
+                signals.c.cycle_ts == datetime.combine(as_of, time(), tzinfo=UTC),
+                signals.c.side == "buy",
+                verdicts.c.decision == "pass",
+            )
+            .order_by(
+                signals.c.conviction.desc(),
+                picks.c.rank.asc().nulls_last(),
+                signals.c.ticker,
+            )
+        )
+        async with self._engine.begin() as connection:
+            rows = (await connection.execute(statement)).all()
+        found: dict[str, list[BuyCandidate]] = {}
+        for row in rows:
+            found.setdefault(row.inv_type, []).append(
+                BuyCandidate(
+                    signal_id=row.id,
+                    ticker=row.ticker,
+                    inv_type=row.inv_type,
+                    conviction=Decimal(str(row.conviction)),
+                    reference_price=Decimal(str(row.decision_close)),
+                    rank=row.rank,
+                )
+            )
+        return {inv_type: tuple(items) for inv_type, items in found.items()}
 
     async def reserve_job_run(self, job_name: str, slot_date: date) -> bool:
         """Claim today's slot for one job, returning whether this caller won it.

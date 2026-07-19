@@ -249,6 +249,24 @@ class RawNewsWrite:
 
 
 @dataclass(frozen=True, slots=True)
+class BuyCandidate:
+    """One critic-approved buy proposal awaiting allocation.
+
+    ``reference_price``는 판단 기준가(decision_close)다 — 일 1회 로컬 시뮬에서
+    체결가가 곧 이 값이므로 사이징도 같은 값으로 한다. ``rank``는 정렬의
+    동률 깨기 전용이다: 확신도에 스크리닝 점수를 다시 섞는 것은 결함 12
+    (상위 랭킹 보유를 팔 수 없던 산술)의 반복이라 하지 않는다.
+    """
+
+    signal_id: int
+    ticker: str
+    inv_type: str
+    conviction: Decimal
+    reference_price: Decimal
+    rank: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class MacroSnapshot:
     """The market regime the ledger last recorded.
 
