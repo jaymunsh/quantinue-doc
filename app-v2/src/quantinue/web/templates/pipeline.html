@@ -30,6 +30,63 @@
       <p>표시 금액은 Quantinue가 계산한 로컬 모의 원장이며 브로커 잔고가 아닙니다.</p>
     </section>
 
+    <section id="simulated-portfolio" class="portfolio-panel" aria-labelledby="portfolio-title">
+      <div class="section-heading compact-heading">
+        <div>
+          <p class="section-label">로컬 모의 계좌</p>
+          <h2 id="portfolio-title">자산·보유·주문 원장</h2>
+        </div>
+        <p>실제 공개 가격을 mark로 사용할 수 있지만, 모든 현금과 체결은 Quantinue 내부 모의 기록입니다.</p>
+      </div>
+      <dl class="portfolio-totals">
+        <div><dt>초기 자산</dt><dd>${{ '{:,.2f}'.format(portfolio.account.opening_cash) }}</dd></div>
+        <div><dt>현재 현금</dt><dd>${{ '{:,.2f}'.format(portfolio.account.current_cash) }}</dd></div>
+        <div class="portfolio-equity"><dt>총 자산</dt><dd>${{ '{:,.2f}'.format(portfolio.account.equity) }}</dd></div>
+        <div><dt>매수 가능액</dt><dd>${{ '{:,.2f}'.format(portfolio.account.buying_power) }}</dd></div>
+      </dl>
+      <div class="portfolio-section-heading">
+        <h3>보유 종목</h3>
+        <span>{{ portfolio.positions | length }}개</span>
+      </div>
+      {% if portfolio.positions %}
+      <div class="portfolio-table-wrap" role="region" aria-label="보유 종목 상세 표" tabindex="-1">
+        <table class="portfolio-table">
+          <caption>로컬 모의 계좌 보유 종목과 평가 현황</caption>
+          <thead><tr><th scope="col">종목</th><th scope="col">수량</th><th scope="col">평균 매입가</th><th scope="col">현재가</th><th scope="col">평가액</th><th scope="col">평가손익</th><th scope="col">비중</th></tr></thead>
+          <tbody>{% for position in portfolio.positions %}<tr>
+            <td data-label="종목"><strong>{{ position.ticker }}</strong><small>{{ position.mark_source }} · <time datetime="{{ position.mark_as_of.isoformat() }}">{{ position.mark_as_of.strftime('%Y-%m-%d %H:%M UTC') }}</time></small></td>
+            <td data-label="수량">{{ position.quantity }}주</td>
+            <td data-label="평균 매입가">${{ '{:,.2f}'.format(position.average_cost) }}</td>
+            <td data-label="현재가">${{ '{:,.2f}'.format(position.mark_price) }}</td>
+            <td data-label="평가액">${{ '{:,.2f}'.format(position.market_value) }}</td>
+            <td data-label="평가손익" class="{% if position.unrealized_pnl > 0 %}value-positive{% elif position.unrealized_pnl < 0 %}value-negative{% endif %}">${{ '{:,.2f}'.format(position.unrealized_pnl) }}</td>
+            <td data-label="비중">{{ '%.2f' | format(position.allocation * 100) }}%</td>
+          </tr>{% endfor %}</tbody>
+        </table>
+      </div>
+      <script>
+        (() => {
+          const region = document.querySelector(".portfolio-table-wrap");
+          if (!region) return;
+          const updateFocusability = () => {
+            region.tabIndex = region.scrollWidth > region.clientWidth ? 0 : -1;
+          };
+          updateFocusability();
+          window.addEventListener("resize", updateFocusability, { passive: true });
+        })();
+      </script>
+      {% else %}<div class="portfolio-empty"><strong>아직 보유 종목이 없습니다</strong><p>mock 주문이 실제로 로컬 체결된 뒤 수량·평단·평가손익이 표시됩니다.</p></div>{% endif %}
+      <p class="realized-pnl"><span>실현손익</span><strong>{{ portfolio.realized_pnl_label }}</strong></p>
+      <div class="ledger-grid">
+        <section aria-labelledby="local-orders-title"><div class="portfolio-section-heading"><h3 id="local-orders-title">주문 내역</h3><span>{{ portfolio.orders | length }}건</span></div>
+          {% if portfolio.orders %}<ol class="ledger-list">{% for order in portfolio.orders %}<li><div><strong>{{ order.ticker }} {{ order.quantity }}주</strong><span>{{ order.status }}</span></div><p>${{ '{:,.2f}'.format(order.reference_price) }} · <time datetime="{{ order.created_at.isoformat() }}">{{ order.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</time></p><code>{{ order.order_id }}</code></li>{% endfor %}</ol>{% else %}<p class="ledger-empty">로컬 주문 기록 없음</p>{% endif %}
+        </section>
+        <section aria-labelledby="local-fills-title"><div class="portfolio-section-heading"><h3 id="local-fills-title">체결 내역</h3><span>{{ portfolio.fills | length }}건</span></div>
+          {% if portfolio.fills %}<ol class="ledger-list">{% for fill in portfolio.fills %}<li><div><strong>{{ fill.ticker }} {{ fill.quantity }}주</strong><span>로컬 체결</span></div><p>${{ '{:,.2f}'.format(fill.price) }} · <time datetime="{{ fill.filled_at.isoformat() }}">{{ fill.filled_at.strftime('%Y-%m-%d %H:%M UTC') }}</time></p><code>{{ fill.fill_id }}</code></li>{% endfor %}</ol>{% else %}<p class="ledger-empty">로컬 체결 기록 없음</p>{% endif %}
+        </section>
+      </div>
+    </section>
+
     {% if day.chain.slot_date is none %}
     <section class="job-chain-panel" aria-labelledby="chain-title">
       <div class="section-heading compact-heading">
@@ -59,7 +116,7 @@
         </div>
         <nav class="slot-nav" aria-label="잡 슬롯 선택">
           {% for slot in day.slots %}
-          <a href="/pipeline?slot={{ slot }}"
+          <a href="/?slot={{ slot }}"
              class="slot-link{% if slot == day.chain.slot_date %} slot-current{% endif %}"
              {% if slot == day.chain.slot_date %}aria-current="page"{% endif %}>{{ slot }}</a>
           {% endfor %}

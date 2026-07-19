@@ -118,7 +118,7 @@ def test_the_page_renders_the_chain_in_execution_order() -> None:
 
     # When
     with _client(reads) as client:
-        body = client.get("/pipeline").text
+        body = client.get("/").text
 
     # Then — CSS가 인라인이라 페이지 전체 검색은 클래스 이름에 걸린다
     chain = _chain_list(body)
@@ -137,7 +137,7 @@ def test_a_chain_without_failures_does_not_claim_it_finished_everything() -> Non
 
     # When
     with _client(reads) as client:
-        body = client.get("/pipeline").text
+        body = client.get("/").text
 
     # Then
     assert "완주" not in body
@@ -152,11 +152,11 @@ def test_an_older_slot_can_be_opened_from_the_navigation() -> None:
 
     # When
     with _client(reads) as client:
-        body = client.get("/pipeline").text
+        body = client.get("/").text
         picked = client.get(f"/api/pipeline/today?slot={yesterday}").json()
 
     # Then
-    assert f'href="/pipeline?slot={yesterday}"' in body
+    assert f'href="/?slot={yesterday}"' in body
     assert picked["chain"]["slot_date"] == yesterday.isoformat()
 
 
@@ -185,7 +185,7 @@ def test_a_broken_chain_names_the_job_that_broke_it() -> None:
 
     # When
     with _client(reads) as client:
-        body = client.get("/pipeline").text
+        body = client.get("/").text
 
     # Then
     assert "체인이 daily_bars에서 끊겼습니다" in body
@@ -199,7 +199,7 @@ def test_an_installation_that_never_ran_a_job_still_renders() -> None:
 
     # When
     with _client(reads) as client:
-        response = client.get("/pipeline")
+        response = client.get("/")
 
     # Then
     assert response.status_code == 200
@@ -213,7 +213,7 @@ def test_a_store_without_a_job_ledger_renders_the_empty_room() -> None:
 
     # When
     with TestClient(create_app(settings, store=InMemoryRunStore())) as client:
-        response = client.get("/pipeline")
+        response = client.get("/")
 
     # Then
     assert response.status_code == 200
@@ -247,7 +247,7 @@ def test_the_page_shows_why_the_allocation_stopped_buying() -> None:
 
     # When
     with _client(reads) as client:
-        body = client.get("/pipeline").text
+        body = client.get("/").text
 
     # Then
     assert "1 매수 · 1 보류" in body
@@ -283,7 +283,7 @@ def test_the_page_separates_the_two_investment_profiles() -> None:
 
     # When
     with _client(reads) as client:
-        body = client.get("/pipeline").text
+        body = client.get("/").text
 
     # Then
     assert "aggressive" in body
@@ -321,7 +321,7 @@ def test_every_job_status_renders(status: str) -> None:
 
     # When
     with _client(reads) as client:
-        response = client.get("/pipeline")
+        response = client.get("/")
 
     # Then
     assert response.status_code == 200

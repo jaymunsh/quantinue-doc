@@ -11,14 +11,8 @@ from quantinue.core.config import BrokerMode, DatabaseMode, DataMode, Settings
 from quantinue.db.postgres import PostgresRunStore
 from quantinue.db.store import InMemoryRunStore, RunStore
 from quantinue.llm.provider import DeterministicAnalyzer, LlmAnalyzer, build_llm_analyzer
-from quantinue.market_data import (
-    FixtureMarketData,
-    HttpMarketData,
-    MarketData,
-    MarketDataEndpoints,
-    build_http_client,
-    fetch_fred_csv,
-)
+from quantinue.market_data import HttpMarketData, MarketData
+from quantinue.market_data.factory import build_public_market_data
 from quantinue.orchestration.pipeline import PipelineOrchestrator, PipelineRole
 from quantinue.orchestration.policy import (
     DEFAULT_PIPELINE_POLICY,
@@ -48,31 +42,6 @@ DEFAULT_PROFILE: Final[ProfileConfig] = ProfileConfig()
 DEFAULT_DISCLOSURE: Final[DisclosureConfig] = DisclosureConfig()
 # 단일 계좌 기준 성향. 계좌별 성향 루프는 M6에서 도입한다.
 DEFAULT_PROFILE_NAME: Final[str] = "aggressive"
-
-
-def build_market_data(
-    settings: Settings,
-    transport: httpx2.AsyncBaseTransport | None = None,
-) -> FixtureMarketData | HttpMarketData:
-    """Select deterministic fixtures or no-key public HTTP adapters."""
-    match settings.data_mode:
-        case DataMode.FIXTURE:
-            return FixtureMarketData()
-        case DataMode.PUBLIC:
-            return build_public_market_data(transport)
-        case unreachable:
-            assert_never(unreachable)
-
-
-def build_public_market_data(
-    transport: httpx2.AsyncBaseTransport | None = None,
-) -> HttpMarketData:
-    """Build the application-owned no-key HTTP adapter."""
-    return HttpMarketData(
-        build_http_client(transport=transport),
-        MarketDataEndpoints.defaults(),
-        fred_fetcher=None if transport is not None else fetch_fred_csv,
-    )
 
 
 def build_roles(  # noqa: PLR0913 - one composition seam per replaceable collaborator

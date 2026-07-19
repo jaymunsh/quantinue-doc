@@ -21,8 +21,9 @@ from quantinue.market_data import (
     MarketDataEndpoints,
     build_http_client,
 )
+from quantinue.market_data.factory import build_market_data
 from quantinue.market_data.models import TickerNewsQuery
-from quantinue.orchestration.factory import build_market_data, build_roles
+from quantinue.orchestration.factory import build_roles
 from quantinue.orchestration.failure_policy import classify_failure
 from quantinue.orchestration.pipeline import PipelineOrchestrator
 from quantinue.roles.role_01_universe_screener.service import UniverseScreener

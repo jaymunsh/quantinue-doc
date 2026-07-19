@@ -4,6 +4,7 @@ from pydantic import SecretStr
 
 from quantinue.api.access import ControlRoomAccess
 from quantinue.core.config import BrokerMode, Settings
+from quantinue.db.memory import InMemoryRunStore
 from quantinue.main import create_app
 
 
@@ -36,34 +37,35 @@ def test_control_room_access_rejects_missing_or_cross_origin_token() -> None:
     assert accepted.status_code == 200
 
 
-def test_paper_enabled_run_routes_require_a_same_origin_control_room_token() -> None:
-    # Given
-    settings = Settings(
-        broker_mode=BrokerMode.ALPACA,
-        trading_enabled=True,
-        alpaca_api_key=SecretStr("test-key"),
-        alpaca_secret_key=SecretStr("test-secret"),
-        control_room_token=SecretStr("test-control-room-token"),
-    )
-    app = create_app(settings)
+def test_the_review_route_is_the_one_that_still_needs_the_token() -> None:
+    """구 러너 삭제로 실행 트리거가 사라졌다 — 남은 변경 경로는 리뷰 처리뿐이다.
 
-    # When / Then
-    with TestClient(app) as client:
-        missing = client.post("/api/runs", json={"ticker": "NVDA"})
-        cross_origin = client.post(
-            "/api/runs",
-            json={"ticker": "NVDA"},
-            headers={
-                "Origin": "https://untrusted.example",
-                "X-Quantinue-Control-Token": "test-control-room-token",
-            },
-        )
-        accepted_form = client.post(
-            "/runs",
-            data={"ticker": "invalid", "control_room_token": "test-control-room-token"},
-        )
+    이 테스트는 삭제된 ``POST /api/runs``·``POST /runs`` 게이트 테스트의 대체다.
+    화면이 읽기 전용이 됐다고 토큰 게이트가 필요 없어지는 것이 아니라, 지킬
+    대상이 옮겨간 것이다.
+    """
+    # Given
+    settings = Settings.model_validate(
+        {
+            "broker_mode": BrokerMode.MOCK,
+            "trading_enabled": True,
+            "control_room_token": "test-control-room-token",
+            "database_mode": "postgres",
+            "database_url": "postgresql+asyncpg://test:test@127.0.0.1:55400/test",
+        }
+    )
+    app = create_app(settings, store=InMemoryRunStore())
+
+    # When / Then — lifespan은 실제 DB를 요구하므로 라우터만 검사한다
+    client = TestClient(app)
+    missing = client.post("/api/reviews/1/process")
+    cross_origin = client.post(
+        "/api/reviews/1/process",
+        headers={
+            "Origin": "https://untrusted.example",
+            "X-Quantinue-Control-Token": "test-control-room-token",
+        },
+    )
 
     assert missing.status_code == 403
     assert cross_origin.status_code == 403
-    assert accepted_form.status_code == 200
-    assert "티커 형식을 확인하세요" in accepted_form.text
