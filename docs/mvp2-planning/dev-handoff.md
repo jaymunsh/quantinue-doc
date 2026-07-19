@@ -7,6 +7,7 @@
 
 1. **`docs/mvp2-planning/dev-playbook.md`** — 실행 정본. 마일스톤별 완료 표시(✅/🔶)와 남은 태스크, ⏳ 보완 목록이 전부 여기 있다.
 2. `docs/quantinue-integrated-design.html` — 설계 정본(v4.8). 확정 로직은 `#logic`, 결정 이력은 changelog.
+3. `docs/mvp2-planning/m4-scope-decisions.md` — **M4 범위 결정 기록**(2026-07-19). 코드 실사에서 나온 사실 F1~F8과 그에 따른 범위·순서 재정의(D1~D6). 각 결정에 근거와 "뒤집을 조건"을 병기 — 나중에 수정할 때 여기부터 볼 것.
 
 ## 현재 상태 (2026-07-19)
 
