@@ -133,10 +133,12 @@
 > - **4-5 ✅ 대표기사 + peak_importance** — 원 계획의 `importance × 신뢰무게`는 **구현 불가**: importance는 LLM 출력인데 선정은 LLM 호출보다 먼저다. → 선정 키를 **신뢰가중 → 관련성 → 최신**으로 개정(관련성을 완전히 빼면 같은 매체 두 기사가 동률이 되어 URL 알파벳순으로 뽑히는 문제를 기존 계약 테스트가 잡아냈다). `tb_news_signal`의 유령 컬럼(importance·sentiment_score·source_trust·grade_score·peak_importance) 전부 채움. `peak_importance = GREATEST(현재, 당일 해당 종목 최댓값)`.
 > - **부수 수정**: 갭 가드가 거래소 캘린더 구간 밖 날짜에서 `DateOutOfBounds`로 **파이프라인을 죽이던** 문제 — 통합 테스트가 잡음. 판정 불가 시 측정 생략.
 >
-> **최종 검증**: 유닛/웹 **646 green**(592 → 646, 신규 54) · 통합 **30 green**(신규 DB 1회) · ruff clean.
+> **최종 검증**: 유닛/웹 **649 green**(592 → 649, 신규 57) · 통합 **30 green**(신규 DB 1회) · ruff clean · **드라이런 HTTP 201**(AAPL, 01→11 완주).
 > **⏳ 이월 2건**(코드 아님, 관측):
 > - `gates.premarket_gap_max` 3%는 **잠정값** — 실 갭 분포 1~2주 관측 후 조정. 발동 사유는 기록된다.
-> - **block 매체 LLM 호출 0** 실측 — 코드로는 보장, 실행 로그 미검증. 개장 전 드라이런에서 확인.
+> - **block 매체 LLM 호출 0** 실측 — 드라이런 실행됨(`차단매체 0건 제외`)이나 **표본(AAPL 100건)에 차단 도메인이 없어 차단 자체는 미관측**. 필터가 돌았다는 것만 확인. ⏳ 유지.
+> - **갭 가드·late_entry·halted 실발동 미확인** — 크리틱이 먼저 차단(확신도 0.218)해 게이트 체인이 `critic_rejected`에서 끊겼고 mock 브로커는 `is_tradable` 미구현. **유닛 검증만 된 상태**. 실 페이퍼 매수가 성사되는 사이클에서 확인할 것.
+> - ⚠️ **배포 전 필수**: `QUANTINUE_HTTP_USER_AGENT`를 실제 연락 가능한 주소로 설정(SEC 공정접근 — 기본값 `admin@quantinue.local`은 동작하지만 응답받을 수 없다).
 >
 > **⏳ 신규 발견(미해소)**: `role_05`가 `filings[0]`을 **날짜 무관하게** 사용 — 3개월 전 공시가 오늘의 시그널로 채점될 수 있다. 신선도 창(`gates.disclosure_lookback_days`) 신설 필요, 문턱은 실측 후. → §보완 목록 이관.
 >
@@ -256,7 +258,9 @@
 | M4-6 | ✅해소: **필드 없음** — `SecSubmission`은 form·accession·filed_at·primary_document(파일명)만 담고 ownership XML은 fetch하지 않는다. 커널만 M4, 본체는 백로그 이관 |
 | M4-5 | ✅해소: importance는 LLM 출력이라 선정 시점 부재 → 신뢰가중 랭킹 + `peak_importance=GREATEST(현재, 당일 최댓값)`로 개정 |
 | M4-8 | ⏳ `gates.premarket_gap_max` 3%는 잠정값 — 실 갭 분포 1~2주 관측 후 확정 |
-| M4 | ⏳ block 매체 LLM 호출 0 — 코드 보장, 실행 로그 미검증(드라이런에서 확인) |
+| M4 | ⏳ block 매체 LLM 호출 0 — 드라이런에서 필터는 돌았으나 표본에 차단 도메인 없음(차단 자체 미관측) |
+| M4 | ⏳ 갭 가드·late_entry·halted 실발동 미확인 — 크리틱 선차단·mock 브로커. 실 매수 성사 사이클에서 확인 |
+| M4 | ⚠️ 배포 전 `QUANTINUE_HTTP_USER_AGENT`를 실제 연락처로 설정(SEC 공정접근) |
 | M4 신규 | ⏳ `role_05`가 `filings[0]`을 날짜 무관하게 사용 — 3개월 전 공시가 오늘 시그널로 채점될 수 있다. 신선도 창(`gates.disclosure_lookback_days`) 신설 필요 |
 | M7 이후 | Form 4 인사이더 시그널(ownership XML 파서 + 클러스터) — ⏳ 착수 전 T+5 지평 정합성 검토 · role_05 최근 N건 윈도우화 동반 |
 | M5 착수 시 | **매도 주문 표현 설계 확정**(order_type/leg 취소 방식) — 스키마 영향 시 M2에 추가 |
