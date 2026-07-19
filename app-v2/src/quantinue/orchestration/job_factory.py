@@ -31,6 +31,14 @@ from quantinue.roles.role_01_universe_screener.contracts import (
     UniverseMember,
     UniverseScreenerOutput,
 )
+from quantinue.roles.role_04_macro_analysis.contracts import (
+    MVP_BASELINE_DOLLAR,
+    MVP_BASELINE_NASDAQ_RET,
+    MVP_BASELINE_SP500_RET,
+    MVP_BASELINE_VIX,
+    MacroAnalysisOutput,
+    regime_from_rate,
+)
 from quantinue.roles.screening import select_scope
 
 if TYPE_CHECKING:
@@ -44,7 +52,7 @@ if TYPE_CHECKING:
         RawNewsWrite,
     )
     from quantinue.llm.provider import LlmAnalyzer
-    from quantinue.market_data.models import SecuritySnapshot
+    from quantinue.market_data.models import MacroObservation, SecuritySnapshot
     from quantinue.orchestration.policy import Mvp2Config, ScreeningConfig
     from quantinue.roles.exits import DailyObservation
     from quantinue.roles.screening import RankedCandidate
@@ -97,6 +105,20 @@ class _ExitRunner(Protocol):
 class _UniverseSource(Protocol):
     async def screener(self, execution_id: str) -> tuple[SecuritySnapshot, ...]:
         """Fetch the raw listing feed."""
+        ...
+
+
+class _MacroSource(Protocol):
+    async def macro(
+        self, series: str, execution_id: str
+    ) -> tuple[MacroObservation, ...]:
+        """Fetch a public macro series, oldest first."""
+        ...
+
+
+class _MacroSink(Protocol):
+    async def save_macro(self, value: MacroAnalysisOutput) -> None:
+        """Upsert one regime observation."""
         ...
 
 
@@ -280,6 +302,53 @@ def build_news_job(
             f"{len(articles)} headlines on {tickers} tickers"
             f" since {session.isoformat()}"
         )
+
+    return JobDefinition(name=name, run=run)
+
+
+def build_macro_job(
+    *,
+    source: _MacroSource,
+    domain: _MacroSink,
+    name: str = "macro",
+) -> JobDefinition:
+    """Collect the market regime the analysis jobs judge under.
+
+    구 러너 role_04가 쓰던 ``tb_macro`` 행을 잡이 이어 쓴다. 이 잡이 없으면
+    구 러너를 지우는 순간 ``latest_macro``가 읽을 행이 끊기고,
+    ``risk_off_action``·``macro_penalty_table``이 다시 유령이 된다 — 매수
+    판단이 국면을 모른 채 돌게 된다.
+
+    산식(rate/12)과 국면 문턱은 role_04 contracts와 한 곳을 공유한다.
+    ``as_of``를 자정으로 고정하는 이유는 멱등 때문이다 — 같은 날 재실행이
+    같은 행을 덮어쓰고(upsert 축이 as_of), 시계에 의존하지 않는다.
+    """
+
+    async def run(as_of: date) -> str:
+        run_id = f"macro:{as_of.isoformat()}"
+        observations = await source.macro("DFF", run_id)
+        if not observations:
+            # 지어내지 않는다 — 없는 국면을 중립으로 저장하면 그 행이 이틀 동안
+            # "신선한 관측"으로 판단에 들어간다. 없으면 latest_macro가 None을
+            # 돌려주고 부르는 쪽은 감점도 차단도 하지 않는다.
+            return "no observations"
+        rate = float(observations[-1].value)
+        regime, risk_score = regime_from_rate(rate)
+        await domain.save_macro(
+            MacroAnalysisOutput(
+                run_id=run_id,
+                as_of=datetime.combine(as_of, time(), tzinfo=UTC),
+                regime=regime,
+                risk_score=risk_score,
+                vix=MVP_BASELINE_VIX,
+                nasdaq_ret=MVP_BASELINE_NASDAQ_RET,
+                sp500_ret=MVP_BASELINE_SP500_RET,
+                rate=rate,
+                dollar=MVP_BASELINE_DOLLAR,
+                evidence_ids=(f"{run_id}:DFF",),
+            )
+        )
+        return f"DFF {rate:.2f}% → {regime.value} ({risk_score:.2f})"
 
     return JobDefinition(name=name, run=run)
 
@@ -531,52 +600,27 @@ class JobSources:
     bars: _BarSource | None = None
     disclosures: _FilingSource | None = None
     news: _NewsSource | None = None
+    # 실제로는 market_data와 같은 어댑터가 둘 다 구현하지만 필드를 가른다 —
+    # 유니버스만 주는 테스트 조립이 macro 없는 잡을 받아 런타임에 죽으면 안 된다.
+    macro: _MacroSource | None = None
     analyzer: LlmAnalyzer | None = None
 
 
-def build_job_runner(
+def _collection_jobs(  # noqa: PLR0913 - 협력자 목록이지 옵션 스프롤이 아니다
+    selected: JobSources,
     settings: Settings,
     config: Mvp2Config,
     *,
-    store: object,
-    sources: JobSources | None = None,
-) -> JobRunner | None:
-    """Assemble the background job runner for this application, if it can run.
+    domain: object,
+    held_tickers: TickerSource,
+    covered_tickers: TickerSource,
+    calendar: NyseCalendar,
+) -> list[JobDefinition]:
+    """Assemble the data-collection jobs, in their contractual order.
 
-    잡 등록 **순서가 계약이다**: 유니버스 → 일봉 → 공시 → 스크리닝 → 분석 → 청산. 수집이 청산보다
-    먼저 와야 오늘 시세·공시로 판단하고, 유니버스가 일봉보다 먼저 와야 그 주에
-    새로 든 종목이 봉 없이 남지 않는다. 한 틱 안에서 순서대로 돌기 때문에 이
-    순서가 그대로 데이터 의존성을 만족시킨다.
+    판단 잡(스크리닝·분석·청산)과 조립을 가르는 이유는 단순히 길이가 아니다 —
+    수집 잡들만 자격증명 유무에 따라 등록이 갈리고, 판단 잡은 언제나 선다.
     """
-    selected = sources or JobSources()
-    domain = getattr(store, "domain", None)
-    if domain is None:
-        # 메모리 스토어에는 tb_job_run이 없다 — 멱등의 근거가 없으면 안 돈다.
-        return None
-    calendar = NyseCalendar()
-
-    async def held_tickers(_: date) -> tuple[str, ...]:
-        """Tickers we actually own — the only ones the exit rules can act on."""
-        positions = await domain.open_positions()
-        # dict.fromkeys: 같은 종목을 여러 계좌가 들고 있어도 한 번만 본다.
-        return tuple(dict.fromkeys(position.ticker for position in positions))
-
-    async def covered_tickers(as_of: date) -> tuple[str, ...]:
-        """Holdings first, then the universe snapshot the universe job produced."""
-        held = list(await held_tickers(as_of))
-        # 유니버스도 덮는다 — 스크리닝(Phase 3)은 봉이 있어야 API 0콜로 랭킹을
-        # 짤 수 있고, 봉이 없으면 500 캡이 다시 살아난다. 보유를 앞에 두는
-        # 이유는 상한에 걸려 잘릴 때 보유가 먼저 잘리면 안 되기 때문이다.
-        #
-        # 스냅샷 날짜를 tb_universe의 최대 as_of_date가 아니라 **잡 원장**에서
-        # 가져오는 이유: 구 11단계 러너의 role_01도 같은 테이블에 오늘 날짜로
-        # 쓰는데, fixture 모드에서는 그게 1행짜리다(D6 점진 교체 중이라 둘이
-        # 공존한다). 최대 날짜를 믿으면 그 1행이 주간 2000행 스냅샷을 통째로
-        # 가린다 — 실제로 스모크에서 그렇게 됐다.
-        snapshot = await domain.last_job_success("universe")
-        universe = list(await domain.universe_tickers(snapshot)) if snapshot else []
-        return tuple(dict.fromkeys([*held, *universe]))
-
     jobs: list[JobDefinition] = []
     key = settings.alpaca_api_key.get_secret_value().strip()
     secret = settings.alpaca_secret_key.get_secret_value().strip()
@@ -625,6 +669,66 @@ def build_job_runner(
         jobs.append(
             build_news_job(source=news_source, domain=domain, calendar=calendar)
         )
+    if selected.macro is not None:
+        # 매크로는 스크리닝·분석 **앞**이다 — 분석 잡이 latest_macro로 오늘의
+        # 국면을 읽으므로, 그 전에 행이 놓여 있어야 같은 틱 안에서 닿는다.
+        jobs.append(build_macro_job(source=selected.macro, domain=domain))
+    return jobs
+
+
+def build_job_runner(
+    settings: Settings,
+    config: Mvp2Config,
+    *,
+    store: object,
+    sources: JobSources | None = None,
+) -> JobRunner | None:
+    """Assemble the background job runner for this application, if it can run.
+
+    잡 등록 **순서가 계약이다**: 유니버스 → 일봉 → 공시 → 뉴스 → 매크로 →
+    스크리닝 → 분석×성향수 → 청산. 수집이 판단보다 먼저 와야 오늘 시세·공시로
+    판단하고, 유니버스가 일봉보다 먼저 와야 그 주에 새로 든 종목이 봉 없이 남지
+    않는다. 한 틱 안에서 순서대로 돌기 때문에 이 순서가 그대로 데이터 의존성을
+    만족시킨다.
+    """
+    selected = sources or JobSources()
+    domain = getattr(store, "domain", None)
+    if domain is None:
+        # 메모리 스토어에는 tb_job_run이 없다 — 멱등의 근거가 없으면 안 돈다.
+        return None
+    calendar = NyseCalendar()
+
+    async def held_tickers(_: date) -> tuple[str, ...]:
+        """Tickers we actually own — the only ones the exit rules can act on."""
+        positions = await domain.open_positions()
+        # dict.fromkeys: 같은 종목을 여러 계좌가 들고 있어도 한 번만 본다.
+        return tuple(dict.fromkeys(position.ticker for position in positions))
+
+    async def covered_tickers(as_of: date) -> tuple[str, ...]:
+        """Holdings first, then the universe snapshot the universe job produced."""
+        held = list(await held_tickers(as_of))
+        # 유니버스도 덮는다 — 스크리닝(Phase 3)은 봉이 있어야 API 0콜로 랭킹을
+        # 짤 수 있고, 봉이 없으면 500 캡이 다시 살아난다. 보유를 앞에 두는
+        # 이유는 상한에 걸려 잘릴 때 보유가 먼저 잘리면 안 되기 때문이다.
+        #
+        # 스냅샷 날짜를 tb_universe의 최대 as_of_date가 아니라 **잡 원장**에서
+        # 가져오는 이유: 구 11단계 러너의 role_01도 같은 테이블에 오늘 날짜로
+        # 쓰는데, fixture 모드에서는 그게 1행짜리다(D6 점진 교체 중이라 둘이
+        # 공존한다). 최대 날짜를 믿으면 그 1행이 주간 2000행 스냅샷을 통째로
+        # 가린다 — 실제로 스모크에서 그렇게 됐다.
+        snapshot = await domain.last_job_success("universe")
+        universe = list(await domain.universe_tickers(snapshot)) if snapshot else []
+        return tuple(dict.fromkeys([*held, *universe]))
+
+    jobs: list[JobDefinition] = _collection_jobs(
+        selected,
+        settings,
+        config,
+        domain=domain,
+        held_tickers=held_tickers,
+        covered_tickers=covered_tickers,
+        calendar=calendar,
+    )
     jobs.append(
         build_screening_job(
             domain=domain,

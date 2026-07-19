@@ -14,13 +14,14 @@ from quantinue.core.config import Settings
 from quantinue.core.market_calendar import NyseCalendar
 from quantinue.db.domain_records import DailyBarWrite, KnownListing, RawNewsWrite
 from quantinue.llm.provider import DeterministicAnalyzer
-from quantinue.market_data.models import Provenance, SecuritySnapshot
+from quantinue.market_data.models import MacroObservation, Provenance, SecuritySnapshot
 from quantinue.orchestration.job_factory import (
     JobSources,
     TickerSource,
     build_daily_bars_job,
     build_exit_job,
     build_job_runner,
+    build_macro_job,
     build_news_job,
     build_universe_job,
 )
@@ -703,3 +704,80 @@ async def test_a_sell_signal_on_a_ticker_with_no_observation_is_not_invented() -
 
     # Then
     assert exit_job.calls[0][1] == {}
+
+
+class _MacroSource:
+    def __init__(self, observations: tuple[object, ...]) -> None:
+        self.observations = observations
+        self.calls: list[str] = []
+
+    async def macro(self, series: str, execution_id: str) -> tuple[object, ...]:
+        self.calls.append(series)
+        return self.observations
+
+
+class _MacroDomain:
+    def __init__(self) -> None:
+        self.saved: list[object] = []
+
+    async def save_macro(self, value: object) -> None:
+        self.saved.append(value)
+
+
+def _macro_observation(rate: str, observed: datetime) -> object:
+    return MacroObservation(
+        series="DFF",
+        observed_at=observed,
+        value=Decimal(rate),
+        provenance=Provenance(
+            source="macro-feed",
+            source_ref="https://fred.test/DFF",
+            observed_at=observed,
+            captured_at=observed,
+            confidence=1.0,
+            execution_id="macro:test",
+        ),
+    )
+
+
+@pytest.mark.anyio
+async def test_the_macro_job_projects_the_latest_rate_into_a_regime_row() -> None:
+    """구 러너 role_04가 쓰던 tb_macro 행을 잡이 이어 쓴다 — 구 러너를 지우면
+    latest_macro가 읽을 행이 끊기고 risk_off_action이 다시 유령이 되기 때문이다."""
+    # Given — 관측 여러 개 중 마지막이 최신이다(role_04와 같은 규약)
+    source = _MacroSource(
+        (
+            _macro_observation("4.00", datetime(2026, 7, 16, tzinfo=UTC)),
+            _macro_observation("4.12", datetime(2026, 7, 17, tzinfo=UTC)),
+        )
+    )
+    domain = _MacroDomain()
+
+    # When
+    job = build_macro_job(source=source, domain=domain)
+    detail = await job.run(_MONDAY)
+
+    # Then — rate/12 산식과 국면 문턱은 role_04와 한 곳을 공유한다
+    assert source.calls == ["DFF"]
+    saved = domain.saved[0]
+    assert saved.rate == pytest.approx(4.12)
+    assert saved.risk_score == pytest.approx(4.12 / 12.0)
+    assert saved.regime.value == "neutral"
+    assert saved.as_of == datetime.combine(_MONDAY, datetime.min.time(), tzinfo=UTC)
+    assert "4.12" in detail
+
+
+@pytest.mark.anyio
+async def test_a_day_without_macro_observations_saves_nothing() -> None:
+    """관측이 없으면 지어내지 않는다 — 없는 국면을 중립으로 저장하면 그것이
+    이틀 동안 '신선한 관측'으로 판단에 들어간다."""
+    # Given
+    domain = _MacroDomain()
+
+    # When
+    job = build_macro_job(source=_MacroSource(()), domain=domain)
+    detail = await job.run(_MONDAY)
+
+    # Then
+    assert domain.saved == []
+    assert "no observations" in detail

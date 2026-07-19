@@ -117,6 +117,9 @@ def create_app(  # noqa: C901, PLR0915
         store=selected_store,
         sources=JobSources(
             market_data=build_market_data(selected_settings),
+            # 같은 어댑터가 유니버스와 매크로를 모두 구현한다 — 필드가 갈라져
+            # 있는 것은 테스트 조립의 타입 정직성 때문이다(JobSources 주석).
+            macro=build_market_data(selected_settings),
             analyzer=build_llm_analyzer(selected_settings),
         ),
     )

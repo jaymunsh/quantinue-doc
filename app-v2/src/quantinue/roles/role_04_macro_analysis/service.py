@@ -8,10 +8,13 @@ from quantinue.core.ontology import EvidenceKind, Regime
 from quantinue.core.schemas import Evidence
 from quantinue.market_data import MarketData
 from quantinue.roles.role_04_macro_analysis.contracts import (
-    RISK_OFF_MIN,
-    RISK_ON_MAX,
+    MVP_BASELINE_DOLLAR,
+    MVP_BASELINE_NASDAQ_RET,
+    MVP_BASELINE_SP500_RET,
+    MVP_BASELINE_VIX,
     MacroAnalysisInput,
     MacroAnalysisOutput,
+    regime_from_rate,
 )
 
 
@@ -84,23 +87,17 @@ class MacroAnalysis:
         observations = await self.market_data.macro("DFF", str(context.run_id))
         observation = observations[-1]
         rate = float(observation.value)
-        risk_score = min(1.0, max(0.0, rate / 12.0))
-        if risk_score <= RISK_ON_MAX:
-            regime = Regime.RISK_ON
-        elif risk_score >= RISK_OFF_MIN:
-            regime = Regime.RISK_OFF
-        else:
-            regime = Regime.NEUTRAL
+        regime, risk_score = regime_from_rate(rate)
         result = MacroAnalysisOutput(
             run_id=context.run_id,
             as_of=context.request.cycle_ts,
             regime=regime,
             risk_score=risk_score,
-            vix=18.2,
-            nasdaq_ret=0.2,
-            sp500_ret=0.1,
+            vix=MVP_BASELINE_VIX,
+            nasdaq_ret=MVP_BASELINE_NASDAQ_RET,
+            sp500_ret=MVP_BASELINE_SP500_RET,
             rate=rate,
-            dollar=104.3,
+            dollar=MVP_BASELINE_DOLLAR,
             evidence_ids=(f"{context.run_id}:04:market",),
         )
         updated = replace(
