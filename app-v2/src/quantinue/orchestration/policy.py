@@ -282,6 +282,34 @@ class ExitsConfig(BaseModel):
     time_exit_bdays: int = Field(default=10, gt=0, le=250)
 
 
+class JobCadenceConfig(BaseModel):
+    """How often one background job runs, measured in days."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: bool = True
+    interval_days: int = Field(default=1, gt=0, le=365)
+
+
+class JobsConfig(BaseModel):
+    """The background job runner's switch and per-job cadences.
+
+    주기를 잡 이름으로 찾는 사전으로 둔 이유: 잡이 늘 때마다 이 모델에 필드를
+    추가하면 config가 코드 변경을 강제한다(D3이 막으려던 것). 선언이 없는
+    잡은 기본값(일 1회)으로 돌고, 조이거나 끄고 싶을 때만 yaml에 적는다.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: bool = False
+    tick_seconds: int = Field(default=60, gt=0, le=3_600)
+    cadences: dict[str, JobCadenceConfig] = Field(default_factory=dict)
+
+    def cadence_for(self, job_name: str) -> JobCadenceConfig:
+        """Return the declared cadence, or the default daily one."""
+        return self.cadences.get(job_name, JobCadenceConfig())
+
+
 class BudgetConfig(BaseModel):
     """Spending ceiling enforced before any billable model call."""
 
@@ -316,6 +344,7 @@ class Mvp2Config(BaseModel):
     screening: ScreeningConfig = ScreeningConfig()
     disclosure: DisclosureConfig = DisclosureConfig()
     exits: ExitsConfig = ExitsConfig()
+    jobs: JobsConfig = JobsConfig()
     budget: BudgetConfig = BudgetConfig()
 
 
