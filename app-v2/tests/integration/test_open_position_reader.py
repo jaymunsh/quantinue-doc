@@ -18,11 +18,15 @@ pytestmark = pytest.mark.skipif(
     DATABASE_URL is None, reason="disposable PostgreSQL URL not provided"
 )
 
-_SIGNAL_COLUMNS = """trade_date,ticker,cycle_ts,inv_type,side,conviction,
+# 시그널 한 행을 넣는 완결된 문장. 조각을 f-string으로 합치면 정적 분석이
+# SQL 조립으로 보고(S608) 실제로도 나중에 값이 섞여 들어갈 여지가 생긴다.
+_INSERT_SIGNAL = """INSERT INTO tb_strategist_signals(
+    trade_date,ticker,cycle_ts,inv_type,side,conviction,
     signal_consensus,summary,evidence,sizing_hint,decision_close,current_price,
-    day_high,day_low,close_prev,volume,turnover,high_52w,low_52w"""
-_SIGNAL_VALUES = """:day,:ticker,:cycle,'aggressive',:side,0.800,
-    2,'fixture','[]','{}',100,100,100,100,100,0,0,100,100"""
+    day_high,day_low,close_prev,volume,turnover,high_52w,low_52w)
+VALUES (:day,:ticker,:cycle,'aggressive',:side,0.800,
+    2,'fixture','[]','{}',100,100,100,100,100,0,0,100,100)
+RETURNING id"""
 
 
 async def _seed(database_url: str, suffix: str) -> int:
@@ -60,7 +64,7 @@ async def _seed(database_url: str, suffix: str) -> int:
                 {"day": day, "ticker": ticker},
             )
         held_signal = await connection.scalar(
-            text(f"INSERT INTO tb_strategist_signals({_SIGNAL_COLUMNS}) VALUES ({_SIGNAL_VALUES}) RETURNING id"),  # noqa: E501
+            text(_INSERT_SIGNAL),
             {
                 "day": day,
                 "ticker": held_ticker,
@@ -97,7 +101,7 @@ async def _seed(database_url: str, suffix: str) -> int:
             },
         )
         closed_signal = await connection.scalar(
-            text(f"INSERT INTO tb_strategist_signals({_SIGNAL_COLUMNS}) VALUES ({_SIGNAL_VALUES}) RETURNING id"),  # noqa: E501
+            text(_INSERT_SIGNAL),
             {
                 "day": day,
                 "ticker": closed_ticker,
@@ -122,7 +126,7 @@ async def _seed(database_url: str, suffix: str) -> int:
             },
         )
         exit_signal = await connection.scalar(
-            text(f"INSERT INTO tb_strategist_signals({_SIGNAL_COLUMNS}) VALUES ({_SIGNAL_VALUES}) RETURNING id"),  # noqa: E501
+            text(_INSERT_SIGNAL),
             {
                 "day": day,
                 "ticker": closed_ticker,
