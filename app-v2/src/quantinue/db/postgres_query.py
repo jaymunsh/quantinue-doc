@@ -203,6 +203,11 @@ async def reserve_daily_order(
             and_(
                 orders.c.account_id == request.account_id,
                 signals.c.trade_date == request.trade_date,
+                # 청산은 이 한도의 대상이 아니다. 이 캡은 "하루에 새로 여는
+                # 포지션 수"를 제한하려는 것인데, 청산까지 세면 그날 판 만큼
+                # 살 수 있는 칸이 사라진다 — 리스크를 줄이는 행동이 리스크를
+                # 줄이는 다음 행동을 막는 셈이라 방향이 거꾸로다.
+                orders.c.order_type == "bracket",
             )
         )
     )
