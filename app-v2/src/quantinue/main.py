@@ -110,7 +110,12 @@ def create_app(  # noqa: C901, PLR0915
     )
     last_scheduler_decision: TickDecision | None = None
     # 잡 루프는 11단계 사이클과 독립이다 — 분석이 실패한 날에도 청산은 돈다.
-    job_runner = build_job_runner(selected_settings, mvp2_config, store=selected_store)
+    job_runner = build_job_runner(
+        selected_settings,
+        mvp2_config,
+        store=selected_store,
+        market_data=build_market_data(selected_settings),
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:

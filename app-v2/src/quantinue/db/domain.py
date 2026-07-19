@@ -113,6 +113,22 @@ class PostgresDomainRepository:
                 )
                 _ = await connection.execute(statement)
 
+    async def universe_tickers(self, as_of: date) -> tuple[str, ...]:
+        """Return one snapshot's tickers, largest first.
+
+        시총 내림차순을 저장 왕복 뒤에도 유지한다 — 상위 N을 자르는 소비자가
+        여럿이고(스크리닝·일봉 수집), 순서가 흔들리면 "상위"가 의미를 잃는다.
+        """
+        table = self._table("tb_universe")
+        statement = (
+            select(table.c.ticker)
+            .where(table.c.as_of_date == as_of)
+            .order_by(table.c.market_cap.desc(), table.c.ticker)
+        )
+        async with self._engine.begin() as connection:
+            rows = (await connection.execute(statement)).all()
+        return tuple(row.ticker for row in rows)
+
     async def save_daily_stage(
         self, picks: DailyScreenerOutput, technical: TechnicalAnalysisOutput
     ) -> None:

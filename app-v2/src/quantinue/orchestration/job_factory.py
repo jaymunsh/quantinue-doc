@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from datetime import UTC, date, datetime, time
 from typing import TYPE_CHECKING, Protocol, TypeAlias
 
 from quantinue.broker.mock import MockBroker
@@ -19,17 +20,21 @@ from quantinue.core.market_calendar import NyseCalendar
 from quantinue.market_data.alpaca_bars import AlpacaBarSource
 from quantinue.orchestration.job_runner import JobDefinition, JobRunner
 from quantinue.roles.exits.job import ExitJob
+from quantinue.roles.role_01_universe_screener.contracts import (
+    UniverseMember,
+    UniverseScreenerOutput,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-    from datetime import date
 
     from quantinue.core.config import Settings
     from quantinue.db.domain_records import DailyBarWrite
-    from quantinue.orchestration.policy import Mvp2Config
+    from quantinue.market_data.models import SecuritySnapshot
+    from quantinue.orchestration.policy import Mvp2Config, ScreeningConfig
     from quantinue.roles.exits import DailyObservation
 
-TickerSource: TypeAlias = Callable[[], Awaitable[tuple[str, ...]]]
+TickerSource: TypeAlias = Callable[[date], Awaitable[tuple[str, ...]]]
 
 
 class _BarSource(Protocol):
@@ -62,6 +67,69 @@ class _ExitRunner(Protocol):
         ...
 
 
+class _UniverseSource(Protocol):
+    async def screener(self, execution_id: str) -> tuple[SecuritySnapshot, ...]:
+        """Fetch the raw listing feed."""
+        ...
+
+
+class _UniverseSink(Protocol):
+    async def save_universe(self, value: UniverseScreenerOutput) -> None:
+        """Upsert one universe snapshot."""
+        ...
+
+
+def build_universe_job(
+    *,
+    source: _UniverseSource,
+    domain: _UniverseSink,
+    config: ScreeningConfig,
+    name: str = "universe",
+) -> JobDefinition:
+    """Rebuild the tradable universe snapshot for this period.
+
+    선언은 원래 주간이었지만(``contracts.py`` docstring) 코드는 매 런 다시
+    받고 있었다 — 상장 목록은 하루 단위로 의미 있게 변하지 않으므로 매일
+    2000행 파티션을 새로 쓰는 것은 비용만 늘리고 정보는 안 늘린다. 이제 주기는
+    ``jobs.cadences.universe``가 소유한다.
+
+    ``as_of_date``는 잡이 돈 날이고, 그게 곧 "이번 주 유니버스"를 가리키는
+    열쇠가 된다 — 소비자는 오늘 날짜가 아니라 **최신 스냅샷 날짜**를 찾아야
+    한다.
+    """
+
+    async def run(as_of: date) -> str:
+        snapshots = await source.screener(f"universe:{as_of.isoformat()}")
+        # 시총 내림차순 — 잘릴 때 남는 것이 임의의 조각이 아니라 큰 이름들이어야
+        # 한다. 소스의 정렬 순서는 아무 의미가 없다.
+        ranked = sorted(
+            (item for item in snapshots if item.market_cap > 0),
+            key=lambda item: (-item.market_cap, item.ticker),
+        )[: config.universe_size]
+        if not ranked:
+            msg = "screener returned no eligible securities"
+            raise ValueError(msg)
+        await domain.save_universe(
+            UniverseScreenerOutput(
+                run_id=f"universe:{as_of.isoformat()}",
+                generated_at=datetime.combine(as_of, time(), tzinfo=UTC),
+                members=tuple(
+                    UniverseMember(
+                        as_of_date=as_of,
+                        ticker=item.ticker,
+                        company_name=item.name,
+                        market_cap=int(item.market_cap),
+                        evidence_ids=(f"universe:{as_of.isoformat()}:{item.ticker}",),
+                    )
+                    for item in ranked
+                ),
+            )
+        )
+        return f"{len(ranked)} members as of {as_of.isoformat()}"
+
+    return JobDefinition(name=name, run=run)
+
+
 def build_daily_bars_job(
     *,
     source: _BarSource,
@@ -73,7 +141,7 @@ def build_daily_bars_job(
     """Collect and store the last closed session's bars."""
 
     async def run(as_of: date) -> str:
-        wanted = await tickers()
+        wanted = await tickers(as_of)
         if not wanted:
             # 빈 목록으로 외부 API를 두드리지 않는다 — 한도만 축낸다.
             return "no tickers"
@@ -96,7 +164,7 @@ def build_exit_job(
     """Apply the exit rules to the holdings, using the stored bars as evidence."""
 
     async def run(as_of: date) -> str:
-        held = await tickers()
+        held = await tickers(as_of)
         if not held:
             return "no holdings"
         session = calendar.previous_trading_day(as_of)
@@ -108,13 +176,19 @@ def build_exit_job(
 
 
 def build_job_runner(
-    settings: Settings, config: Mvp2Config, *, store: object
+    settings: Settings,
+    config: Mvp2Config,
+    *,
+    store: object,
+    market_data: _UniverseSource | None = None,
+    bar_source: _BarSource | None = None,
 ) -> JobRunner | None:
     """Assemble the background job runner for this application, if it can run.
 
-    잡 등록 **순서가 계약이다**. 수집이 청산보다 먼저 와야 한다 — 오늘 봉을
-    받기 전에 청산하면 하루 묵은 시세로 파는 셈이 된다. 한 틱 안에서 순서대로
-    돌기 때문에 이 순서가 그대로 데이터 의존성을 만족시킨다.
+    잡 등록 **순서가 계약이다**: 유니버스 → 일봉 → 청산. 수집이 청산보다 먼저
+    와야 오늘 봉으로 판단하고, 유니버스가 수집보다 먼저 와야 그 주에 새로 든
+    종목이 봉 없이 남지 않는다. 한 틱 안에서 순서대로 돌기 때문에 이 순서가
+    그대로 데이터 의존성을 만족시킨다.
     """
     domain = getattr(store, "domain", None)
     if domain is None:
@@ -122,24 +196,49 @@ def build_job_runner(
         return None
     calendar = NyseCalendar()
 
-    async def held_tickers() -> tuple[str, ...]:
+    async def held_tickers(_: date) -> tuple[str, ...]:
+        """Tickers we actually own — the only ones the exit rules can act on."""
         positions = await domain.open_positions()
-        # dict.fromkeys: 같은 종목을 여러 계좌가 들고 있어도 시세는 한 번만 받는다.
+        # dict.fromkeys: 같은 종목을 여러 계좌가 들고 있어도 한 번만 본다.
         return tuple(dict.fromkeys(position.ticker for position in positions))
+
+    async def covered_tickers(as_of: date) -> tuple[str, ...]:
+        """Holdings first, then the universe snapshot the universe job produced."""
+        held = list(await held_tickers(as_of))
+        # 유니버스도 덮는다 — 스크리닝(Phase 3)은 봉이 있어야 API 0콜로 랭킹을
+        # 짤 수 있고, 봉이 없으면 500 캡이 다시 살아난다. 보유를 앞에 두는
+        # 이유는 상한에 걸려 잘릴 때 보유가 먼저 잘리면 안 되기 때문이다.
+        #
+        # 스냅샷 날짜를 tb_universe의 최대 as_of_date가 아니라 **잡 원장**에서
+        # 가져오는 이유: 구 11단계 러너의 role_01도 같은 테이블에 오늘 날짜로
+        # 쓰는데, fixture 모드에서는 그게 1행짜리다(D6 점진 교체 중이라 둘이
+        # 공존한다). 최대 날짜를 믿으면 그 1행이 주간 2000행 스냅샷을 통째로
+        # 가린다 — 실제로 스모크에서 그렇게 됐다.
+        snapshot = await domain.last_job_success("universe")
+        universe = list(await domain.universe_tickers(snapshot)) if snapshot else []
+        return tuple(dict.fromkeys([*held, *universe]))
 
     jobs: list[JobDefinition] = []
     key = settings.alpaca_api_key.get_secret_value().strip()
     secret = settings.alpaca_secret_key.get_secret_value().strip()
-    if key and secret:
+    if market_data is not None:
+        jobs.append(
+            build_universe_job(
+                source=market_data, domain=domain, config=config.screening
+            )
+        )
+    if bar_source is None and key and secret:
+        bar_source = AlpacaBarSource(
+            key_id=key,
+            secret_key=secret,
+            symbols_per_request=config.market_data.symbols_per_request,
+        )
+    if bar_source is not None:
         jobs.append(
             build_daily_bars_job(
-                source=AlpacaBarSource(
-                    key_id=key,
-                    secret_key=secret,
-                    symbols_per_request=config.market_data.symbols_per_request,
-                ),
+                source=bar_source,
                 domain=domain,
-                tickers=held_tickers,
+                tickers=covered_tickers,
                 calendar=calendar,
             )
         )
@@ -155,6 +254,8 @@ def build_job_runner(
                 time_exit_bdays=config.exits.time_exit_bdays,
                 calendar=calendar,
             ),
+            # 청산은 보유만 본다. 유니버스까지 넘기면 2000종목 관측을 읽고
+            # 하나도 쓰지 않는다 — 청산이 할 수 있는 일은 파는 것뿐이다.
             tickers=held_tickers,
             calendar=calendar,
         )

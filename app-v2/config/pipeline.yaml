@@ -105,6 +105,10 @@ mvp2:
     enabled: false
     tick_seconds: 60
     cadences:
+      # 상장 목록은 하루 단위로 의미 있게 변하지 않는다 — 매일 2000행 파티션을
+      # 새로 쓰면 비용만 늘고 정보는 안 는다. 선언은 원래부터 주간이었다.
+      universe:
+        interval_days: 7
       daily_bars:
         interval_days: 1
       exits:
