@@ -269,7 +269,10 @@ async def test_local_mode_disables_reasoning_and_caps_structured_output() -> Non
         _ = await analyzer.analyze(AnalysisTask.DISCLOSURE, "same contract input")
 
     assert observed_requests[0].reasoning_effort == "none"
-    assert observed_requests[0].max_tokens == 256
+    # 512는 실측으로 정한 기본값이다 — 256은 이유 문장을 잘라 구조화 출력을
+    # 죽였다(성향당 2건). test_the_local_output_budget_is_config_owned가
+    # 배선을, 여기는 기본값을 고정한다.
+    assert observed_requests[0].max_tokens == 512
     # Local reasoning models (Qwen3.6 via omlx) ignore reasoning_effort and emit
     # chain-of-thought prose into content, breaking structured JSON output. The
     # omlx server honours chat_template_kwargs.enable_thinking=false instead.
