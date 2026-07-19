@@ -110,6 +110,25 @@ class AlpacaBroker:
             case unreachable:
                 assert_never(unreachable)
 
+    async def is_tradable(self, ticker: str) -> bool:
+        """Return whether Alpaca currently accepts orders for this symbol.
+
+        A lookup failure answers True: a flaky assets endpoint must not become
+        an outage that halts all trading, and Alpaca still rejects a genuinely
+        halted symbol at submission time.
+        """
+        try:
+            async with self._create_client() as client:
+                response = await client.get(f"/v2/assets/{ticker}")
+        except httpx2.HTTPError:
+            return True
+        if response.status_code == HTTP_NOT_FOUND:
+            return False
+        if response.is_error:
+            return True
+        asset = response.json()
+        return bool(asset.get("tradable")) and asset.get("status") == "active"
+
     def _require_paper_triple_gate(self) -> None:
         selected = self._settings.broker_mode is BrokerMode.ALPACA
         enabled = self._settings.trading_enabled

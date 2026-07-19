@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -36,4 +36,13 @@ class Broker(Protocol):
 
     async def submit(self, plan: OrderPlan) -> OrderResult:
         """Submit or simulate exactly one bracket order."""
+        ...
+
+
+@runtime_checkable
+class TradabilityBroker(Protocol):
+    """Optional pre-submit capability: can this symbol be traded right now?"""
+
+    async def is_tradable(self, ticker: str) -> bool:
+        """Return whether the venue currently accepts orders for this symbol."""
         ...

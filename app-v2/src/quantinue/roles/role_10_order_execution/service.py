@@ -5,6 +5,7 @@ from decimal import Decimal
 from hashlib import sha256
 from typing import ClassVar
 
+from quantinue.broker.contracts import TradabilityBroker
 from quantinue.broker.mock import MockBroker
 from quantinue.broker.provider import Broker, OrderPlan
 from quantinue.core.contracts import PipelineContext
@@ -32,6 +33,16 @@ class OrderExecution:
     component: ClassVar[str] = "10"
     name: ClassVar[str] = "주문·체결"
 
+    async def _is_tradable(self, ticker: str) -> bool:
+        """Ask the venue whether this symbol accepts orders right now.
+
+        Brokers without the capability are treated as tradable so the guard
+        never silently disables execution on an adapter that predates it.
+        """
+        if not isinstance(self.broker, TradabilityBroker):
+            return True
+        return await self.broker.is_tradable(ticker)
+
     async def execute(self, context: PipelineContext) -> PipelineContext:
         """Submit a paper bracket or simulate it in mock mode."""
         quantity = require_value(context.quantity, component=self.component, field_name="quantity")
@@ -47,6 +58,12 @@ class OrderExecution:
         entry_price = require_value(
             context.last_price, component=self.component, field_name="last_price"
         )
+        # 거래정지·상장폐지 종목은 브로커에 닿기 전에 막는다. 제출 후 거부되면
+        # 체결될 수 없었던 주문이 원장에 남는다.
+        if not await self._is_tradable(context.request.ticker):
+            return replace(
+                context, order_skipped_reason="not_tradable"
+            ).add_stage(self.component, self.name, "주문 생략 · 거래 불가 종목(정지·상폐)")
         signal_key = f"{context.request.ticker}:{context.request.cycle_ts.isoformat()}".encode()
         signal_id = context.signal_id or int(sha256(signal_key).hexdigest()[:8], 16) + 1
         account_id = context.account_id or 1
