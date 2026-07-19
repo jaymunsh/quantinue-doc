@@ -95,6 +95,9 @@ class Settings(BaseSettings):
     local_llm_model: NonBlankString = "qwen2.5:7b"
     llm_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
     llm_max_retries: int = Field(default=1, ge=0, le=5)
+    # 구조화 출력의 상한. 256 리터럴이 provider에 박혀 있었다 — 이유 문장이
+    # 길어지면 잘려서 재시도를 태우는 값이라, 조정이 배포가 되면 안 된다.
+    llm_max_output_tokens: int = Field(default=256, ge=64, le=4096)
     broker_mode: BrokerMode = BrokerMode.MOCK
     alpaca_api_key: SecretStr = SecretStr("")
     alpaca_secret_key: SecretStr = SecretStr("")

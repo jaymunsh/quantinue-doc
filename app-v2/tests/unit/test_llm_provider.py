@@ -369,6 +369,75 @@ async def test_local_transport_timeout_becomes_safe_transient_failure() -> None:
     assert raw_transport_detail not in str(captured.value)
 
 
+@pytest.mark.anyio
+async def test_the_local_output_budget_is_config_owned() -> None:
+    """`max_tokens=256`이 리터럴로 박혀 있었다 — 문턱은 config 소유가 규칙이다.
+
+    이유 문장이 길어지면 256에서 잘려 구조화 출력 실패 → 재시도 소진으로
+    이어질 수 있다(2026-07-20 가설, A/B 실측으로 판정). 값이 무엇이든 그것을
+    코드에 굳히면 다음 조정이 배포가 된다 — 설정이 와이어까지 흘러야 한다.
+    """
+    observed_requests: list[WireModelSettingsRequest] = []
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        observed_requests.append(WireModelSettingsRequest.model_validate_json(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "id": "chatcmpl-local-budget",
+                "object": "chat.completion",
+                "created": 1,
+                "model": "contract-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "finish_reason": "tool_calls",
+                        "message": {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [
+                                {
+                                    "id": "call-result",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "final_result",
+                                        "arguments": json.dumps(
+                                            {
+                                                "score": 0.55,
+                                                "label": "neutral",
+                                                "reason": "계약 응답",
+                                            }
+                                        ),
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ],
+                "usage": {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
+            },
+        )
+
+    values = {
+        "llm_mode": LlmMode.LOCAL,
+        "local_llm_api_key": "wire-placeholder",
+        "local_llm_model": "contract-model",
+        "local_llm_base_url": "http://local.test/v1",
+        "llm_max_output_tokens": 512,
+    }
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http_client:
+        sdk = AsyncOpenAI(
+            api_key="wire-placeholder",
+            base_url="http://local.test/v1",
+            http_client=http_client,
+        )
+        analyzer = build_llm_analyzer(Settings.model_validate(values), openai_client=sdk)
+
+        _ = await analyzer.analyze(AnalysisTask.DISCLOSURE, "same contract input")
+
+    assert observed_requests[0].max_tokens == 512
+
+
 def test_the_local_path_honours_the_configured_retry_budget() -> None:
     """`retries=0`이 코드에 굳어 있어서 성향 하나가 통째로 죽었다(실측).
 

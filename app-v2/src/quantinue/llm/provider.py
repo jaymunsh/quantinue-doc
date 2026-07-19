@@ -228,7 +228,7 @@ def build_llm_analyzer(settings: Settings, openai_client: AsyncOpenAI | None = N
                 max_retries=0,
             )
             model_settings = OpenAIChatModelSettings(
-                max_tokens=256,
+                max_tokens=settings.llm_max_output_tokens,
                 temperature=0,
                 parallel_tool_calls=False,
                 openai_reasoning_effort="none",
