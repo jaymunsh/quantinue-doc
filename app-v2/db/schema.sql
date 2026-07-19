@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS tb_strategist_signals (
   src_disclosure_at TIMESTAMPTZ, src_news_at TIMESTAMPTZ, src_macro_at TIMESTAMPTZ,
   inv_type TEXT NOT NULL CHECK (inv_type IN ('aggressive','conservative')),
   side TEXT NOT NULL CHECK (side IN ('buy','hold','sell')), conviction NUMERIC(4,3) NOT NULL CHECK (conviction BETWEEN 0 AND 1),
-  signal_consensus SMALLINT NOT NULL CHECK (signal_consensus BETWEEN 0 AND 3), summary TEXT NOT NULL, bull_case TEXT,
+  signal_consensus SMALLINT NOT NULL CHECK (signal_consensus BETWEEN 0 AND 4), summary TEXT NOT NULL, bull_case TEXT,
   key_risk TEXT, risk_rebuttal TEXT, counter_scenarios JSONB, evidence JSONB NOT NULL, sizing_hint JSONB NOT NULL,
   persona_notes TEXT, decision_close NUMERIC NOT NULL CHECK (decision_close > 0), current_price NUMERIC NOT NULL CHECK (current_price > 0),
   day_high NUMERIC NOT NULL, day_low NUMERIC NOT NULL, close_prev NUMERIC NOT NULL, volume BIGINT NOT NULL,

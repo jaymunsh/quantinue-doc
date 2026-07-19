@@ -72,6 +72,9 @@ class Strategist:
             conviction=conviction,
             side=side,
             strategy_output=gated,
+            signal_consensus=StrategyOutput.vote_consensus(
+                strategy_input, self.gates, self.profile, model_result.score
+            ),
         )
         metadata = model_result.metadata
         evidence = Evidence(

@@ -138,3 +138,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS tb_account_user_id_key
   ON tb_account(user_id) WHERE user_id IS NOT NULL;
 
 COMMIT;
+
+-- M4-7a: 투표원은 technical·disclosure·news·model 4개인데 CHECK가 0~3이라
+-- 만장일치 4에서 INSERT가 깨진다. 실계산을 켜기 전에 범위를 넓힌다.
+DO $$
+BEGIN
+  ALTER TABLE tb_strategist_signals
+    DROP CONSTRAINT IF EXISTS tb_strategist_signals_signal_consensus_check;
+  ALTER TABLE tb_strategist_signals
+    ADD CONSTRAINT tb_strategist_signals_signal_consensus_check
+    CHECK (signal_consensus BETWEEN 0 AND 4);
+END $$;

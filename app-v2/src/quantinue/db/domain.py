@@ -126,7 +126,7 @@ class PostgresDomainRepository:
                 inv_type=value.inv_type,
                 side=value.side,
                 conviction=value.conviction,
-                signal_consensus=0,
+                signal_consensus=value.signal_consensus,
                 summary=value.summary,
                 evidence=list(value.evidence),
                 sizing_hint={},

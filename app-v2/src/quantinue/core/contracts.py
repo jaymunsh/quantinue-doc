@@ -269,6 +269,7 @@ class PipelineContext:
     risk_decision: str | None = None
     risk_skipped_reason: str | None = None
     order_skipped_reason: str | None = None
+    signal_consensus: int | None = None
     risk_entry_price: float | None = None
     signal_id: int | None = None
     account_id: int | None = None

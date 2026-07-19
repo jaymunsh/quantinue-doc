@@ -152,6 +152,28 @@ class StrategyOutput(BaseModel):
         penalised = raw - gates.macro_penalty(source.macro_risk_score)
         return round(min(1.0, max(0.0, penalised)), 3)
 
+    @staticmethod
+    def vote_consensus(
+        source: StrategyInput,
+        gates: GatesConfig,
+        profile: ProfileConfig,
+        model_score: float | None = None,
+    ) -> int:
+        """Count how many surviving votes cleared the buy threshold.
+
+        Recorded for later study, never gated on. A vote stripped upstream —
+        untrusted news, absent disclosure — cannot consent, because silence is
+        not agreement.
+        """
+        votes = [source.technical_score]
+        if source.disclosure_score is not None:
+            votes.append(source.disclosure_score)
+        if source.source_trust >= gates.source_trust_min:
+            votes.append(source.news_score)
+        if model_score is not None:
+            votes.append(model_score)
+        return sum(1 for vote in votes if vote >= profile.buy_threshold)
+
     @classmethod
     def from_model(  # noqa: PLR0913 - each gate input is an explicit seam
         cls,

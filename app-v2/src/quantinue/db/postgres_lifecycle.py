@@ -98,6 +98,7 @@ async def persist_domain_stage(
             evidence=tuple(item.evidence_id for item in result.evidence_trace),
             disclosure_score=Decimal(str(result.disclosure_score or 0)),
             news_score=Decimal(str(result.news_score or 0)),
+            signal_consensus=result.signal_consensus or 0,
         )
         if result.disclosure_source is not None and result.news_source is not None:
             await domain.save_source_records(signal, result.disclosure_source, result.news_source)

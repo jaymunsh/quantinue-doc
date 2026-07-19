@@ -22,6 +22,7 @@ class StrategistSignalWrite:
     evidence: tuple[str, ...]
     disclosure_score: Decimal = Decimal(0)
     news_score: Decimal = Decimal(0)
+    signal_consensus: int = 0
     inv_type: str = "conservative"
 
 

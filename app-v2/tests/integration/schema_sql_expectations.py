@@ -228,7 +228,7 @@ CHECKS = {
         ("inv_type",): ("'aggressive'", "'conservative'"),
         ("side",): ("'buy'", "'hold'"),
         ("conviction",): ("conviction >=", "conviction <="),
-        ("signal_consensus",): ("signal_consensus >= 0", "signal_consensus <= 3"),
+        ("signal_consensus",): ("signal_consensus >= 0", "signal_consensus <= 4"),
         ("decision_close",): ("decision_close >",),
         ("current_price",): ("current_price >",),
     },
