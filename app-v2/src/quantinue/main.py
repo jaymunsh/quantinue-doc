@@ -62,7 +62,15 @@ def _lifespan_factory(
                 await review_runtime.initialize()
             if job_runner is not None:
                 task_group.start_soon(job_runner.run_forever)
-            yield
+            try:
+                yield
+            finally:
+                # run_forever는 스스로 끝나지 않는다. 취소하지 않으면 task
+                # group이 자식을 기다리느라 앱 종료가 영원히 안 끝난다 — 구
+                # 코드에서는 LiveRunRuntime.cancel()이 전체 스코프를 취소해
+                # 줬는데 그 역할이 러너와 함께 조용히 사라졌었다. jobs.enabled가
+                # false인 동안은 자식이 없어 드러나지 않던 결함이다.
+                task_group.cancel_scope.cancel()
         if review_runtime is not None:
             await review_runtime.close()
         closer = getattr(market_data, "aclose", None)
