@@ -65,3 +65,17 @@ def test_a_profile_without_its_own_prompt_falls_back_and_says_so() -> None:
 def test_tasks_without_personas_ignore_the_profile() -> None:
     """성향은 판단(07)의 축이다 — 공시 요약에까지 번지면 페르소나가 의미를 잃는다."""
     assert load_system_prompt("disclosure", profile="aggressive").variant is None
+
+
+@pytest.mark.parametrize("profile", ["aggressive", "conservative"])
+def test_personas_name_what_our_evidence_cannot_answer(profile: str) -> None:
+    """근거 프레임이 요구하지만 우리가 못 가진 것을 명시해야 LLM이 안 지어낸다.
+
+    두 성향 모두 실제 트레이딩 방법론에 정박했지만, 그 방법론들은 재무제표를
+    요구한다. 우리 원장에는 일봉·공시 종류·뉴스뿐이다. 범위 밖이라고 적어두지
+    않으면 모델이 매출 성장률과 적정가를 지어낸다.
+    """
+    prompt = load_system_prompt("strategy", profile=profile)
+
+    assert "증거 범위 밖" in prompt.content
+    assert "지어내" in prompt.content
