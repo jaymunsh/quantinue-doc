@@ -199,6 +199,21 @@ class PipelineRun(BaseModel):
 
 
 @dataclass(frozen=True, slots=True)
+class AccountOrderPlan:
+    """What role 09 decided for one subscribing account."""
+
+    account_id: int
+    signal_id: int
+    decision: str
+    quantity: int
+    entry_price: float
+    stop_loss: float
+    take_profit: float
+    skipped_reason: str | None = None
+    summary: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class PriceSnapshot:
     """Prices as one role actually observed them, carried forward unchanged.
 
@@ -270,6 +285,7 @@ class PipelineContext:
     risk_skipped_reason: str | None = None
     order_skipped_reason: str | None = None
     signal_consensus: int | None = None
+    account_plans: tuple[AccountOrderPlan, ...] = ()
     risk_entry_price: float | None = None
     signal_id: int | None = None
     account_id: int | None = None

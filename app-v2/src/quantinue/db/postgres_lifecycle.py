@@ -4,7 +4,7 @@ from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
-from quantinue.core.contracts import PipelineContext
+from quantinue.core.contracts import AccountOrderPlan, PipelineContext
 from quantinue.db.domain import PostgresDomainRepository
 from quantinue.db.domain_records import (
     AccountWrite,
@@ -65,6 +65,44 @@ def _session_trade_date(result: PipelineContext) -> date:
     return result.request.cycle_ts.date()
 
 
+def _persisted_plans(result: PipelineContext) -> tuple[OrderPlanWrite, ...]:
+    """Project role 09's decisions into write records, one per account."""
+    if result.account_plans:
+        sources = result.account_plans
+    elif result.risk_decision is not None:
+        sources = (
+            AccountOrderPlan(
+                account_id=result.account_id or 1,
+                signal_id=result.signal_id or 0,
+                decision=result.risk_decision,
+                quantity=result.quantity or 0,
+                entry_price=result.risk_entry_price or 0.0,
+                stop_loss=result.stop_loss or 0.0,
+                take_profit=result.take_profit or 0.0,
+                skipped_reason=result.risk_skipped_reason,
+            ),
+        )
+    else:
+        return ()
+    return tuple(
+        OrderPlanWrite(
+            run_id=str(result.run_id),
+            ticker=result.request.ticker,
+            cycle_ts=result.request.cycle_ts,
+            trade_date=_session_trade_date(result),
+            account_id=plan.account_id,
+            signal_id=plan.signal_id or None,
+            decision=plan.decision,
+            skipped_reason=plan.skipped_reason,
+            quantity=plan.quantity,
+            entry_price=Decimal(str(plan.entry_price)) if plan.entry_price else None,
+            stop_price=Decimal(str(plan.stop_loss)) if plan.stop_loss else None,
+            take_profit_price=Decimal(str(plan.take_profit)) if plan.take_profit else None,
+        )
+        for plan in sources
+    )
+
+
 async def persist_domain_stage(
     domain: PostgresDomainRepository,
     account: AccountWrite,
@@ -117,28 +155,10 @@ async def persist_domain_stage(
             )
         )
         return replace(result, signal_id=signal_id, account_id=account_id)
-    if component == "09" and result.risk_decision is not None:
-        entry = result.risk_entry_price
-        await domain.save_order_plan(
-            OrderPlanWrite(
-                run_id=str(result.run_id),
-                ticker=result.request.ticker,
-                cycle_ts=result.request.cycle_ts,
-                trade_date=_session_trade_date(result),
-                account_id=result.account_id,
-                signal_id=result.signal_id,
-                decision=result.risk_decision,
-                skipped_reason=result.risk_skipped_reason,
-                quantity=result.quantity or 0,
-                entry_price=Decimal(str(entry)) if entry is not None else None,
-                stop_price=(
-                    Decimal(str(result.stop_loss)) if result.stop_loss is not None else None
-                ),
-                take_profit_price=(
-                    Decimal(str(result.take_profit)) if result.take_profit is not None else None
-                ),
-            )
-        )
+    if component == "09":
+        # 계좌별 계획을 전부 남긴다 — 하나만 남기면 팬아웃이 관측되지 않는다.
+        for plan in _persisted_plans(result):
+            await domain.save_order_plan(plan)
     if component == "10" and result.order is not None:
         if result.order.status == "filled":
             _ = await domain.record_completed_buy(

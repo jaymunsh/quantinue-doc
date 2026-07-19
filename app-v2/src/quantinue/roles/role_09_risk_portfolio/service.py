@@ -8,7 +8,7 @@ from typing import ClassVar, assert_never
 
 from exchange_calendars.errors import DateOutOfBounds
 
-from quantinue.core.contracts import PipelineContext
+from quantinue.core.contracts import AccountOrderPlan, PipelineContext
 from quantinue.core.market_calendar import NyseCalendar
 from quantinue.core.ontology import EvidenceKind
 from quantinue.core.schemas import Evidence
@@ -97,13 +97,15 @@ class RiskPortfolio:
             return None
         return snapshot.gap_from_reference()
 
-    async def execute(self, context: PipelineContext) -> PipelineContext:
-        """Apply role 09's hard gates and risk-budget sizing formula."""
-        price = require_value(context.last_price, component=self.component, field_name="last_price")
-        signal_key = f"{context.request.ticker}:{context.request.cycle_ts.isoformat()}".encode()
-        signal_id = context.signal_id or int(sha256(signal_key).hexdigest()[:8], 16) + 1
-        account_id = context.account_id or 1
-        state = await self._account_state(account_id)
+    async def _plan_for_account(
+        self,
+        context: PipelineContext,
+        state: AccountRiskState | None,
+        account_id: int,
+        signal_id: int,
+        price: float,
+    ) -> AccountOrderPlan:
+        """Size and gate one account, independently of the others."""
         profile = self._profile_for(state.inv_type if state is not None else None)
         # 자본은 계좌에서 온다. 앱 전역 노출 상한을 자본으로 쓰면 $5,000 계좌와
         # $150,000 계좌가 같은 크기로 주문한다.
@@ -149,7 +151,11 @@ class RiskPortfolio:
                     stop_price=parse_app_order_money(plan.stop_loss),
                     take_profit_price=parse_app_order_money(plan.take_profit),
                     cap=self.daily_new_order_cap,
-                    max_app_order_exposure_usd=self.max_app_order_exposure_usd,
+                    # 노출 천장은 계좌 자본이다. 앱 전역 상수를 쓰면 자본이 다른
+                    # 계좌들이 하나의 천장을 나눠 쓰게 되어 큰 계좌가 먼저 소진한다.
+                    max_app_order_exposure_usd=(
+                        state.equity if state is not None else self.max_app_order_exposure_usd
+                    ),
                 )
             )
             match reserved.outcome:
@@ -183,16 +189,67 @@ class RiskPortfolio:
         if plan.skipped_reason == "premarket_gap":
             gap = self._reference_gap(context) or 0.0
             summary = f"주문 보류 · 기준가 대비 갭 {gap:.1%} > {self.gates.premarket_gap_max:.1%}"
-        updated = replace(
-            context,
-            signal_id=plan.signal_id,
+        return AccountOrderPlan(
             account_id=plan.account_id,
+            signal_id=plan.signal_id,
+            decision=plan.decision,
             quantity=plan.quantity,
+            entry_price=plan.entry_price,
             stop_loss=plan.stop_loss,
             take_profit=plan.take_profit,
-            risk_decision=plan.decision,
-            risk_skipped_reason=plan.skipped_reason,
-            risk_entry_price=plan.entry_price,
+            skipped_reason=plan.skipped_reason,
+            summary=summary,
+        )
+
+    async def _subscribing_accounts(self) -> tuple[AccountRiskState | None, ...]:
+        """Return the accounts this cycle plans for.
+
+        A store without the subscription query keeps the single-account
+        behaviour, so older compositions are not silently disabled.
+        """
+        reader = getattr(self.store, "active_accounts", None)
+        if reader is None:
+            return (None,)
+        accounts = await reader()
+        return tuple(accounts)
+
+    async def execute(self, context: PipelineContext) -> PipelineContext:
+        """Plan once per subscribing account; research above stays a single pass."""
+        price = require_value(context.last_price, component=self.component, field_name="last_price")
+        signal_key = f"{context.request.ticker}:{context.request.cycle_ts.isoformat()}".encode()
+        signal_id = context.signal_id or int(sha256(signal_key).hexdigest()[:8], 16) + 1
+        accounts = await self._subscribing_accounts()
+        plans = tuple(
+            [
+                await self._plan_for_account(
+                    context,
+                    state,
+                    state.account_id if state is not None else (context.account_id or 1),
+                    signal_id,
+                    price,
+                )
+                for state in accounts
+            ]
+        )
+        primary = plans[0] if plans else None
+        summary = (
+            f"{len(plans)}개 계좌 · " + " / ".join(f"a{p.account_id}:{p.quantity}주" for p in plans)
+            if len(plans) > 1
+            else (primary.summary if primary is not None else "구독 계좌 없음 · 주문 보류")
+        )
+        updated = replace(
+            context,
+            account_plans=plans,
+            signal_id=primary.signal_id if primary is not None else signal_id,
+            account_id=primary.account_id if primary is not None else context.account_id,
+            quantity=primary.quantity if primary is not None else 0,
+            stop_loss=primary.stop_loss if primary is not None else context.stop_loss,
+            take_profit=primary.take_profit if primary is not None else context.take_profit,
+            risk_decision=primary.decision if primary is not None else "skipped",
+            risk_skipped_reason=(
+                primary.skipped_reason if primary is not None else "no_active_account"
+            ),
+            risk_entry_price=primary.entry_price if primary is not None else price,
         )
         evidence = Evidence(
             evidence_id=f"{context.run_id}:09:risk-plan",
