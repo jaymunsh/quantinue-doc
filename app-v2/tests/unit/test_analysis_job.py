@@ -66,9 +66,12 @@ class _Domain:
         self,
         subjects: tuple[AnalysisSubject, ...],
         positions: tuple[OpenPosition, ...] = (),
+        headlines: dict[str, tuple[str, ...]] | None = None,
     ) -> None:
         self._subjects = subjects
         self._positions = positions
+        self._headlines = headlines or {}
+        self.news_calls: list[tuple[date, tuple[str, ...], int]] = []
         self.signals: list[StrategistSignalWrite] = []
         self.verdicts: list[CriticVerdictWrite] = []
 
@@ -83,6 +86,12 @@ class _Domain:
     ) -> dict[str, tuple[str, ...]]:
         del session, tickers
         return {}
+
+    async def news_evidence(
+        self, session: date, tickers: tuple[str, ...], limit: int
+    ) -> dict[str, tuple[str, ...]]:
+        self.news_calls.append((session, tickers, limit))
+        return self._headlines
 
     async def open_positions(self) -> tuple[OpenPosition, ...]:
         return self._positions
@@ -116,13 +125,16 @@ def _position(ticker: str, quantity: int = 10) -> OpenPosition:
     )
 
 
-def _job(domain: _Domain, analyzer: _Analyzer) -> AnalysisJob:
+def _job(
+    domain: _Domain, analyzer: _Analyzer, *, headlines_per_ticker: int = 5
+) -> AnalysisJob:
     return AnalysisJob(
         store=_Store(domain),
         analyzer=analyzer,
         gates=GatesConfig(evidence_max_age_minutes=2_880),
         profile=ProfileConfig(buy_threshold=0.65, sell_threshold=0.60),
         profile_name="aggressive",
+        headlines_per_ticker=headlines_per_ticker,
     )
 
 
@@ -254,3 +266,67 @@ async def test_a_rejected_proposal_still_produces_a_valid_verdict() -> None:
     assert len(outcomes) == 2
     assert [outcome.approved for outcome in outcomes] == [False, False]
     assert [verdict.decided_layer for verdict in domain.verdicts] == ["llm", "llm"]
+
+
+@pytest.mark.anyio
+async def test_the_collected_headlines_reach_the_evidence_synthesis() -> None:
+    """뉴스는 별도 투표가 아니라 종합의 맥락으로 들어간다(출처 등급 gray).
+
+    투표(``news_score``)로 넣으면 ``gates.source_trust_min``에 걸려 통째로
+    박탈된다 — 수집·저장해놓고 판단에 한 글자도 못 보태는 유령이 된다.
+    """
+    # Given
+    domain = _Domain(
+        (_subject("AAA"),), headlines={"AAA": ("FDA approves the thing",)}
+    )
+    analyzer = _Analyzer(strategy=0.9)
+
+    # When
+    _ = await _job(domain, analyzer).run(as_of=_AS_OF, session=_SESSION)
+
+    # Then
+    prompt = next(text for task, text in analyzer.prompts if task is AnalysisTask.STRATEGY)
+    assert "headlines=FDA approves the thing" in prompt
+
+
+@pytest.mark.anyio
+async def test_the_headline_budget_is_config_owned_and_asked_of_the_ledger() -> None:
+    """종목당 몇 건을 볼지는 프롬프트 예산이다 — 코드 리터럴이면 조일 수 없다."""
+    # Given
+    domain = _Domain((_subject("AAA"),))
+
+    # When
+    _ = await _job(domain, _Analyzer(strategy=0.9), headlines_per_ticker=3).run(
+        as_of=_AS_OF, session=_SESSION
+    )
+
+    # Then
+    assert domain.news_calls == [(_SESSION, ("AAA",), 3)]
+
+
+@pytest.mark.anyio
+async def test_a_ticker_with_no_headlines_says_so_rather_than_going_silent() -> None:
+    """빈 증거도 근거다 — 항목이 빠지면 모델은 "없었다"와 "안 알려줬다"를 못 가른다."""
+    # Given
+    domain = _Domain((_subject("AAA"),), headlines={})
+    analyzer = _Analyzer(strategy=0.9)
+
+    # When
+    _ = await _job(domain, analyzer).run(as_of=_AS_OF, session=_SESSION)
+
+    # Then
+    prompt = next(text for task, text in analyzer.prompts if task is AnalysisTask.STRATEGY)
+    assert "headlines=none" in prompt
+
+
+@pytest.mark.anyio
+async def test_news_stays_out_of_the_vote() -> None:
+    """헤드라인이 있어도 news_score는 None이다 — 정책을 데이터 편의로 흔들지 않는다."""
+    # Given
+    domain = _Domain((_subject("AAA"),), headlines={"AAA": ("big news",)})
+
+    # When
+    _ = await _job(domain, _Analyzer(strategy=0.9)).run(as_of=_AS_OF, session=_SESSION)
+
+    # Then: 투표에 들어갔다면 확신도가 뉴스 점수와 섞였을 것이다
+    assert domain.signals[0].signal_consensus is not None

@@ -260,6 +260,19 @@ class DisclosureConfig(BaseModel):
         return form.strip().upper() in {item.upper() for item in self.llm_bypass_forms}
 
 
+class NewsConfig(BaseModel):
+    """How much news we collect, and how much of it a judgement gets to see."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # 한 페이지에 받는 기사 수. Alpaca 뉴스의 상한이 50이고 넘기면 400이라
+    # (실측) 이 값은 위로 열려 있지 않다 — 낮추는 쪽으로만 의미가 있다.
+    page_size: int = Field(default=50, gt=0, le=50)
+    # 종목당 프롬프트에 넣는 헤드라인 수. 예산이자 방어선이다 — 안 자르면
+    # 시끄러운 종목 하나가 그날 판단의 컨텍스트를 통째로 차지한다.
+    headlines_per_ticker: int = Field(default=5, gt=0, le=50)
+
+
 class ScreeningConfig(BaseModel):
     """Funnel widths from the raw universe down to LLM-depth candidates.
 
@@ -368,6 +381,7 @@ class Mvp2Config(BaseModel):
     gates: GatesConfig = GatesConfig()
     screening: ScreeningConfig = ScreeningConfig()
     disclosure: DisclosureConfig = DisclosureConfig()
+    news: NewsConfig = NewsConfig()
     exits: ExitsConfig = ExitsConfig()
     jobs: JobsConfig = JobsConfig()
     market_data: MarketDataConfig = MarketDataConfig()

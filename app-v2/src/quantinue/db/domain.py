@@ -24,6 +24,7 @@ from quantinue.db.domain_records import (
     OrderPlanWrite,
     OrderReconciliation,
     RawDisclosureWrite,
+    RawNewsWrite,
     StrategistSignalWrite,
 )
 from quantinue.db.domain_sources import save_source_records
@@ -51,6 +52,7 @@ _TABLES = (
     "tb_daily_bar",
     "tb_job_run",
     "tb_disclosure_raw",
+    "tb_news_raw",
     "tb_account",
     "tb_order",
     "tb_fill",
@@ -479,6 +481,66 @@ class PostgresDomainRepository:
         for row in rows:
             found.setdefault(row.ticker, []).append(row.form_type)
         return {ticker: tuple(forms) for ticker, forms in found.items()}
+
+    async def news_evidence(
+        self, session: date, tickers: tuple[str, ...], limit: int
+    ) -> dict[str, tuple[str, ...]]:
+        """Return the newest headlines per ticker, for the analysis prompt.
+
+        ``limit``이 인자인 이유: 프롬프트에 들어가는 헤드라인 수는 정책이지
+        구현 세부가 아니다(``news.headlines_per_ticker``). 여기서 자르는 이유는
+        20종목에 성향 2를 매일 도는 잡이라, 안 자르면 종목 하나가 시끄러운 날
+        그 종목만으로 컨텍스트가 채워진다.
+
+        최신순으로 자른다 — 예산에 걸려 버려지는 것은 오래된 쪽이어야 한다.
+        """
+        if not tickers or limit <= 0:
+            return {}
+        table = self._table("tb_news_raw")
+        async with self._engine.begin() as connection:
+            rows = (
+                await connection.execute(
+                    select(table.c.ticker, table.c.headline)
+                    .where(table.c.trade_date == session, table.c.ticker.in_(tickers))
+                    .order_by(table.c.ticker, table.c.published_at.desc())
+                )
+            ).all()
+        found: dict[str, list[str]] = {}
+        for row in rows:
+            headlines = found.setdefault(row.ticker, [])
+            if len(headlines) < limit:
+                headlines.append(row.headline)
+        return {ticker: tuple(headlines) for ticker, headlines in found.items()}
+
+    async def save_raw_news(self, articles: tuple[RawNewsWrite, ...]) -> None:
+        """Upsert the collected headlines into the raw ledger.
+
+        수집 창이 세션부터 실행일까지라 **매번 겹친다**. 겹침을 원장이 흡수해야
+        하므로 (기사, 티커)로 충돌을 잡고 갱신한다 — 기사는 정정되기도 한다.
+        """
+        if not articles:
+            return
+        table = self._table("tb_news_raw")
+        async with self._engine.begin() as connection:
+            for article in articles:
+                fields = {
+                    "trade_date": article.trade_date,
+                    "headline": article.headline,
+                    "source": article.source,
+                    "url": article.url,
+                    "published_at": article.published_at,
+                }
+                _ = await connection.execute(
+                    insert(table)
+                    .values(
+                        article_id=article.article_id,
+                        ticker=article.ticker,
+                        **fields,
+                    )
+                    .on_conflict_do_update(
+                        index_elements=["article_id", "ticker"], set_=fields
+                    )
+                )
 
     async def bar_coverage(self) -> dict[str, date]:
         """Return the newest stored bar date per ticker.

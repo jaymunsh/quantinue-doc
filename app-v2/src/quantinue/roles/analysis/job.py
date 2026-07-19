@@ -57,6 +57,8 @@ class AnalysisJob:
     profile: ProfileConfig
     profile_name: str
     calendar: NyseCalendar = field(default_factory=NyseCalendar)
+    # 종목당 프롬프트에 넣을 헤드라인 수(``news.headlines_per_ticker``).
+    headlines_per_ticker: int = 5
 
     async def run(self, *, as_of: date, session: date) -> tuple[AnalysisOutcome, ...]:
         """Decide, verify, and persist one signal per ticker in scope."""
@@ -66,6 +68,9 @@ class AnalysisJob:
             return ()
         tickers = tuple(subject.ticker for subject in subjects)
         filings = await domain.disclosure_evidence(session, tickers)
+        headlines = await domain.news_evidence(
+            session, tickers, self.headlines_per_ticker
+        )
         holdings = await self._holdings(domain, as_of)
         outcomes: list[AnalysisOutcome] = []
         for subject in subjects:
@@ -74,6 +79,7 @@ class AnalysisJob:
                 subject,
                 holdings.get(subject.ticker, HoldingContext()),
                 filings.get(subject.ticker, ()),
+                headlines.get(subject.ticker, ()),
                 as_of=as_of,
             )
             if outcome is not None:
@@ -109,12 +115,13 @@ class AnalysisJob:
             )
         return folded
 
-    async def _analyse(
+    async def _analyse(  # noqa: PLR0913 - 증거 종류가 늘면 인자도 는다
         self,
         domain: object,
         subject: AnalysisSubject,
         holding: HoldingContext,
         filings: tuple[str, ...],
+        headlines: tuple[str, ...],
         *,
         as_of: date,
     ) -> AnalysisOutcome | None:
@@ -123,7 +130,7 @@ class AnalysisJob:
         run_id = f"analysis:{as_of.isoformat()}:{self.profile_name}"
         evidence = await self.analyzer.analyze(
             AnalysisTask.STRATEGY,
-            analysis_prompt(subject, holding, filings),
+            analysis_prompt(subject, holding, filings, headlines),
             # 성향이 여기서 끊기면 두 페르소나가 같은 시스템 프롬프트로 돌고,
             # 원장에는 inv_type만 다른 **같은 확신도**가 두 줄 남는다.
             # 실제로 그랬다 — 문턱만 다르고 판단은 하나였다.
@@ -139,8 +146,13 @@ class AnalysisJob:
             # 있는 날에도 아직 채점하지 않는다 — 공시 채점은 role_05 통합의
             # 몫이고, 여기서 임의의 숫자를 넣으면 그게 판단을 희석한다.
             disclosure_score=None,
-            # 뉴스 원장이 아직 없다(다음 커밋). 없는 증거에 중립값을 지어 넣으면
-            # 논지가 무너진 종목의 약세 확신이 가짜 0.5에 눌려 매도가 막힌다.
+            # 뉴스는 수집되지만 **투표하지 않는다**. 우리 뉴스 소스(Alpaca)는
+            # 전 기사가 benzinga이고 news_trust_policy에서 gray(0.50)라
+            # gates.source_trust_min(0.55)을 못 넘는다 — 점수를 실어 보내도
+            # role_07이 그 표를 박탈하므로, 넣는 순간 값비싼 유령이 된다.
+            # 대신 헤드라인이 위 프롬프트의 증거 종합에 들어가 evidence.score를
+            # 통해 확신도에 기여한다: **투표권 없이 영향은 준다.**
+            # 문턱을 소스에 맞춰 내리는 것은 정책 오염이라 하지 않는다.
             news_score=None,
             is_daily_pick=True,
             disclosure_snapshot_at=cycle_ts,

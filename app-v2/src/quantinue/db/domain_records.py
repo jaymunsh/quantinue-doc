@@ -219,6 +219,33 @@ class RawDisclosureWrite:
 
 
 @dataclass(frozen=True, slots=True)
+class RawNewsWrite:
+    """One article, recorded once per ticker it names.
+
+    기사가 아니라 **(기사, 티커)**가 한 행인 이유: 소비가 종목 단위다. 기사
+    단위로 저장하고 심볼 배열을 컬럼에 담으면 "이 종목의 어제 헤드라인"을
+    묻는 질의가 배열 스캔이 되고, 그게 분석 잡이 매번 하는 유일한 질문이다.
+
+    ``tb_news``(LLM 채점 결과)와 따로 두는 이유는 공시와 같다 — 그쪽은
+    ``(trade_date, ticker) → tb_daily_pick`` FK를 걸어 그날 분석 대상이 아닌
+    종목에는 행을 넣을 수 없는데, 일괄 수집이 노리는 것이 그 바깥이다.
+
+    ``source``를 남기는 이유: 뉴스가 투표권을 못 갖는 근거가 정확히 출처
+    등급이다(benzinga = gray 0.50 < ``gates.source_trust_min`` 0.55). 등급을
+    코드가 가정하는 대신 원장이 증언하게 한다 — 나중에 ``allow`` 등급 소스
+    (로드맵 R11)가 붙으면 그때 이 컬럼이 판정의 근거가 된다.
+    """
+
+    article_id: int
+    ticker: str
+    trade_date: date
+    headline: str
+    source: str
+    url: str
+    published_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class KnownListing:
     """The last thing the ledger ever knew about a ticker's listing.
 

@@ -12,7 +12,7 @@ from pydantic import SecretStr
 
 from quantinue.core.config import Settings
 from quantinue.core.market_calendar import NyseCalendar
-from quantinue.db.domain_records import DailyBarWrite, KnownListing
+from quantinue.db.domain_records import DailyBarWrite, KnownListing, RawNewsWrite
 from quantinue.llm.provider import DeterministicAnalyzer
 from quantinue.market_data.models import Provenance, SecuritySnapshot
 from quantinue.orchestration.job_factory import (
@@ -21,6 +21,7 @@ from quantinue.orchestration.job_factory import (
     build_daily_bars_job,
     build_exit_job,
     build_job_runner,
+    build_news_job,
     build_universe_job,
 )
 from quantinue.orchestration.policy import Mvp2Config, ScreeningConfig
@@ -267,6 +268,7 @@ def test_with_credentials_collection_is_registered_before_the_exit_job() -> None
     assert [job.name for job in runner.jobs] == [
         "daily_bars",
         "disclosures",
+        "news",
         "screening",
         "exits",
     ]
@@ -558,6 +560,7 @@ def test_the_universe_job_is_registered_first() -> None:
         "universe",
         "daily_bars",
         "disclosures",
+        "news",
         "screening",
         "exits",
     ]
@@ -583,3 +586,66 @@ def test_one_analysis_job_is_registered_per_persona() -> None:
     assert names[-3:] == ["analysis:aggressive", "analysis:conservative", "exits"]
     assert names.index("screening") < names.index("analysis:aggressive")
 
+
+
+class _NewsSource:
+    def __init__(self, rows: tuple[RawNewsWrite, ...] = ()) -> None:
+        self.rows = rows
+        self.calls: list[tuple[date, date]] = []
+
+    async def articles(self, session: date, until: date) -> tuple[RawNewsWrite, ...]:
+        self.calls.append((session, until))
+        return self.rows
+
+
+class _NewsDomain(_HoldingDomain):
+    def __init__(self) -> None:
+        super().__init__(())
+        self.saved: list[tuple[RawNewsWrite, ...]] = []
+
+    async def save_raw_news(self, articles: tuple[RawNewsWrite, ...]) -> None:
+        self.saved.append(articles)
+
+
+def _news_row(article_id: int, ticker: str) -> RawNewsWrite:
+    return RawNewsWrite(
+        article_id=article_id,
+        ticker=ticker,
+        trade_date=_FRIDAY,
+        headline="something happened",
+        source="benzinga",
+        url=f"https://example.test/{article_id}",
+        published_at=datetime(2026, 7, 17, 20, 0, tzinfo=UTC),
+    )
+
+
+@pytest.mark.anyio
+async def test_the_news_job_asks_from_the_closed_session_through_the_run_day() -> None:
+    """직전 세션 이후 주말·당일 프리마켓 기사는 다음 창이 다시 주워주지 않는다."""
+    # Given
+    source = _NewsSource((_news_row(1, "AAA"),))
+    domain = _NewsDomain()
+
+    # When
+    job = build_news_job(source=source, domain=domain, calendar=NyseCalendar())
+    detail = await job.run(_MONDAY)
+
+    # Then
+    assert source.calls == [(_FRIDAY, _MONDAY)]
+    assert domain.saved == [(_news_row(1, "AAA"),)]
+    assert "1" in detail
+
+
+@pytest.mark.anyio
+async def test_a_day_with_no_news_is_not_an_error() -> None:
+    """수집이 비는 날이 있다 — 그걸 실패로 만들면 잡 원장이 거짓말을 한다."""
+    # Given
+    domain = _NewsDomain()
+
+    # When
+    job = build_news_job(source=_NewsSource(), domain=domain, calendar=NyseCalendar())
+    detail = await job.run(_MONDAY)
+
+    # Then
+    assert domain.saved == [()]
+    assert "0" in detail

@@ -1587,6 +1587,30 @@ erDiagram
 }</pre></div>
       </details>
 
+      <details class="schema"><summary><code>tb_news_raw</code><span class="sd"><span class="b b-new">재설계 Phase 3</span> 뉴스 원시 원장 — 전 시장 헤드라인(픽 무관)</span><span class="cnt">8컬럼</span></summary>
+              <div class="twrap"><table>
+                <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
+                <tr><td>article_id · ticker</td><td>BIGINT · TEXT · PK</td><td>Alpaca 기사 id와 그 기사가 언급한 종목. <b>기사 하나가 여러 종목을 언급</b>하고 소비는 종목 단위라 (기사,티커)가 한 행이다</td></tr>
+                <tr><td>trade_date</td><td>DATE</td><td>이 헤드라인이 어느 세션의 증거인가 — 공시와 같은 축으로 읽히기 위한 키</td></tr>
+                <tr><td>headline</td><td>TEXT</td><td>제목. 분석 잡의 증거 종합 프롬프트에 종목당 <code>news.headlines_per_ticker</code>건까지 들어간다</td></tr>
+                <tr><td>source · url</td><td>TEXT</td><td>출처와 원문 링크. 실측 100% <code>benzinga</code> — 등급을 코드가 가정하지 않고 원장이 증언하게 한다</td></tr>
+                <tr><td>published_at</td><td>TIMESTAMPTZ</td><td>발행 시각. 예산(N건)에 걸려 잘리는 것이 오래된 쪽이 되도록 정렬 키</td></tr>
+                <tr><td>created_at</td><td>TIMESTAMPTZ</td><td>적재 시각</td></tr>
+                <tr><td colspan="3">INDEX <code>(trade_date, ticker, published_at DESC)</code> — 분석 잡이 매 실행 던지는 유일한 질문의 모양<br>
+                <b>뉴스는 투표하지 않는다.</b> Alpaca 뉴스는 전 기사가 benzinga이고 <code>news_trust_policy.yaml</code>에서 gray(0.50)라 <code>gates.source_trust_min</code>(0.55)을 못 넘는다 — <code>news_score</code>로 실어 보내면 role_07이 표를 박탈해 값비싼 유령이 된다. 대신 헤드라인이 증거 종합에 들어가 <code>evidence.score</code>를 통해 확신도에 기여한다: <b>투표권 없이 영향은 준다.</b> 문턱을 데이터 소스에 맞춰 내리는 것은 정책 오염이므로 하지 않는다(투표권이 필요해지면 로드맵 R11 보도자료 와이어)<br>
+                <b>하드 이벤트는 뉴스가 아니라 SEC 폼이 판정한다.</b> 헤드라인 키워드로 매도를 발동시키지 않는다 — "Trading Halt" 같은 제목 하나가 포지션을 날린다</td></tr>
+              </table></div>
+                    <div class="rowex"><div class="rt">🧾 row 예시 — DB에 실제로 앉는 한 줄 (2026-07-17 실수집)</div><pre>{
+  "article_id": 60540044,
+  "ticker": "BANL",
+  "trade_date": "2026-07-17",
+  "headline": "Trading Halt: Halted at 7:50:00 p.m. ET - Trading Halt: Halt News Pending",
+  "source": "benzinga",
+  "url": "https://www.benzinga.com/quote/BANL",
+  "published_at": "2026-07-17T23:50:00Z"
+}</pre></div>
+      </details>
+
       <h3>2차(MVP-2) 스키마 변경 <span class="b b-gray">M2 완료 · as-built</span></h3>
       <p>아래 변경은 코드 3파일(schema.sql·schemas.py/ontology.py·pipeline.yaml)에 <b>먼저</b> 반영한 뒤 구현이 따라온다(착수 순서 규칙). <b>2026-07-18 M2에서 전부 적용 완료</b> — 신규 설치는 <code>db/schema.sql</code>, 기존 DB는 멱등 <code>db/migrations/mvp2.sql</code>로 올린다(두 경로가 동일 카탈로그로 수렴함을 컬럼 344·제약 134 비교로 검증).</p>
       <div class="note"><b>기존 DB 업그레이드 시 알아둘 것</b> — ① <code>reason</code>의 기존 텍스트는 버리지 않고 <code>{"legacy": "원문"}</code>으로 감싸 보존한다. ② <code>tb_critic_verdict.source</code>(fresh/cache/cooldown, 캐시 상태)는 계보의 <code>source</code>(출처)와 이름이 겹쳐 <b><code>verdict_source</code>로 리네임</b>했다 — 6개 계보 테이블의 컬럼 이름을 통일하기 위함. ③ 계보 10컬럼은 전부 NULL 허용 — 기존 행은 계보 없이 남고 <b>신규 기록부터 채운다</b>.</div>

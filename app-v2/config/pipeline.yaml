@@ -93,6 +93,14 @@ mvp2:
     # LLM에 태우지 않는다. 대형주는 Form 4를 상시 제출해 최신 1건이 실질 공시를
     # 밀어내므로, 후보에서 제외하고 다음 실질 공시를 채점한다.
     llm_bypass_forms: ["4", "4/A", "3", "5"]
+  news:
+    # 뉴스는 **투표가 아니라 증거 종합의 맥락**으로 들어간다. Alpaca 뉴스는
+    # 전 기사가 benzinga이고(실측) news_trust_policy.yaml에서 benzinga는
+    # gray(0.50)라 gates.source_trust_min(0.55)을 못 넘는다 — 투표로 넣으면
+    # role_07이 그 표를 통째로 박탈한다. 문턱을 데이터 소스에 맞춰 내리는 것은
+    # 정책 오염이므로 하지 않는다. 투표권이 필요해지면 보도자료 와이어(로드맵 R11).
+    page_size: 50
+    headlines_per_ticker: 5
   screening:
     universe_size: 2000
     min_price_usd: 5

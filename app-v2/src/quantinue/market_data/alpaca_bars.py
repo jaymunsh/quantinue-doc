@@ -35,6 +35,7 @@ from typing import Any, Final
 import httpx as httpx2
 
 from quantinue.db.domain_records import DailyBarWrite
+from quantinue.market_data.symbols import to_venue_symbol as _to_venue_symbol
 
 _BARS_URL: Final = "https://data.alpaca.markets/v2/stocks/bars"
 _SOURCE: Final = "alpaca-iex"
@@ -42,17 +43,7 @@ _SOURCE: Final = "alpaca-iex"
 # 200개면 쿼리스트링이 ~1.2KB로, 흔한 8KB 서버 상한에 한참 못 미친다.
 _DEFAULT_SYMBOLS_PER_REQUEST: Final = 200
 _MAX_POINTS_PER_PAGE: Final = 10_000
-# 상장 피드는 주식 클래스를 BRK/B로, Alpaca는 BRK.B로 쓴다. 원장 키는 우리
-# 표기를 유지해야 tb_universe·tb_order와의 조인이 깨지지 않으므로, 변환은
-# 요청 직전에만 하고 응답에서 되돌린다.
-_CLASS_SEPARATOR: Final = "/"
-_VENUE_CLASS_SEPARATOR: Final = "."
 _INVALID_SYMBOL_PREFIX: Final = "invalid symbol: "
-
-
-def _to_venue_symbol(ticker: str) -> str:
-    """Translate our ledger spelling into the one the venue accepts."""
-    return ticker.replace(_CLASS_SEPARATOR, _VENUE_CLASS_SEPARATOR)
 
 
 def _invalid_symbol(response: httpx2.Response) -> str | None:

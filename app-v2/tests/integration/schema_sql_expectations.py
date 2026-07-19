@@ -32,6 +32,7 @@ TABLES = {
     "tb_daily_bar",
     "tb_job_run",
     "tb_disclosure_raw",
+    "tb_news_raw",
     "tb_order_plan",
 }
 PK = {
@@ -61,6 +62,8 @@ PK = {
     "tb_daily_bar": ("trade_date", "ticker"),
     "tb_job_run": ("job_name", "slot_date"),
     "tb_disclosure_raw": ("filing_no",),
+    # 기사 하나가 여러 종목을 언급하므로 기사 id만으로는 행을 못 가른다.
+    "tb_news_raw": ("article_id", "ticker"),
 }
 UNIQUE = {
     "tb_disclosure": {("filing_no",)},

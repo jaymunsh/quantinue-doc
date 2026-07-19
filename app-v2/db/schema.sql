@@ -280,3 +280,19 @@ CREATE TABLE IF NOT EXISTS tb_disclosure_raw (
   PRIMARY KEY (filing_no),
   CHECK (is_hard_event = false OR event_type IS NOT NULL)
 );
+
+-- Phase 3: 뉴스 원시 원장. 공시(tb_disclosure_raw)와 같은 이유로 FK가 없다 —
+-- tb_news(채점 결과)는 (trade_date, ticker) → tb_daily_pick을 걸어 그날 분석
+-- 대상이 아닌 종목에 행을 넣을 수 없는데, 일괄 수집이 노리는 것이 그 바깥이다.
+-- PK가 (기사, 티커)인 이유: 기사 하나가 여러 종목을 언급하고, 소비는 종목
+-- 단위다. 겹치는 창을 다시 받아도 이 키가 중복을 흡수한다.
+CREATE TABLE IF NOT EXISTS tb_news_raw (
+  article_id BIGINT NOT NULL, ticker TEXT NOT NULL, trade_date DATE NOT NULL,
+  headline TEXT NOT NULL, source TEXT NOT NULL, url TEXT NOT NULL,
+  published_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (article_id, ticker)
+);
+-- 분석 잡이 매 실행 던지는 유일한 질문의 모양이다: 그 세션 · 이 종목들 ·
+-- 최신순 N건. 원장이 하루 1400행씩 자라므로 순차 스캔으로 두면 곧 비싸진다.
+CREATE INDEX IF NOT EXISTS ix_news_raw_session ON tb_news_raw (trade_date, ticker, published_at DESC);

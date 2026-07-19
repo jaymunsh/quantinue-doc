@@ -22,6 +22,7 @@ from quantinue.broker.mock import MockBroker
 from quantinue.core.market_calendar import NyseCalendar
 from quantinue.db.domain_records import DailyPickWrite
 from quantinue.market_data.alpaca_bars import AlpacaBarSource
+from quantinue.market_data.alpaca_news import AlpacaNewsSource
 from quantinue.market_data.sec_daily_index import SecDailyIndexSource
 from quantinue.orchestration.job_runner import JobDefinition, JobRunner
 from quantinue.roles.analysis.job import AnalysisJob
@@ -40,6 +41,7 @@ if TYPE_CHECKING:
         DailyBarWrite,
         KnownListing,
         RawDisclosureWrite,
+        RawNewsWrite,
     )
     from quantinue.llm.provider import LlmAnalyzer
     from quantinue.market_data.models import SecuritySnapshot
@@ -229,6 +231,53 @@ def build_disclosures_job(
     return JobDefinition(name=name, run=run)
 
 
+class _NewsSource(Protocol):
+    async def articles(self, session: date, until: date) -> tuple[RawNewsWrite, ...]:
+        """Fetch the whole market's headlines for one session's window."""
+        ...
+
+
+class _NewsSink(Protocol):
+    async def save_raw_news(self, articles: tuple[RawNewsWrite, ...]) -> None:
+        """Upsert the collected headlines into the raw ledger."""
+        ...
+
+
+def build_news_job(
+    *,
+    source: _NewsSource,
+    domain: _NewsSink,
+    calendar: NyseCalendar,
+    name: str = "news",
+) -> JobDefinition:
+    """Collect the whole market's headlines since the last closed session.
+
+    공시 잡과 같은 자리에 같은 이유로 선다: 종목별 폴링이면 콜 수가 종목 수에
+    비례해서 **분석 범위 밖 종목을 영영 못 본다**. 여기서는 심볼을 지정하지
+    않으므로 그날 무엇을 볼지 미리 정하지 않아도 된다.
+
+    창의 끝이 세션이 아니라 **실행일**인 이유는 어댑터 docstring에 있다 —
+    주말·프리마켓 기사를 다음 실행이 다시 줍지 않기 때문이다.
+
+    수집한 헤드라인은 투표가 아니라 분석 잡의 **증거 종합 맥락**으로 들어간다
+    (출처 등급 gray). 여기서 하드 이벤트를 판정하지 않는 것도 의도다 —
+    상장폐지·거래정지는 권위 있는 쪽인 SEC 폼이 판정한다. 헤드라인 키워드로
+    매도를 발동시키면 "Trading Halt" 같은 제목 하나가 포지션을 날린다.
+    """
+
+    async def run(as_of: date) -> str:
+        session = calendar.previous_trading_day(as_of)
+        articles = await source.articles(session, as_of)
+        await domain.save_raw_news(articles)
+        tickers = len({article.ticker for article in articles})
+        return (
+            f"{len(articles)} headlines on {tickers} tickers"
+            f" since {session.isoformat()}"
+        )
+
+    return JobDefinition(name=name, run=run)
+
+
 def build_daily_bars_job(  # noqa: PLR0913 - 각 인자가 교체 가능한 협력자 하나다
     *,
     source: _BarSource,
@@ -406,6 +455,7 @@ def build_analysis_job(  # noqa: PLR0913 - 각 인자가 교체 가능한 협력
         profile=config.profiles[profile_name],
         profile_name=profile_name,
         calendar=calendar,
+        headlines_per_ticker=config.news.headlines_per_ticker,
     )
 
     async def run(as_of: date) -> str:
@@ -457,6 +507,7 @@ class JobSources:
     market_data: _UniverseSource | None = None
     bars: _BarSource | None = None
     disclosures: _FilingSource | None = None
+    news: _NewsSource | None = None
     analyzer: LlmAnalyzer | None = None
 
 
@@ -539,6 +590,18 @@ def build_job_runner(
             calendar=calendar,
         )
     )
+    news_source = selected.news
+    if news_source is None and key and secret:
+        news_source = AlpacaNewsSource(
+            key_id=key, secret_key=secret, page_size=config.news.page_size
+        )
+    if news_source is not None:
+        # 뉴스는 공시 **뒤**, 스크리닝 **앞**이다. 판단(분석 잡)이 오늘의 증거를
+        # 보려면 그 전에 수집이 끝나 있어야 하고, 하드 이벤트를 판정하는 것은
+        # 공시 쪽이라 순서상 뉴스가 그것을 가로챌 자리에 있으면 안 된다.
+        jobs.append(
+            build_news_job(source=news_source, domain=domain, calendar=calendar)
+        )
     jobs.append(
         build_screening_job(
             domain=domain,
