@@ -167,6 +167,15 @@ CREATE TABLE IF NOT EXISTS tb_fill (
   quantity INT NOT NULL CHECK (quantity > 0), price NUMERIC NOT NULL CHECK (price > 0), filled_at TIMESTAMPTZ NOT NULL,
   broker_fill_id TEXT UNIQUE, created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Phase 4: 당일 시작 equity 스냅샷 — daily_loss_limit의 분모.
+-- 하루 첫 기록이 이긴다(잡의 INSERT는 ON CONFLICT DO NOTHING). 재실행이
+-- 아침 값을 덮으면 '당일 시작 대비'라는 정의 자체가 거짓이 된다.
+CREATE TABLE IF NOT EXISTS tb_account_equity_daily (
+  account_id BIGINT NOT NULL REFERENCES tb_account(id), trade_date DATE NOT NULL,
+  equity NUMERIC NOT NULL CHECK (equity >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (account_id, trade_date)
+);
 CREATE TABLE IF NOT EXISTS tb_review_price_snapshots (
   signal_id BIGINT NOT NULL REFERENCES tb_strategist_signals(id), day_offset SMALLINT NOT NULL CHECK (day_offset BETWEEN 1 AND 5),
   price_date DATE NOT NULL, close NUMERIC NOT NULL CHECK (close > 0), source TEXT NOT NULL CHECK (source IN ('fixture','market_data')),

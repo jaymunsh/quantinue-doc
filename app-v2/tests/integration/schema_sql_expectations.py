@@ -34,6 +34,7 @@ TABLES = {
     "tb_disclosure_raw",
     "tb_news_raw",
     "tb_order_plan",
+    "tb_account_equity_daily",
 }
 PK = {
     "tb_universe": ("as_of_date", "ticker"),
@@ -64,6 +65,8 @@ PK = {
     "tb_disclosure_raw": ("filing_no",),
     # 기사 하나가 여러 종목을 언급하므로 기사 id만으로는 행을 못 가른다.
     "tb_news_raw": ("article_id", "ticker"),
+    # 당일 시작 equity는 계좌·날짜당 하나다 — 첫 기록이 이긴다.
+    "tb_account_equity_daily": ("account_id", "trade_date"),
 }
 UNIQUE = {
     "tb_disclosure": {("filing_no",)},
@@ -177,6 +180,7 @@ FK: dict[str, set[ForeignKey]] = {
     },
     "tb_critic_verdict": {(("signal_id",), "tb_strategist_signals", ("id",))},
     "tb_account": {(("user_id",), "tb_user", ("user_id",))},
+    "tb_account_equity_daily": {(("account_id",), "tb_account", ("id",))},
     "tb_order": {
         (("signal_id",), "tb_strategist_signals", ("id",)),
         (("account_id",), "tb_account", ("id",)),
@@ -195,6 +199,8 @@ FK: dict[str, set[ForeignKey]] = {
 }
 # Each tuple is one CHECK constraint and lists every semantic fragment it must contain.
 CHECKS = {
+    # NUMERIC 캐스트가 붙어 카탈로그에는 (0)::numeric으로 남는다 — 접두만 본다.
+    "tb_account_equity_daily": {("equity",): ("equity >=",)},
     "tb_order_plan": {
         ("decision",): ("'planned'", "'skipped'"),
         ("quantity",): ("quantity >= 0",),

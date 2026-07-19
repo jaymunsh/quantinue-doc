@@ -1611,6 +1611,16 @@ erDiagram
 }</pre></div>
       </details>
 
+      <details class="schema"><summary><code>tb_account_equity_daily</code><span class="sd"><span class="b b-new">재설계 Phase 4</span> 당일 시작 equity 스냅샷 — daily_loss_limit의 분모</span><span class="cnt">4컬럼</span></summary>
+              <div class="twrap"><table>
+                <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
+                <tr><td>account_id · trade_date</td><td>BIGINT FK → tb_account · DATE · PK</td><td>계좌·날짜당 한 행 — "당일 시작"은 하루에 하나뿐이다</td></tr>
+                <tr><td>equity</td><td>NUMERIC ≥ 0</td><td>그날 첫 배분 잡이 관측한 시가평가(D8: 현금 + 보유×직전 종가). <b>첫 기록이 이긴다</b> — INSERT가 ON CONFLICT DO NOTHING이라 재실행이 아침 값을 덮지 않는다. 덮으면 '당일 시작 대비'라는 정의가 거짓이 된다</td></tr>
+                <tr><td>created_at</td><td>TIMESTAMPTZ</td><td>적재 시각</td></tr>
+                <tr><td colspan="3"><b>소비자는 배분 잡의 계좌 게이트다</b>(같은 커밋) — 현재 equity가 <code>스냅샷 × (1 − profiles.*.daily_loss_limit)</code> 아래로 내려간 계좌는 그날 신규 매수가 없다(<code>skipped_reason='daily_loss_limit'</code>로 관측 가능). 이로써 M6부터 미뤄져 온 daily_loss_limit 전제 3개(매도·시가평가·당일 시작 스냅샷)가 전부 충족된다</td></tr>
+              </table></div>
+      </details>
+
       <h3>2차(MVP-2) 스키마 변경 <span class="b b-gray">M2 완료 · as-built</span></h3>
       <p>아래 변경은 코드 3파일(schema.sql·schemas.py/ontology.py·pipeline.yaml)에 <b>먼저</b> 반영한 뒤 구현이 따라온다(착수 순서 규칙). <b>2026-07-18 M2에서 전부 적용 완료</b> — 신규 설치는 <code>db/schema.sql</code>, 기존 DB는 멱등 <code>db/migrations/mvp2.sql</code>로 올린다(두 경로가 동일 카탈로그로 수렴함을 컬럼 344·제약 134 비교로 검증).</p>
       <div class="note"><b>기존 DB 업그레이드 시 알아둘 것</b> — ① <code>reason</code>의 기존 텍스트는 버리지 않고 <code>{"legacy": "원문"}</code>으로 감싸 보존한다. ② <code>tb_critic_verdict.source</code>(fresh/cache/cooldown, 캐시 상태)는 계보의 <code>source</code>(출처)와 이름이 겹쳐 <b><code>verdict_source</code>로 리네임</b>했다 — 6개 계보 테이블의 컬럼 이름을 통일하기 위함. ③ 계보 10컬럼은 전부 NULL 허용 — 기존 행은 계보 없이 남고 <b>신규 기록부터 채운다</b>.</div>

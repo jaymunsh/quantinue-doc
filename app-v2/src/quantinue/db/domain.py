@@ -5,9 +5,9 @@ from decimal import Decimal
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import ColumnElement, MetaData, Table, and_, func, select, text
+from sqlalchemy import ColumnElement, MetaData, Table, and_, func, literal, select, text
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from quantinue.broker.bracket_trigger import DailyRange
 from quantinue.core.contracts import DisclosureSourceRecord, NewsSourceRecord
@@ -56,6 +56,7 @@ _TABLES = (
     "tb_disclosure_raw",
     "tb_news_raw",
     "tb_account",
+    "tb_account_equity_daily",
     "tb_order",
     "tb_fill",
 )
@@ -832,6 +833,9 @@ class PostgresDomainRepository:
         )
         async with self._engine.begin() as connection:
             rows = (await connection.execute(statement)).all()
+            returns = await self._recent_returns(
+                connection, as_of, tuple({row.ticker for row in rows})
+            )
         found: dict[str, list[BuyCandidate]] = {}
         for row in rows:
             found.setdefault(row.inv_type, []).append(
@@ -842,9 +846,50 @@ class PostgresDomainRepository:
                     conviction=Decimal(str(row.conviction)),
                     reference_price=Decimal(str(row.decision_close)),
                     rank=row.rank,
+                    recent_return=returns.get(row.ticker),
                 )
             )
         return {inv_type: tuple(items) for inv_type, items in found.items()}
+
+    async def _recent_returns(
+        self, connection: AsyncConnection, as_of: date, tickers: tuple[str, ...]
+    ) -> dict[str, float]:
+        """Measure each ticker's five-session run-up from the stored bars.
+
+        late_entry 게이트의 입력이다. 구 경로에서는 role_02의 ``ret_5d``가
+        줬는데, 새 경로가 None만 넘기면 ``profiles.*.late_entry_max``가
+        소비자 없는 유령이 된다 — 이미 달린 종목에 올라타는 것을 막는 게이트가
+        조용히 꺼진 채로.
+
+        봉이 6세션 미만인 종목은 결과에 없다(None) — 잴 수 없는 상승률을
+        0으로 지어내면 신규 상장이 게이트를 항상 통과한다.
+        """
+        if not tickers:
+            return {}
+        rows = (
+            await connection.execute(
+                text(
+                    """
+                    WITH ranked AS (
+                        SELECT ticker, close,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY ticker ORDER BY trade_date DESC
+                               ) AS rn
+                        FROM tb_daily_bar
+                        WHERE trade_date <= :as_of AND ticker = ANY(:tickers)
+                    )
+                    SELECT latest.ticker,
+                           (latest.close / past.close - 1) AS recent_return
+                    FROM ranked AS latest
+                    JOIN ranked AS past
+                      ON past.ticker = latest.ticker AND past.rn = 6
+                    WHERE latest.rn = 1 AND past.close > 0
+                    """
+                ),
+                {"as_of": as_of, "tickers": list(tickers)},
+            )
+        ).all()
+        return {row.ticker: float(row.recent_return) for row in rows}
 
     async def reserve_job_run(self, job_name: str, slot_date: date) -> bool:
         """Claim today's slot for one job, returning whether this caller won it.
@@ -1196,6 +1241,41 @@ class PostgresDomainRepository:
                 )
                 revalued[account_id] = equity
         return revalued
+
+    async def snapshot_daily_equity(self, trade_date: date) -> dict[int, Decimal]:
+        """Record each active account's day-start equity and return the snapshot.
+
+        daily_loss_limit의 분모다. **첫 기록이 이긴다**(ON CONFLICT DO
+        NOTHING) — 재실행이 아침 값을 덮으면 "당일 시작 대비"라는 정의가
+        거짓이 되고, 손실이 난 날 재실행할수록 기준이 내려가 한도가 영영
+        발동하지 않는다.
+
+        반환값은 방금 쓴 것이 아니라 **그날의 확정 스냅샷**이다 — 이미 행이
+        있으면 그 행을 돌려준다.
+        """
+        accounts = self._table("tb_account")
+        snapshots = self._table("tb_account_equity_daily")
+        async with self._engine.begin() as connection:
+            _ = await connection.execute(
+                insert(snapshots)
+                .from_select(
+                    ["account_id", "trade_date", "equity"],
+                    select(
+                        accounts.c.id,
+                        literal(trade_date),
+                        accounts.c.equity,
+                    ).where(accounts.c.status == "active"),
+                )
+                .on_conflict_do_nothing(index_elements=["account_id", "trade_date"])
+            )
+            rows = (
+                await connection.execute(
+                    select(snapshots.c.account_id, snapshots.c.equity).where(
+                        snapshots.c.trade_date == trade_date
+                    )
+                )
+            ).all()
+        return {int(row.account_id): Decimal(str(row.equity)) for row in rows}
 
     async def account_risk_state(self, account_id: int) -> AccountRiskState | None:
         """Read the capital and book size the portfolio limits are applied to.

@@ -25,6 +25,7 @@ from quantinue.market_data.alpaca_bars import AlpacaBarSource
 from quantinue.market_data.alpaca_news import AlpacaNewsSource
 from quantinue.market_data.sec_daily_index import SecDailyIndexSource
 from quantinue.orchestration.job_runner import JobDefinition, JobRunner
+from quantinue.roles.allocation.job import AllocationJob
 from quantinue.roles.analysis.job import AnalysisJob
 from quantinue.roles.exits.job import ExitJob
 from quantinue.roles.role_01_universe_screener.contracts import (
@@ -686,10 +687,11 @@ def build_job_runner(
     """Assemble the background job runner for this application, if it can run.
 
     잡 등록 **순서가 계약이다**: 유니버스 → 일봉 → 공시 → 뉴스 → 매크로 →
-    스크리닝 → 분석 x 성향수 → 청산. 수집이 판단보다 먼저 와야 오늘 시세·공시로
-    판단하고, 유니버스가 일봉보다 먼저 와야 그 주에 새로 든 종목이 봉 없이 남지
-    않는다. 한 틱 안에서 순서대로 돌기 때문에 이 순서가 그대로 데이터 의존성을
-    만족시킨다.
+    스크리닝 → 분석 x 성향수 → 청산 → 배분. 수집이 판단보다 먼저 와야 오늘
+    시세·공시로 판단하고, 유니버스가 일봉보다 먼저 와야 그 주에 새로 든 종목이
+    봉 없이 남지 않는다. 청산이 배분보다 앞인 이유는 지갑이다 — 판 돈과 빈
+    자리(보유 수 한도)로 사야 "자리가 없어 못 산다"가 하루 늦지 않는다. 한 틱
+    안에서 순서대로 돌기 때문에 이 순서가 그대로 데이터 의존성을 만족시킨다.
     """
     selected = sources or JobSources()
     domain = getattr(store, "domain", None)
@@ -769,6 +771,33 @@ def build_job_runner(
             calendar=calendar,
         )
     )
+    # 배분은 **청산 뒤**다. 청산이 자리(보유 수 한도)와 현금을 비운 다음에
+    # 사야 "자리가 없어 못 산다"가 하루 늦지 않는다. 분석 뒤인 것은 당연하고
+    # — 후보 자체가 오늘 분석의 승인 결과다.
+    jobs.append(
+        JobDefinition(
+            name="allocation",
+            run=_allocation_runner(
+                AllocationJob(
+                    store=store,
+                    broker=MockBroker(),
+                    profiles=config.profiles,
+                    gates=config.gates,
+                    allocation=config.allocation,
+                    calendar=calendar,
+                )
+            ),
+        )
+    )
     return JobRunner(
         config=config.jobs, ledger=domain, jobs=tuple(jobs), calendar=calendar
     )
+
+
+def _allocation_runner(job: AllocationJob) -> Callable[[date], Awaitable[str]]:
+    """Adapt the allocation job's keyword-only entry point to the runner shape."""
+
+    async def run(as_of: date) -> str:
+        return await job.run(as_of=as_of)
+
+    return run

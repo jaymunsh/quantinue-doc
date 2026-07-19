@@ -259,7 +259,12 @@ def test_without_alpaca_credentials_only_the_exit_job_is_registered() -> None:
 
     # Then
     assert runner is not None
-    assert [job.name for job in runner.jobs] == ["disclosures", "screening", "exits"]
+    assert [job.name for job in runner.jobs] == [
+        "disclosures",
+        "screening",
+        "exits",
+        "allocation",
+    ]
 
 
 def test_with_credentials_collection_is_registered_before_the_exit_job() -> None:
@@ -280,6 +285,7 @@ def test_with_credentials_collection_is_registered_before_the_exit_job() -> None
         "news",
         "screening",
         "exits",
+        "allocation",
     ]
 
 
@@ -572,6 +578,7 @@ def test_the_universe_job_is_registered_first() -> None:
         "news",
         "screening",
         "exits",
+        "allocation",
     ]
 
 
@@ -592,7 +599,13 @@ def test_one_analysis_job_is_registered_per_persona() -> None:
     # Then: 수집 → 스크리닝 → 분석 → 청산. 분석은 범위가 정해진 뒤에만 뜻이 있다.
     assert runner is not None
     names = [job.name for job in runner.jobs]
-    assert names[-3:] == ["analysis:aggressive", "analysis:conservative", "exits"]
+    # 청산 → 배분이 꼬리다. 판 돈과 빈 자리로 사야 하루가 늦지 않는다.
+    assert names[-4:] == [
+        "analysis:aggressive",
+        "analysis:conservative",
+        "exits",
+        "allocation",
+    ]
     assert names.index("screening") < names.index("analysis:aggressive")
 
 

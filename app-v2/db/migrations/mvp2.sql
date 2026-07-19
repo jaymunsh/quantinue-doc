@@ -251,3 +251,13 @@ CREATE TABLE IF NOT EXISTS tb_news_raw (
 -- 분석 잡이 매 실행 던지는 유일한 질문의 모양이다: 그 세션 · 이 종목들 ·
 -- 최신순 N건. 원장이 하루 1400행씩 자라므로 순차 스캔으로 두면 곧 비싸진다.
 CREATE INDEX IF NOT EXISTS ix_news_raw_session ON tb_news_raw (trade_date, ticker, published_at DESC);
+
+-- Phase 4: 당일 시작 equity 스냅샷 — daily_loss_limit의 분모. 소비자는 배분
+-- 잡의 계좌 게이트(같은 커밋). 하루 첫 기록이 이긴다 — 잡의 INSERT가
+-- ON CONFLICT DO NOTHING이라 재실행이 아침 값을 덮지 않는다.
+CREATE TABLE IF NOT EXISTS tb_account_equity_daily (
+  account_id BIGINT NOT NULL REFERENCES tb_account(id), trade_date DATE NOT NULL,
+  equity NUMERIC NOT NULL CHECK (equity >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (account_id, trade_date)
+);

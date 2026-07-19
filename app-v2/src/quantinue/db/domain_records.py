@@ -264,6 +264,10 @@ class BuyCandidate:
     conviction: Decimal
     reference_price: Decimal
     rank: int | None
+    # 최근 5세션 상승률(비율). late_entry 게이트의 입력 — 구 경로에서는
+    # role_02의 ret_5d가 줬는데 새 경로에 없으면 그 게이트가 유령이 된다.
+    # 봉이 5세션 미만이면 None — 잴 수 없는 것을 0으로 지어내지 않는다.
+    recent_return: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

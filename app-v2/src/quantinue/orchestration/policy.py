@@ -305,6 +305,25 @@ class ExitsConfig(BaseModel):
     time_exit_bdays: int = Field(default=10, gt=0, le=250)
 
 
+class AllocationConfig(BaseModel):
+    """The allocation job's sizing brackets and hard ceilings.
+
+    값은 구 러너의 mvp 블록(stop_loss_ratio 등)과 같다 — 소유권을 mvp2로
+    옮기는 중이고, 구 러너가 죽으면 mvp 블록이 함께 죽는다. 두 블록이 다른
+    값을 갖는 상태는 과도기에만 허용된다(핸드오프에 기록).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    stop_loss_ratio: float = Field(default=0.15, gt=0, lt=1)
+    take_profit_ratio: float = Field(default=0.20, gt=0, le=10)
+    maximum_risk_score: float = Field(default=0.70, ge=0, le=1)
+    # 하루에 새로 여는 포지션 수의 계좌당 상한. 기본 5는 redesign §7이 말한
+    # 실효 의도값이다 — 코드 4곳의 리터럴(1·1·1·5)이 서로 달랐고, 이제 이
+    # 키가 배분 잡의 단일 소유자다.
+    daily_new_order_cap: int = Field(default=5, ge=1, le=100)
+
+
 class MarketDataConfig(BaseModel):
     """Request shaping for the batch market-data adapters."""
 
@@ -383,6 +402,7 @@ class Mvp2Config(BaseModel):
     disclosure: DisclosureConfig = DisclosureConfig()
     news: NewsConfig = NewsConfig()
     exits: ExitsConfig = ExitsConfig()
+    allocation: AllocationConfig = AllocationConfig()
     jobs: JobsConfig = JobsConfig()
     market_data: MarketDataConfig = MarketDataConfig()
     budget: BudgetConfig = BudgetConfig()

@@ -119,6 +119,15 @@ mvp2:
     min_history_sessions: 60
   exits:
     time_exit_bdays: 10
+  # 배분 잡(Phase 4)의 사이징 브래킷과 상한. 값은 구 러너의 mvp 블록과 같다 —
+  # 소유권을 여기로 옮기는 중이고, 구 러너가 죽으면 mvp 블록이 함께 죽는다.
+  allocation:
+    stop_loss_ratio: 0.15
+    take_profit_ratio: 0.20
+    maximum_risk_score: 0.70
+    # 하루 신규 포지션 계좌당 상한. redesign §7의 실효 의도값(5).
+    # 코드 4곳 리터럴(1·1·1·5)이 서로 달랐다 — 이제 이 키가 단일 소유자다.
+    daily_new_order_cap: 5
   # 배경 잡 루프. 주기는 전부 여기 소유이고 기본은 느슨하다(D3) — 30분으로
   # 조이는 건 아래 숫자를 바꾸는 일이지 코드를 고치는 일이 아니어야 한다.
   # 선언이 없는 잡은 기본 일 1회로 돈다.
