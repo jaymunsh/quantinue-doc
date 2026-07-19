@@ -161,7 +161,21 @@
 
 ## M5. 매도·보유 재평가 (R7-1) — Wave 2 · **최대 설계 작업**
 
-⏳ **착수 시 첫 태스크 = 매도 주문 표현 설계 확정**: tb_order는 브래킷 매수 전용(CHECK order_type IN ('bracket')) — 매도(청산)는 ① order_type 'close' 추가 ② 브래킷 leg 취소 후 시장가 매도 ③ tb_fill side='sell' 활용. 스키마 영향 있으면 M2 마이그레이션에 추가.
+✅ **매도 주문 표현 확정 (2026-07-19, 커밋 `6cd1ae2`)** — **①안 채택: 별도 청산 주문 행**.
+
+②(브래킷 leg 취소 후 시장가)는 표현이 아니라 **브로커 동작**이라 어느 안과도 병행한다. ③(기존 매수 행에 sell 체결만)은 매도의 `broker_order_id`를 둘 자리가 없고(매수가 이미 점유·UNIQUE) 상태 전이·멱등 재시도를 추적할 수 없어 탈락 — **있는 값을 버리는** 선택이다.
+
+**스키마 변경**(`db/schema.sql` + `db/migrations/mvp2.sql`):
+- `order_type CHECK IN ('bracket','close')`
+- `stop_price`·`take_profit_price` **NULL 허용** — 청산에 더미 값을 채우지 않는다
+- 브래킷 삼중 제약(`stop < entry < take_profit`)은 `order_type='bracket'`일 때만. 매수 보호는 그대로(테스트로 고정)
+- `closes_order_id BIGINT REFERENCES tb_order(id)` — 어느 매수를 닫는가. **실현손익의 짝**. 청산은 필수
+
+**전제(함께 확정)**: 시간 청산·논지 붕괴 같은 **기계적 청산도 `side='sell'` 시그널 행을 남긴다.** 계보가 균일해지고 role_11이 매도도 채점할 수 있으며 `signal_id NOT NULL`·`UNIQUE(account_id,signal_id)`가 유지된다.
+
+**검증**: 신규 설치 경로 == 마이그레이션 경로(컬럼·제약 정의 해시 일치) · 마이그레이션 2회 멱등 · 청산↔매수 조인으로 실현손익 실계산 확인 · 통합 63 green.
+
+⚠️ **알려진 어색함**: `entry_price` 이름이 매도에선 어색하다(실제 의미는 "판단 시점 기준가"). 리네임 파급이 커서 이름은 두고 정본 `#logic`에 의미를 명시했다.
 
 | # | 태스크 | 파일 | 상세 |
 |---|---|---|---|

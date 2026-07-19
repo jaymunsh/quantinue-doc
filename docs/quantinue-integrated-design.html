@@ -281,7 +281,7 @@
       </div>
       <button class="theme-btn" id="themeBtn" type="button" aria-label="다크모드 전환">🌙</button>
     </div>
-    <span class="rail-ver">v5.0 · MVP-2</span>
+    <span class="rail-ver">v5.1 · MVP-2</span>
 
     <nav class="nav" aria-label="주요 섹션">
       <div class="nav-group">시작</div>
@@ -585,6 +585,7 @@ erDiagram
   tb_account ||--o{ tb_order : "계좌"
   tb_strategist_signals ||--o{ tb_order : "주문"
   tb_order ||--o{ tb_fill : "체결"
+  tb_order ||--o| tb_order : "청산 대상"
   tb_strategist_signals ||--o{ tb_review_price_snapshots : "T+5 스냅샷"
   tb_strategist_signals ||--o| tb_review : "회고·lesson"
       </div>
@@ -604,7 +605,7 @@ erDiagram
         <tr><td rowspan="5">판단·실행</td><td class="mono">tb_strategist_signals</td><td>전략 판단 (buy·hold·sell·확신도)</td><td class="mono">id · UNIQUE(ticker,cycle_ts,inv_type)</td></tr>
         <tr><td class="mono">tb_critic_verdict</td><td>반박 판정 (pass·reject·hold)</td><td class="mono">id · UNIQUE(signal_id)</td></tr>
         <tr><td class="mono">tb_account</td><td>계좌 (현금·평가·성향)</td><td class="mono">id · broker_account_id</td></tr>
-        <tr><td class="mono">tb_order</td><td>주문 (브래킷 SL/TP·멱등)</td><td class="mono">id · UNIQUE(account_id,signal_id)</td></tr>
+        <tr><td class="mono">tb_order</td><td>주문 — 브래킷 매수(<code>bracket</code>) 및 청산(<code>close</code>). 멱등 · 청산은 <code>closes_order_id</code>로 매수를 가리킨다</td><td class="mono">id · UNIQUE(account_id,signal_id)</td></tr>
         <tr><td class="mono">tb_fill</td><td>체결 (수량·가격)</td><td class="mono">id · broker_fill_id</td></tr>
         <tr><td rowspan="2">회고</td><td class="mono">tb_review_price_snapshots</td><td>T+1~5 종가 스냅샷</td><td class="mono">(signal_id, day_offset)</td></tr>
         <tr><td class="mono">tb_review</td><td>회고 결과·lesson (수익률·적중)</td><td class="mono">signal_id</td></tr>
@@ -1619,6 +1620,23 @@ erDiagram
         </div>
       </details>
 
+      <details class="schema"><summary><code>매도(청산) 주문 표현</code><span class="sd">M5 설계 결정</span><span class="cnt">M5 as-built</span></summary>
+        <div style="padding:6px 16px 16px;font-size:14px;line-height:1.8">
+          <b>문제</b>: <code>tb_order</code>는 브래킷 매수 전용이었다 — <code>order_type</code>이 <code>'bracket'</code>만 받고, 손절·익절이 <code>NOT NULL</code>이며, <code>stop &lt; entry &lt; take_profit</code> 삼중 제약은 매도에서 만족될 수 없다.<br><br>
+          <b>검토한 대안</b><br>
+          ② <b>브래킷 leg 취소 후 시장가</b> — 표현이 아니라 <b>브로커 동작</b>이다. 어느 표현을 고르든 병행해야 하므로 대안이 아니다.<br>
+          ③ <b>기존 매수 행에 <code>side='sell'</code> 체결만 추가</b> — 부분 청산이 자연스럽지만, 매도의 <code>broker_order_id</code>를 둘 자리가 없고(매수가 이미 점유·UNIQUE) 매도 주문의 상태 전이·멱등 재시도를 추적할 수 없다. <b>있는 값을 버리는</b> 선택.<br><br>
+          <b>채택 ①: 별도 청산 주문 행</b> — 매도는 자체 브로커 주문 ID·상태 전이·멱등키를 갖는 진짜 주문이다. <code>tb_fill.order_id</code>가 1:1로 정직하게 유지된다.<br><br>
+          <b>스키마</b><br>
+          · <code>order_type CHECK IN ('bracket','close')</code><br>
+          · <code>stop_price</code>·<code>take_profit_price</code> <b>NULL 허용</b> — 청산에 더미 값을 채우지 않는다<br>
+          · 브래킷 삼중 제약은 <code>order_type='bracket'</code>일 때만(매수 보호는 그대로)<br>
+          · <code>closes_order_id</code> — 어느 매수를 닫는가. <b>실현손익의 짝</b>이자 명시적 계보. 청산은 이 값이 <b>필수</b>다<br><br>
+          <b>전제</b>: 시간 청산·논지 붕괴 같은 <b>기계적 청산도 <code>side='sell'</code> 시그널 행을 남긴다.</b> 계보가 균일해지고, 왜 팔았는지가 기록되어 role_11이 매도도 채점할 수 있으며, <code>signal_id NOT NULL</code>·<code>UNIQUE(account_id,signal_id)</code>가 그대로 유지된다.<br><br>
+          <b>알려진 어색함</b>: <code>entry_price</code>라는 이름이 매도에선 어색하다. 실제 의미는 <b>"판단 시점 기준가"</b>로 매수·매도 모두에 맞지만 이름이 매수 편향이다. 리네임은 파급이 커서 이름은 두고 의미를 여기 명시한다.
+        </div>
+      </details>
+
       <details class="schema"><summary><code>05 공시 — 발행인 결속·기권</code><span class="sd">남의 회사 공시로 채점하지 않기</span><span class="cnt">M4 as-built</span></summary>
         <div style="padding:6px 16px 16px;font-size:14px;line-height:1.8">
           요청 종목의 <b>CIK로만</b> 조회한다(SEC <code>company_tickers.json</code>, 프로세스당 1회 캐시). <b>발견된 결함</b>: 그 전까지 CIK가 하드코딩(NVDA)돼 <b>모든 종목이 NVDA 공시로 채점</b>되고 있었다 — 07의 4표 중 1표와 강악재 차단 게이트가 거짓 입력 위에서 돌던 상태.<br>
@@ -1994,6 +2012,7 @@ erDiagram
       <p class="sec-intro">이 문서를 수정하면 표 맨 위에 한 줄 추가 + 버전 갱신 + git 커밋·태그.</p>
       <div class="twrap"><table>
         <tr><th>버전</th><th>날짜</th><th>수정자</th><th>변경 요약</th></tr>
+        <tr><td class="mono">v5.1</td><td class="mono">2026-07-19</td><td>문성혁 + Claude</td><td><b>M6 완료 · M5 매도 주문 표현 확정</b> — 계좌 구독 팬아웃(계좌별 계획·집행, <b>실 브로커는 팬아웃 안 함</b> — 외부 계좌가 하나라 내부 7계좌를 순회하면 의도의 7배가 쌓인다) · 서킷 3종 배선(<code>max_weight</code>가 <code>POSITION_CAP_FRACTION</code> 리터럴 대체) · 계좌별 자본·포트폴리오 · 계좌 프로비저닝(테스트 2 + 데모 5: 공격 $150K/$100K/$5K · 안전 $100K/$5K) · <b>매도 주문 표현 = 별도 청산 행</b>(<code>order_type='close'</code>·<code>closes_order_id</code>, 브래킷 제약을 조건부로 — 청산에 더미 손절·익절을 채우지 않는다) · 신규설치 경로 == 마이그레이션 경로 확증 · 유닛 681 · 통합 63 green</td></tr>
         <tr><td class="mono">v5.0</td><td class="mono">2026-07-19</td><td>문성혁 + Claude</td><td><b>M4 검증 라운드 + M6 착수 · 트러블슈팅 섹션 신설</b> — 방어선 3종을 <b>강제 발동 E2E</b>로 검증(기다려서는 검증 불가: 크리틱이 대부분을 막아 매수일이 곧 실거래일이 된다) · <b>halted 생략이 런 전체를 죽이던 버그</b> 수정 · 크리틱 문턱 이중값 정리(0.60→0.70, 문서대로) · <b>tb_order_plan 신설</b>로 방어선 발동 관측 가능화 · <b>유령 설정 전수 감사</b>(선언됐으나 소비자 없는 값) · M6: 계좌 프로비저닝(테스트 2 + 데모 5) · 서킷 3종 배선(max_weight가 POSITION_CAP_FRACTION 리터럴 대체) · <b>자본이 계좌에서 오게 됨</b>(그 전엔 앱 전역 상한이 equity라 $5K와 $150K 계좌가 같은 크기로 주문) · conservative 프로필 도달 가능화 · 계좌 구독 팬아웃 · 계좌별 포트폴리오 · 유닛/웹 676 · 통합 58 green</td></tr>
         <tr><td class="mono">v4.9</td><td class="mono">2026-07-19</td><td>문성혁 + Claude</td><td><b>M4 완료 — 판단 방어선(8건 + 신설 2건)</b> — <b>role_05 CIK 하드코딩 발견·수정</b>(모든 종목이 NVDA 공시로 채점되던 상태 — 4-2 게이트가 거짓 입력 위에서 돌고 있었다) · <b>공시 부재 = 투표 기권</b>(0점이면 hard_negative_max에 걸려 무공시 종목 매수 전면 차단) · 프리마켓 갭 가드(<b>세션 한정 적용</b> — 장중 3%는 평범한 이동) · late_entry(<b>ret_5d 퍼센트/분수 100배 불일치 수정</b>) · halted 사전 조회 · Form 4 오인 차단 커널(<b>ownership XML 필드 부재 확인 → 본체는 알파 항목으로 백로그</b>, T+5 지평 불일치) · consensus 실계산 + CHECK 0~3→0~4 · 대표기사 <b>신뢰가중 랭킹</b>(importance는 LLM 출력이라 선정 시점 부재 → 원안 개정) + peak_importance 실저장 · 유닛/웹 649 green · 통합 30 green · 드라이런 01→11 완주(<b>실행에서만 드러난 SEC/NASDAQ User-Agent 충돌 2건 수정</b>)</td></tr>
         <tr><td class="mono">v4.8</td><td class="mono">2026-07-18</td><td>문성혁 + Claude</td><td><b>M3 완료 — 깔때기 복원(Wave 1 종료)</b> — 유니버스 50→2,000 + <b>시총 정렬로 응답순 버그 수정</b> · 하드 필터(주가 $5·20일 평균 거래대금 $20M) 신설 · 오늘의 픽 10→50 · 폭은 전부 config 소유 · <b>일봉이 종목당 1콜(~3s)이라 가격 조회는 시총 상위 500으로 제한</b>(소스 제약, #logic 카드) · 역할별 타임아웃 오버라이드 신설 · 실행 검증 152초 완주</td></tr>
