@@ -75,6 +75,12 @@ mvp2:
     critic_approval: 0.70
     overconfidence_conviction: 0.90
     overconfidence_approval: 0.80
+    # 분석 기준가(직전 종가) 대비 갭이 이보다 크면 신규 매수 보류.
+    # ⏳ 잠정값 — 실제 갭 분포 1~2주 관측 후 조정(발동 사유는 tb_order_plan에 기록된다)
+    premarket_gap_max: 0.03
+    # 갭 가드 적용 창: 프리마켓 전체 + 개장 후 이 분(分)까지.
+    # 장중 3% 이동은 평범하므로 종일 적용하면 정상 매수까지 막는다.
+    gap_guard_open_minutes: 30
   screening:
     universe_size: 2000
     min_price_usd: 5

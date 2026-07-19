@@ -1,6 +1,6 @@
 """Typed input and output contracts for deterministic portfolio risk."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from math import floor
 from typing import Final, Literal
 
@@ -30,6 +30,8 @@ class RiskPortfolioInput(LateStageEvidenceInput):
     daily_new_order_count: int = Field(default=0, ge=0)
     daily_new_order_cap: int = Field(default=5, ge=1)
     risk_score: float = Field(default=0, ge=0, le=1)
+    reference_gap: float | None = Field(default=None, ge=0)
+    """Absolute move from the analysis reference close, or None when unmeasured."""
 
 
 class RiskPortfolioOutput(BaseModel):
@@ -55,6 +57,7 @@ class RiskPortfolioOutput(BaseModel):
             "insufficient_equity",
             "daily_order_cap",
             "risk_limit",
+            "premarket_gap",
         ]
         | None
     )
@@ -73,11 +76,22 @@ class RiskPortfolioOutput(BaseModel):
         return self
 
 
+def gap_guard_applies(now: datetime, session_open: datetime, open_minutes: int) -> bool:
+    """Return whether the reference gap should be measured at this moment.
+
+    The guard covers everything before the bell plus a short opening stretch,
+    because that is where an overnight gap is a gap. Later in the session the
+    same percentage is ordinary drift and blocking on it would skip normal buys.
+    """
+    return now < session_open + timedelta(minutes=open_minutes)
+
+
 def build_order_plan(
     request: RiskPortfolioInput,
     stop_loss_ratio: float = STOP_FRACTION,
     take_profit_ratio: float = TAKE_PROFIT_FRACTION,
     maximum_risk_score: float = 1.0,
+    premarket_gap_max: float | None = None,
 ) -> RiskPortfolioOutput:
     """Apply hard gates then size by risk budget subject to the position cap."""
     reason: (
@@ -89,6 +103,7 @@ def build_order_plan(
             "insufficient_equity",
             "daily_order_cap",
             "risk_limit",
+            "premarket_gap",
         ]
         | None
     ) = None
@@ -96,6 +111,13 @@ def build_order_plan(
         reason = "critic_rejected"
     elif request.risk_score > maximum_risk_score:
         reason = "risk_limit"
+    elif (
+        premarket_gap_max is not None
+        and request.reference_gap is not None
+        and request.reference_gap > premarket_gap_max
+    ):
+        # 기준가가 무너지면 진입가·손절·익절이 전부 무의미해진다.
+        reason = "premarket_gap"
     elif request.event_within_two_days:
         reason = "event_window"
     elif request.has_position:

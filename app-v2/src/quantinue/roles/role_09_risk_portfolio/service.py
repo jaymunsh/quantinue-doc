@@ -1,11 +1,12 @@
 """Create a deterministic risk-sized fixed-bracket order plan."""
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from hashlib import sha256
 from typing import ClassVar, assert_never
 
 from quantinue.core.contracts import PipelineContext
+from quantinue.core.market_calendar import NyseCalendar
 from quantinue.core.ontology import EvidenceKind
 from quantinue.core.schemas import Evidence
 from quantinue.core.typing import require_value
@@ -15,7 +16,12 @@ from quantinue.db.contracts import (
     RunStore,
     parse_app_order_money,
 )
-from quantinue.roles.role_09_risk_portfolio.contracts import RiskPortfolioInput, build_order_plan
+from quantinue.orchestration.policy import GatesConfig
+from quantinue.roles.role_09_risk_portfolio.contracts import (
+    RiskPortfolioInput,
+    build_order_plan,
+    gap_guard_applies,
+)
 from quantinue.roles.role_09_risk_portfolio.evidence import evidence_from_pipeline_traces
 
 
@@ -31,6 +37,26 @@ class RiskPortfolio:
     maximum_risk_score: float = 1.0
     stop_loss_ratio: float = 0.15
     take_profit_ratio: float = 0.20
+    gates: GatesConfig = field(default_factory=GatesConfig)
+    calendar: NyseCalendar = field(default_factory=NyseCalendar)
+
+    def _reference_gap(self, context: PipelineContext) -> float | None:
+        """Measure the gap from the analysis reference close, inside the window only.
+
+        Returns None when the guard does not apply, so a plain drift later in
+        the session is never mistaken for an overnight gap.
+        """
+        snapshot = context.price_snapshot
+        if snapshot is None:
+            return None
+        now = context.request.cycle_ts
+        if not self.calendar.is_trading_day(now.date()):
+            return None
+        if not gap_guard_applies(
+            now, self.calendar.session_open(now.date()), self.gates.gap_guard_open_minutes
+        ):
+            return None
+        return snapshot.gap_from_reference()
 
     async def execute(self, context: PipelineContext) -> PipelineContext:
         """Apply role 09's hard gates and risk-budget sizing formula."""
@@ -52,10 +78,12 @@ class RiskPortfolio:
                 equity=float(self.max_app_order_exposure_usd),
                 daily_new_order_cap=self.daily_new_order_cap,
                 risk_score=context.macro_risk_score or 0,
+                reference_gap=self._reference_gap(context),
             ),
             stop_loss_ratio=self.stop_loss_ratio,
             take_profit_ratio=self.take_profit_ratio,
             maximum_risk_score=self.maximum_risk_score,
+            premarket_gap_max=self.gates.premarket_gap_max,
         )
         if plan.quantity > 0:
             reserved = await self.store.reserve_daily_new_order(
@@ -94,6 +122,9 @@ class RiskPortfolio:
             summary = f"주문 보류 · {summary}"
         if plan.quantity == 0 and plan.skipped_reason == "daily_order_cap":
             summary = "수량 0, 앱 주문 계획 노출 한도 또는 일일 신규 주문 한도 도달"
+        if plan.skipped_reason == "premarket_gap":
+            gap = self._reference_gap(context) or 0.0
+            summary = f"주문 보류 · 기준가 대비 갭 {gap:.1%} > {self.gates.premarket_gap_max:.1%}"
         updated = replace(
             context,
             signal_id=plan.signal_id,

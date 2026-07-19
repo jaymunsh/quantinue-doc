@@ -227,6 +227,8 @@ class GatesConfig(BaseModel):
     critic_approval: float = Field(default=0.70, ge=0, le=1)
     overconfidence_conviction: float = Field(default=0.90, ge=0, le=1)
     overconfidence_approval: float = Field(default=0.80, ge=0, le=1)
+    premarket_gap_max: float = Field(default=0.03, ge=0, le=1)
+    gap_guard_open_minutes: int = Field(default=30, ge=0)
 
     def macro_penalty(self, risk_score: float) -> float:
         """Return the conviction deduction for one macro risk score.

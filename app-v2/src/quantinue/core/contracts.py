@@ -221,6 +221,16 @@ class PriceSnapshot:
         """Return whether the price moved past the tolerance since capture."""
         return self.drift_from(observed_price) > tolerance
 
+    def gap_from_reference(self) -> float:
+        """Return the absolute move away from the close the analysis was priced on.
+
+        Direction is irrelevant: a spike and a collapse both leave the planned
+        entry, stop, and take-profit describing a price that no longer exists.
+        """
+        if self.close_prev <= 0:
+            return 0.0
+        return abs(self.current_price - self.close_prev) / self.close_prev
+
 
 @dataclass(frozen=True, slots=True)
 class PipelineContext:

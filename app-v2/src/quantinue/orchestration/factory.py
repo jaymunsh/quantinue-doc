@@ -111,6 +111,7 @@ def build_roles(  # noqa: PLR0913 - one composition seam per replaceable collabo
             maximum_risk_score=policy.thresholds.maximum_risk_score,
             stop_loss_ratio=policy.stop_loss_ratio,
             take_profit_ratio=policy.take_profit_ratio,
+            gates=gates,
         ),
         OrderExecution(broker, selected_store),
         Reviewer(),
