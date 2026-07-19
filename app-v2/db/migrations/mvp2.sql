@@ -219,3 +219,10 @@ CREATE TABLE IF NOT EXISTS tb_disclosure_raw (
   PRIMARY KEY (filing_no),
   CHECK (is_hard_event = false OR event_type IS NOT NULL)
 );
+
+-- Phase 3: 분석 범위의 크기는 config(screening.llm_depth)와 보유 수가 정한다.
+-- 50 상한은 구 스크리너가 종목당 1콜을 쓰던 시절의 흔적이고, 걸리는 순간
+-- 보유가 범위 밖으로 밀려 청산 시그널을 남길 자리가 없어진다.
+-- 제약 이름은 신규 설치가 생성하는 것과 같아야 한다(카탈로그 대조).
+ALTER TABLE tb_daily_pick DROP CONSTRAINT IF EXISTS tb_daily_pick_rank_check;
+ALTER TABLE tb_daily_pick ADD CONSTRAINT tb_daily_pick_rank_check CHECK (rank >= 1);

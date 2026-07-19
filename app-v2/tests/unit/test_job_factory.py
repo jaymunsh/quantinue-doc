@@ -248,7 +248,7 @@ def test_without_alpaca_credentials_only_the_exit_job_is_registered() -> None:
 
     # Then
     assert runner is not None
-    assert [job.name for job in runner.jobs] == ["disclosures", "exits"]
+    assert [job.name for job in runner.jobs] == ["disclosures", "screening", "exits"]
 
 
 def test_with_credentials_collection_is_registered_before_the_exit_job() -> None:
@@ -263,7 +263,12 @@ def test_with_credentials_collection_is_registered_before_the_exit_job() -> None
 
     # Then
     assert runner is not None
-    assert [job.name for job in runner.jobs] == ["daily_bars", "disclosures", "exits"]
+    assert [job.name for job in runner.jobs] == [
+        "daily_bars",
+        "disclosures",
+        "screening",
+        "exits",
+    ]
 
 
 @pytest.mark.anyio
@@ -433,9 +438,12 @@ def test_the_universe_job_is_registered_first() -> None:
 
     # Then
     assert runner is not None
+    # 수집 → 판단 → 청산. 스크리닝이 청산보다 앞인 이유는 구조다 — 보유가
+    # 그날의 분석 범위 안에 들어와야 청산 시그널을 남길 자리(FK)가 생긴다.
     assert [job.name for job in runner.jobs] == [
         "universe",
         "daily_bars",
         "disclosures",
+        "screening",
         "exits",
     ]

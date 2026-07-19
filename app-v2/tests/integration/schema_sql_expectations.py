@@ -206,7 +206,8 @@ CHECKS = {
     "tb_universe": {("market_cap",): ("market_cap >= 0",)},
     "tb_daily_pick": {
         ("bucket",): ("trend_leader", "backfill"),
-        ("rank",): ("rank >= 1", "rank <= 50"),
+        # 상한 없음: 범위 크기는 screening.llm_depth + 보유 수가 정한다.
+        ("rank",): ("rank >= 1",),
     },
     "tb_technical": {("close",): ("close >",), ("trend",): ("'up'", "'no_data'")},
     "tb_daily_bar": {

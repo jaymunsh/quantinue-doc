@@ -8,7 +8,10 @@ CREATE TABLE IF NOT EXISTS tb_universe (
 CREATE TABLE IF NOT EXISTS tb_daily_pick (
   trade_date DATE NOT NULL, ticker TEXT NOT NULL, universe_as_of DATE NOT NULL,
   bucket TEXT NOT NULL CHECK (bucket IN ('trend_leader','volume_surge','high_52w_breakout','pullback','squeeze_breakout','backfill')),
-  rank INT NOT NULL CHECK (rank BETWEEN 1 AND 50), sector TEXT NOT NULL, score NUMERIC NOT NULL,
+  -- 상한 없음(의도): 하루의 분석 범위는 상위 screening.llm_depth 에 보유 전부를
+  -- 더한 크기라 config와 보유 수가 정한다. 50은 구 스크리너가 종목당 1콜을 쓰던
+  -- 시절의 흔적이고, 상한에 걸리면 보유가 범위 밖으로 밀려 청산이 막힌다.
+  rank INT NOT NULL CHECK (rank >= 1), sector TEXT NOT NULL, score NUMERIC NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (trade_date, ticker),
   FOREIGN KEY (universe_as_of, ticker) REFERENCES tb_universe(as_of_date, ticker)
 );

@@ -272,6 +272,9 @@ class ScreeningConfig(BaseModel):
     dollar_volume_window: int = Field(default=20, gt=0, le=250)
     daily_picks: int = Field(default=50, gt=0, le=500)
     llm_depth: int = Field(default=20, gt=0, le=200)
+    # 랭킹 후보가 되기 위한 최소 봉 개수. 신규 상장은 짧은 이력만으로 52주
+    # 고가에 붙어 있어 돌파로 오인되고, ma50도 의미를 갖지 못한다.
+    min_history_sessions: int = Field(default=60, gt=0, le=500)
 
 
 class ExitsConfig(BaseModel):

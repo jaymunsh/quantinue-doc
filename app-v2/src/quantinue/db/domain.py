@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import ColumnElement, MetaData, Table, and_, func, select
+from sqlalchemy import ColumnElement, MetaData, Table, and_, func, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
@@ -19,6 +19,7 @@ from quantinue.db.domain_records import (
     CompletedFillWrite,
     CriticVerdictWrite,
     DailyBarWrite,
+    DailyPickWrite,
     OrderPlanWrite,
     OrderReconciliation,
     RawDisclosureWrite,
@@ -31,6 +32,7 @@ from quantinue.roles.role_01_universe_screener.contracts import UniverseScreener
 from quantinue.roles.role_02_technical_analysis.contracts import TechnicalAnalysisOutput
 from quantinue.roles.role_03_daily_screener.contracts import DailyScreenerOutput
 from quantinue.roles.role_04_macro_analysis.contracts import MacroAnalysisOutput
+from quantinue.roles.screening import RankedCandidate
 
 _TABLES = (
     "tb_universe",
@@ -91,6 +93,73 @@ _BAR_VALUE_COLUMNS: Final = ("open", "high", "low", "close", "volume", "source")
 # 한 문장에 싣는 봉 행 수. 백필은 수십만 행이라 통째로 보내면 드라이버가
 # 파라미터를 전부 메모리에 들고 있게 된다.
 _BAR_WRITE_CHUNK: Final = 5_000
+
+
+# 전 유니버스 랭킹. 창 지표를 파이썬으로 계산하려면 2000종목 x 275세션(50만
+# 행)을 통째로 끌어와야 한다 — 그래서 계산을 데이터가 있는 쪽에 남긴다.
+# SQLAlchemy Core로 쓰지 않고 원문 SQL인 이유: 세 겹 윈도 함수는 코어 표현으로
+# 옮기면 무엇을 계산하는지가 보이지 않게 된다. 실측 3.8초/53만 봉.
+#
+# RSI는 Wilder의 지수평활이 아니라 **단순평균(Cutler)** 이다. 윈도 프레임으로
+# 표현되어 SQL 한 문장에 들어가고, 우리 용도(상위 N 줄세우기)에서 두 방식의
+# 순위 차이는 미미하다 — 정밀도보다 "API 0콜"이 이 잡의 존재 이유다.
+_RANK_UNIVERSE_SQL = text("""
+WITH scoped AS (
+    SELECT b.trade_date, b.ticker, b.close, b.volume,
+           b.close - LAG(b.close) OVER w AS delta,
+           LAG(b.close, 20) OVER w AS close_20,
+           AVG(b.close) OVER (w ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS ma20,
+           AVG(b.close) OVER (w ROWS BETWEEN 49 PRECEDING AND CURRENT ROW) AS ma50,
+           MAX(b.high) OVER (w ROWS BETWEEN 251 PRECEDING AND CURRENT ROW) AS high_252,
+           AVG(b.close * b.volume) OVER (w ROWS BETWEEN 19 PRECEDING AND CURRENT ROW)
+               AS dollar_volume,
+           AVG(b.volume) OVER (w ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS average_volume,
+           COUNT(*) OVER w AS sessions
+    FROM tb_daily_bar b
+    JOIN tb_universe u ON u.ticker = b.ticker AND u.as_of_date = :universe_as_of
+    WHERE b.trade_date <= :session
+    WINDOW w AS (PARTITION BY b.ticker ORDER BY b.trade_date)
+),
+scored AS (
+    SELECT trade_date, ticker, close, volume, close_20, ma20, ma50, high_252,
+           dollar_volume, average_volume, sessions,
+           AVG(GREATEST(delta, 0)) OVER r AS avg_gain,
+           AVG(GREATEST(-delta, 0)) OVER r AS avg_loss
+    FROM scoped
+    WINDOW r AS (PARTITION BY ticker ORDER BY trade_date ROWS BETWEEN 13 PRECEDING AND CURRENT ROW)
+)
+SELECT ticker, close, ma20, ma50, high_252, volume, average_volume,
+       100 * (close - close_20) / close_20 AS ret_20d_pct,
+       CASE WHEN avg_loss = 0 THEN 100
+            ELSE 100 - 100 / (1 + avg_gain / avg_loss) END AS rsi
+FROM scored
+WHERE trade_date = :session
+  AND close_20 IS NOT NULL
+  AND close >= :min_price
+  AND dollar_volume >= :min_dollar_volume
+  AND sessions >= :min_sessions
+""")
+
+
+# 그날의 분석 범위에서 빠진 행을 지우되, 이미 무언가가 매달린 행은 남긴다.
+# 참조 테이블 여섯은 tb_daily_pick을 FK로 거는 전부다(카탈로그 대조 확인).
+# 통째로 DELETE 하면 구 러너와 같은 날짜를 쓰는 평일마다 FK 위반으로 잡이 죽는다.
+_PRUNE_UNREFERENCED_PICKS_SQL = text("""
+DELETE FROM tb_daily_pick p
+WHERE p.trade_date = ANY(:days)
+  AND NOT EXISTS (SELECT 1 FROM tb_technical t
+                  WHERE t.trade_date = p.trade_date AND t.ticker = p.ticker)
+  AND NOT EXISTS (SELECT 1 FROM tb_disclosure d
+                  WHERE d.trade_date = p.trade_date AND d.ticker = p.ticker)
+  AND NOT EXISTS (SELECT 1 FROM tb_disclosure_signal ds
+                  WHERE ds.trade_date = p.trade_date AND ds.ticker = p.ticker)
+  AND NOT EXISTS (SELECT 1 FROM tb_news n
+                  WHERE n.trade_date = p.trade_date AND n.ticker = p.ticker)
+  AND NOT EXISTS (SELECT 1 FROM tb_news_signal ns
+                  WHERE ns.trade_date = p.trade_date AND ns.ticker = p.ticker)
+  AND NOT EXISTS (SELECT 1 FROM tb_strategist_signals s
+                  WHERE s.trade_date = p.trade_date AND s.ticker = p.ticker)
+""")
 
 
 class PostgresDomainRepository:
@@ -215,6 +284,96 @@ class PostgresDomainRepository:
                 _ = await connection.execute(
                     statement, rows[start : start + _BAR_WRITE_CHUNK]
                 )
+
+    async def rank_universe(
+        self,
+        session: date,
+        universe_as_of: date,
+        *,
+        min_price_usd: float,
+        min_avg_dollar_vol: float,
+        min_history_sessions: int,
+    ) -> tuple[RankedCandidate, ...]:
+        """Rank the whole universe from stored bars, spending zero API calls.
+
+        구 경로(role_02)는 지표를 종목당 1콜로 받아 500종목 캡이 필요했다.
+        봉이 원장에 있으면 그 캡의 근거가 사라진다 — 계산은 공짜고, 유동성
+        필터도 같은 문장 안에서 끝난다.
+
+        유동성·최소 이력 미달로 걸러진 종목은 **그냥 빠진다**. 점수 0으로
+        넣으면 하위권에 섞여 "봤지만 나빴다"로 읽히는데, 사실은 "볼 수 없었다"다.
+        보유 종목이 여기서 빠지는 경우는 스코프 규칙이 따로 건진다.
+        """
+        async with self._engine.begin() as connection:
+            rows = (
+                await connection.execute(
+                    _RANK_UNIVERSE_SQL,
+                    {
+                        "session": session,
+                        "universe_as_of": universe_as_of,
+                        "min_price": min_price_usd,
+                        "min_dollar_volume": min_avg_dollar_vol,
+                        "min_sessions": min_history_sessions,
+                    },
+                )
+            ).all()
+        return tuple(
+            RankedCandidate(
+                ticker=row.ticker,
+                close=Decimal(str(row.close)),
+                ret_20d_pct=float(row.ret_20d_pct),
+                ma20=Decimal(str(row.ma20)),
+                ma50=Decimal(str(row.ma50)),
+                high_252=Decimal(str(row.high_252)),
+                rsi=float(row.rsi),
+                volume=int(row.volume),
+                average_volume=float(row.average_volume),
+            )
+            for row in rows
+        )
+
+    async def save_daily_picks(self, picks: tuple[DailyPickWrite, ...]) -> None:
+        """Replace the session's analysis scope with this one, atomically.
+
+        먼저 **아무도 참조하지 않는** 그날 행을 지우고, 그 위에 업서트한다.
+        지우는 이유: 순위는 집합 전체에 대한 상대값이라 범위에서 빠진 어제의
+        20위가 남아 있으면 "오늘의 상위 N"이 거짓이 된다.
+
+        통째로 지우지 않는 이유: 구 11단계 러너가 사라질 때까지(D6 점진 교체)
+        같은 날짜에 두 경로가 함께 쓴다. 이미 판단(시그널·지표·공시·뉴스)이
+        매달린 행까지 지우려 들면 FK에 걸려 스크리닝 잡이 그날 통째로 실패한다.
+        참조된 행은 남기고 새 순위로 갱신하는 편이 정직하다 — 그 행은 실제로
+        오늘 누군가 본 종목이기 때문이다.
+
+        같은 날 두 번 돌면 두 번째가 이긴다 — 재실행이 곧 정정이다.
+        """
+        if not picks:
+            return
+        table = self._table("tb_daily_pick")
+        sessions = sorted({pick.trade_date for pick in picks})
+        fields = ("universe_as_of", "bucket", "rank", "sector", "score")
+        statement = insert(table)
+        statement = statement.on_conflict_do_update(
+            index_elements=["trade_date", "ticker"],
+            set_={name: statement.excluded[name] for name in fields},
+        )
+        async with self._engine.begin() as connection:
+            _ = await connection.execute(_PRUNE_UNREFERENCED_PICKS_SQL, {"days": sessions})
+            _ = await connection.execute(
+                statement,
+                [
+                    {
+                        "trade_date": pick.trade_date,
+                        "ticker": pick.ticker,
+                        "universe_as_of": pick.universe_as_of,
+                        "bucket": pick.bucket,
+                        "rank": pick.rank,
+                        "sector": pick.sector,
+                        "score": pick.score,
+                    }
+                    for pick in picks
+                ],
+            )
 
     async def bar_coverage(self) -> dict[str, date]:
         """Return the newest stored bar date per ticker.

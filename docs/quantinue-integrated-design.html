@@ -580,7 +580,7 @@ flowchart TB
       <p class="sec-intro">핵심 원칙 하나 — <b>원본 원장</b>(기사·공시 1건 = 1행, 불변)과 <b>집계 신호</b>(종목당 사이클 1행, <code>_signal</code>)를 분리한다. 전략(07)은 집계 신호만 읽고, 원본은 역추적·감사용으로 남는다.</p>
       <div class="mermaid">
 erDiagram
-  tb_universe ||--o{ tb_daily_pick : "주1회 → 오늘의 50"
+  tb_universe ||--o{ tb_daily_pick : "주1회 → 오늘의 분석 범위"
   tb_daily_pick ||--|| tb_technical : "지표"
   tb_disclosure ||--o{ tb_disclosure_signal : "원본 → 집계"
   tb_news ||--o{ tb_news_signal : "원본 → 집계"
@@ -604,7 +604,7 @@ erDiagram
       <div class="twrap"><table>
         <tr><th>그룹</th><th>테이블</th><th>역할</th><th>키</th></tr>
         <tr><td rowspan="3">스크리닝<br>(일봉)</td><td class="mono">tb_universe</td><td>주1회 시총 상위 2,000 감시망</td><td class="mono">(as_of_date, ticker)</td></tr>
-        <tr><td class="mono">tb_daily_pick</td><td>매일 오늘의 50 (버킷·랭크)</td><td class="mono">(trade_date, ticker)</td></tr>
+        <tr><td class="mono">tb_daily_pick</td><td>매일 오늘의 분석 범위 — 상위 <span class="mono">screening.llm_depth</span> + 보유 전부 (버킷·랭크). 랭크 상한 없음</td><td class="mono">(trade_date, ticker)</td></tr>
         <tr><td class="mono">tb_technical</td><td>지표(RSI·MACD·MA·ATR·추세)</td><td class="mono">(trade_date, ticker)</td></tr>
         <tr><td rowspan="5">수집·집계</td><td class="mono">tb_macro</td><td>시장 국면(regime·VIX·금리)</td><td class="mono">as_of</td></tr>
         <tr><td class="mono">tb_disclosure</td><td>공시 <b>원본 원장</b> (1건=1행)</td><td class="mono">id · filing_no</td></tr>
@@ -630,7 +630,7 @@ erDiagram
       <div class="twrap"><table>
         <tr><th>ENUM</th><th>허용값 · 뜻</th><th>쓰이는 테이블</th></tr>
         <tr><td class="mono">event_type</td><td><span class="mono">earnings</span> 실적 발표 · <span class="mono">guidance_change</span> 실적 전망 변경 · <span class="mono">ma</span> 인수합병 · <span class="mono">capital_raise</span> 증자·자금 조달 · <span class="mono">buyback</span> 자사주 매입 · <span class="mono">management_change</span> 경영진 변동 · <span class="mono">insider_trade</span> 내부자 거래(Form 4) · <span class="mono">product_deal</span> 제품·계약 수주 · <span class="mono">analyst_rating</span> 애널리스트 등급 변경 · <span class="mono">regulation_legal</span> 규제·소송 · <span class="mono">delisting_halt</span> 상장폐지·거래정지 · <span class="mono">other</span> 기타</td><td class="mono">tb_disclosure · tb_disclosure_signal · tb_news · tb_news_signal</td></tr>
-        <tr><td class="mono">bucket</td><td><span class="mono">trend_leader</span> 추세 주도주 · <span class="mono">volume_surge</span> 거래량 급증 · <span class="mono">high_52w_breakout</span> 52주 신고가 돌파 · <span class="mono">pullback</span> 눌림목 · <span class="mono">squeeze_breakout</span> 변동성 수축 후 돌파 · <span class="mono">backfill</span> 후보 부족 시 보충</td><td class="mono">tb_daily_pick</td></tr>
+        <tr><td class="mono">bucket</td><td><span class="mono">trend_leader</span> 추세 주도주 · <span class="mono">volume_surge</span> 거래량 급증 · <span class="mono">high_52w_breakout</span> 52주 신고가 돌파 · <span class="mono">pullback</span> 눌림목 · <span class="mono">squeeze_breakout</span> 변동성 수축 후 돌파 · <span class="mono">backfill</span> 랭킹 근거 없이 보유라서 들어온 종목</td><td class="mono">tb_daily_pick</td></tr>
         <tr><td class="mono">trend</td><td><span class="mono">up</span> 상승 · <span class="mono">mixed</span> 혼조 · <span class="mono">down</span> 하락 · <span class="mono">no_data</span> 데이터 부족</td><td class="mono">tb_technical</td></tr>
         <tr><td class="mono">regime</td><td><span class="mono">risk_on</span> 위험선호 — 공격 유리 · <span class="mono">neutral</span> 중립 · <span class="mono">risk_off</span> 위험회피 — 매수 감점/금지</td><td class="mono">tb_macro</td></tr>
         <tr><td class="mono">grade</td><td><span class="mono">allow</span> 정상 매체 (가중 1.0) · <span class="mono">gray</span> 2급 매체 (가중 0.6) · <span class="mono">block</span> 차단 — 소셜·미등록, LLM 도달 전 drop</td><td class="mono">tb_news</td></tr>

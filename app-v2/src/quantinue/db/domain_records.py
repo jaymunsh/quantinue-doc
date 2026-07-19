@@ -178,6 +178,25 @@ class DailyBarWrite:
 
 
 @dataclass(frozen=True, slots=True)
+class DailyPickWrite:
+    """One row of a session's analysis scope.
+
+    role_03의 ``DailyPick`` 계약을 재사용하지 않는다. 그쪽은 구 11단계 러너의
+    경계 계약이라 픽 수 상한(50)과 증거 ID 규칙을 함께 들고 있는데, 잡 경로의
+    범위는 ``screening.llm_depth``와 보유 수가 정하므로 그 상한이 근거를 잃는다.
+    구 러너가 사라질 때(Phase 4) 저쪽만 지우면 되도록 갈라 둔다.
+    """
+
+    trade_date: date
+    ticker: str
+    universe_as_of: date
+    bucket: str
+    rank: int
+    sector: str
+    score: Decimal
+
+
+@dataclass(frozen=True, slots=True)
 class RawDisclosureWrite:
     """One filing from the day's whole-market index, matched to a ticker.
 

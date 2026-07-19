@@ -95,7 +95,12 @@ mvp2:
     technical_concurrency: 10
     dollar_volume_window: 20
     daily_picks: 50
+    # 하루에 LLM으로 깊이 보는 종목 수. 여기에 보유 전부가 캡과 무관하게 더해진다
+    # — 탈락한 보유가 범위 밖이면 청산 시그널을 남길 자리가 없기 때문이다.
     llm_depth: 20
+    # 랭킹에 올리기 위해 필요한 최소 봉 개수. ma50이 의미를 가지려면 50세션은
+    # 있어야 하고, 신규 상장은 52주 고가가 곧 자기 최고가라 돌파로 오인된다.
+    min_history_sessions: 60
   exits:
     time_exit_bdays: 10
   # 배경 잡 루프. 주기는 전부 여기 소유이고 기본은 느슨하다(D3) — 30분으로
