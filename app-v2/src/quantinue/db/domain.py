@@ -20,6 +20,7 @@ from quantinue.db.domain_records import (
 )
 from quantinue.db.domain_sources import save_source_records
 from quantinue.db.postgres_accounting import initialize_account, record_completed_fill
+from quantinue.roles.exits import OpenPosition
 from quantinue.roles.role_01_universe_screener.contracts import UniverseScreenerOutput
 from quantinue.roles.role_02_technical_analysis.contracts import TechnicalAnalysisOutput
 from quantinue.roles.role_03_daily_screener.contracts import DailyScreenerOutput
@@ -185,6 +186,71 @@ class PostgresDomainRepository:
                 equity=Decimal(str(row.equity)),
                 open_position_count=int(held.get(row.id, 0)),
                 inv_type=row.inv_type,
+            )
+            for row in rows
+        )
+
+    async def open_positions(self) -> tuple[OpenPosition, ...]:
+        """List every unclosed filled entry with the terms the exit rules need.
+
+        ``account_risk_state``와 **같은 술어**(``_is_open_position``)를 쓴다.
+        둘이 갈라지면 한도는 보유가 있다고 보는데 청산 잡은 없다고 보는,
+        디버깅하기 최악인 상태가 된다.
+
+        체결일은 ``tb_fill``에서 온다 — 주문 생성일이 아니다. 계획만 세우고
+        체결되지 않은 주문은 보유가 아니므로 보유 기간이 시작되지 않는다.
+        부분체결이 여럿이면 가장 이른 체결을 진입 시점으로 본다.
+        """
+        orders = self._table("tb_order")
+        fills = self._table("tb_fill")
+        async with self._engine.begin() as connection:
+            rows = (
+                await connection.execute(
+                    select(
+                        orders.c.id,
+                        orders.c.signal_id,
+                        orders.c.account_id,
+                        orders.c.ticker,
+                        orders.c.quantity,
+                        orders.c.entry_price,
+                        orders.c.stop_price,
+                        orders.c.take_profit_price,
+                        func.min(fills.c.filled_at).label("first_filled_at"),
+                    )
+                    .select_from(orders.join(fills, fills.c.order_id == orders.c.id))
+                    .where(_is_open_position(orders), fills.c.side == "buy")
+                    .group_by(
+                        orders.c.id,
+                        orders.c.signal_id,
+                        orders.c.account_id,
+                        orders.c.ticker,
+                        orders.c.quantity,
+                        orders.c.entry_price,
+                        orders.c.stop_price,
+                        orders.c.take_profit_price,
+                    )
+                    # 순서를 고정한다 — 청산도 일일 예산을 쓰게 되면 실행마다
+                    # 다른 포지션이 먼저 처리되는 일이 없어야 한다.
+                    .order_by(orders.c.id)
+                )
+            ).all()
+        return tuple(
+            OpenPosition(
+                order_id=int(row.id),
+                signal_id=int(row.signal_id),
+                account_id=int(row.account_id),
+                ticker=row.ticker,
+                quantity=int(row.quantity),
+                entry_price=Decimal(str(row.entry_price)),
+                stop_price=(
+                    None if row.stop_price is None else Decimal(str(row.stop_price))
+                ),
+                take_profit_price=(
+                    None
+                    if row.take_profit_price is None
+                    else Decimal(str(row.take_profit_price))
+                ),
+                filled_on=row.first_filled_at.date(),
             )
             for row in rows
         )
