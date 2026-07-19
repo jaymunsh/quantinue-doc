@@ -92,6 +92,13 @@
 - 증분 적재: 매일 전일 1봉. 종목당 1콜×500(현 role_02, 타임아웃 900s) 구조 폐기.
 - 유니버스 **주간** 실배선 — 선언은 원래 weekly(`role_01_universe_screener/contracts.py:62`), 코드만 매 런이었다.
 - 뉴스·공시 **일괄 수집**: RSS 전체 피드·SEC 일일 인덱스를 통째로 받아 종목 매칭. 종목별 폴링 폐기. 콜 수가 종목 수와 무관해진다.
+
+  **⚠️ 착수 전 확인된 구조적 제약 (2026-07-19 실사)**
+  - **역할 번호가 뒤집혀 있다**: `role_05` = 공시(SEC), `role_06` = 뉴스(RSS).
+  - `tb_news`(schema.sql:68)와 `tb_disclosure`(:40) 둘 다 `(trade_date, ticker) → tb_daily_pick` FK를 건다. **그날 픽에 없는 종목은 행을 넣을 수 없다** — 그런데 일괄 수집의 목적이 바로 픽 밖(탈락한 보유) 종목을 덮는 것이다. → `tb_daily_bar`와 같은 패턴으로 **원시 원장 신설**(`tb_news_raw`/`tb_disclosure_raw`, 픽 무관) + 기존 두 테이블은 LLM 채점 결과(분석 대상 한정)로 역할 유지.
+  - 현행 수집은 종목당 2콜: SEC submissions(CIK별, `http_source.py:396`) + Google News RSS 검색(티커별, `:445-476`). **Google News는 전체 피드가 없다** — 뉴스 쪽 종목별 폴링 폐기는 구조적으로 막힐 수 있다. 소스 교체 여부를 착수 시 판단할 것. 공시는 SEC 일일 인덱스로 확실히 1콜화된다(단 URL·형식은 문서 확인 후 확정 — 추정 금지).
+  - `ontology.EventType`의 `delisting_halt`(ontology.py:17)는 **소비자 0**. 하드 이벤트는 별도 불리언(`is_hard_blocked`)으로만 존재하고 둘을 잇는 다리가 없다.
+  - **`exit_observations`에 실제 버그가 있다**(`db/domain.py`): dict를 `bars.items()` 키로만 만든다. 거래정지 종목은 봉이 안 찍히므로 관측에서 조용히 사라진다 — 정확히 `delisting_halt` 케이스가 빠진다. 하드 이벤트를 붙일 때 **두 키 집합 union으로 재구조화**해야 한다.
 - 계좌 시가평가 배선(D8): 평가액 = 현금 + 보유×실호가. 미장 시간엔 직전 종가. `daily_loss_limit` 전제 충족.
 
 ## 6. Phase 3 — 분석 잡 (구 01~08 대체)
