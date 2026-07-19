@@ -91,6 +91,16 @@ class Side(StrEnum):
 
 
 @unique
+class FillSide(StrEnum):
+    """Direction of one executed fill, mirroring the ``tb_fill.side`` constraint."""
+
+    # Side와 따로 두는 이유: 시그널은 hold일 수 있지만 체결은 그럴 수 없다.
+    # 하나로 합치면 hold 체결이라는 불가능한 상태가 타입상 표현 가능해진다.
+    BUY = "buy"
+    SELL = "sell"
+
+
+@unique
 class Decision(StrEnum):
     """Critic decision."""
 

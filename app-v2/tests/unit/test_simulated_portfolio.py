@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 
-from quantinue.db.domain_records import InsufficientSimulatedCashError
+from quantinue.db.domain_records import CompletedBuyWrite, InsufficientSimulatedCashError
 from quantinue.db.simulated_portfolio import (
     FillSide,
     MarkSource,
@@ -12,6 +12,7 @@ from quantinue.db.simulated_portfolio import (
     SimulatedFill,
     SimulatedOrder,
     SimulatedOrderStatus,
+    completed_buy_records,
     project_buy_only_portfolio,
 )
 
@@ -213,6 +214,26 @@ def test_sell_fill_realizes_profit_against_average_cost() -> None:
     # Then
     assert result.realized_pnl == Decimal("30.00")
     assert result.realized_pnl_status is RealizedPnlStatus.AVAILABLE
+
+
+def test_close_write_maps_to_a_sell_fill() -> None:
+    """A close order's fill must carry SELL so the ledger credits instead of debits."""
+    # Given
+    value = CompletedBuyWrite(
+        idempotency_key="q-a1-s7-c",
+        broker_order_id="order-2",
+        broker_fill_id="fill-2",
+        quantity=1,
+        price=Decimal("130.00"),
+        filled_at=_at(2),
+        side=FillSide.SELL,
+    )
+
+    # When
+    _, fill = completed_buy_records("NVDA", Decimal("130.00"), value)
+
+    # Then
+    assert fill.side is FillSide.SELL
 
 
 def test_buy_only_ledger_still_reports_realized_pnl_as_not_applicable() -> None:

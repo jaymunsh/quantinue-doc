@@ -7,7 +7,25 @@ from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum, unique
 from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
+from quantinue.core.ontology import FillSide
 from quantinue.db.domain_records import CompletedBuyWrite, InsufficientSimulatedCashError
+
+__all__ = [
+    "AccountPortfolio",
+    "FillSide",
+    "MarkSource",
+    "PortfolioMark",
+    "RealizedPnlStatus",
+    "SimulatedAccount",
+    "SimulatedFill",
+    "SimulatedOrder",
+    "SimulatedOrderStatus",
+    "SimulatedPortfolioSnapshot",
+    "SimulatedPosition",
+    "completed_buy_records",
+    "ensure_fill_is_affordable",
+    "project_buy_only_portfolio",
+]
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -30,14 +48,6 @@ class RealizedPnlStatus(StrEnum):
 
     NOT_APPLICABLE_BUY_ONLY = "not_applicable_buy_only"
     AVAILABLE = "available"
-
-
-@unique
-class FillSide(StrEnum):
-    """Direction of one local fill, mirroring the ``tb_fill.side`` constraint."""
-
-    BUY = "buy"
-    SELL = "sell"
 
 
 @unique
@@ -223,6 +233,7 @@ def completed_buy_records(
             quantity=value.quantity,
             price=value.price,
             filled_at=value.filled_at,
+            side=value.side,
         ),
     )
 

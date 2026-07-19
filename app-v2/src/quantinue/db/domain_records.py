@@ -6,6 +6,8 @@ from decimal import Decimal
 
 from typing_extensions import override
 
+from quantinue.core.ontology import FillSide
+
 
 @dataclass(frozen=True, slots=True)
 class StrategistSignalWrite:
@@ -79,7 +81,11 @@ class FillWrite:
 
 @dataclass(frozen=True, slots=True)
 class CompletedBuyWrite:
-    """One app-owned filled buy applied atomically to the local account."""
+    """One app-owned filled order applied atomically to the local account.
+
+    ``side`` defaults to a buy so every pre-close call site keeps its meaning;
+    only a close order has to state it.
+    """
 
     idempotency_key: str
     broker_order_id: str
@@ -87,6 +93,7 @@ class CompletedBuyWrite:
     quantity: int
     price: Decimal
     filled_at: datetime
+    side: FillSide = FillSide.BUY
 
 
 class InsufficientSimulatedCashError(ValueError):
