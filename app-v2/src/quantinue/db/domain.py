@@ -117,6 +117,50 @@ class PostgresDomainRepository:
         async with self._engine.begin() as connection:
             _ = await connection.execute(statement)
 
+    async def active_accounts(self) -> tuple[AccountRiskState, ...]:
+        """Return every account that subscribes to this cycle, in stable order.
+
+        Order matters: an unstable one would let a different account exhaust
+        the daily caps on each run.
+        """
+        accounts = self._table("tb_account")
+        orders = self._table("tb_order")
+        async with self._engine.begin() as connection:
+            rows = (
+                await connection.execute(
+                    select(
+                        accounts.c.id,
+                        accounts.c.cash,
+                        accounts.c.equity,
+                        accounts.c.inv_type,
+                    )
+                    .where(accounts.c.status == "active")
+                    .order_by(accounts.c.id)
+                )
+            ).all()
+            held = dict(
+                (
+                    await connection.execute(
+                        select(
+                            orders.c.account_id,
+                            func.count(func.distinct(orders.c.ticker)),
+                        )
+                        .where(orders.c.status == "filled")
+                        .group_by(orders.c.account_id)
+                    )
+                ).all()
+            )
+        return tuple(
+            AccountRiskState(
+                account_id=row.id,
+                cash=Decimal(str(row.cash)),
+                equity=Decimal(str(row.equity)),
+                open_position_count=int(held.get(row.id, 0)),
+                inv_type=row.inv_type,
+            )
+            for row in rows
+        )
+
     async def account_risk_state(self, account_id: int) -> AccountRiskState | None:
         """Read the capital and book size the portfolio limits are applied to.
 
@@ -326,6 +370,11 @@ class PostgresDomainRepository:
                     )
                 }
             ).value
+
+    @property
+    def engine(self) -> AsyncEngine:
+        """Expose the engine for operational scripts and tests."""
+        return self._engine
 
     def _table(self, name: str) -> Table:
         return self._metadata.tables[name]
