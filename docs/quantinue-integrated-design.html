@@ -183,6 +183,14 @@
   .b-risk{background:var(--risk-bg);color:var(--risk)}
   .b-ai{background:var(--ai-bg);color:var(--ai)}
   .b-gray{background:var(--surface-2);color:var(--ink-soft)}
+  .b-new{background:var(--buy-bg);color:var(--buy)}
+
+  /* 2차(MVP-2)에서 추가·변경된 스키마 행 — 배경으로 구분 */
+  tr.r-new > td{background:var(--buy-bg)}
+  tr.r-chg > td{background:var(--hold-bg)}
+  .r-key{display:flex;gap:14px;flex-wrap:wrap;margin:10px 0 14px;font-size:12.5px;color:var(--ink-soft)}
+  .r-key i{font-style:normal;display:inline-block;width:12px;height:12px;border-radius:3px;
+    vertical-align:-2px;margin-right:5px}
 
   /* 표 */
   .twrap{overflow-x:auto;margin:16px 0;border:1px solid var(--line);border-radius:var(--radius-sm)}
@@ -281,7 +289,7 @@
       </div>
       <button class="theme-btn" id="themeBtn" type="button" aria-label="다크모드 전환">🌙</button>
     </div>
-    <span class="rail-ver">v5.1 · MVP-2</span>
+    <span class="rail-ver">v5.2 · MVP-2</span>
 
     <nav class="nav" aria-label="주요 섹션">
       <div class="nav-group">시작</div>
@@ -586,6 +594,7 @@ erDiagram
   tb_strategist_signals ||--o{ tb_order : "주문"
   tb_order ||--o{ tb_fill : "체결"
   tb_order ||--o| tb_order : "청산 대상"
+  tb_account ||--o{ tb_order_plan : "계좌별 판단"
   tb_strategist_signals ||--o{ tb_review_price_snapshots : "T+5 스냅샷"
   tb_strategist_signals ||--o| tb_review : "회고·lesson"
       </div>
@@ -605,7 +614,8 @@ erDiagram
         <tr><td rowspan="5">판단·실행</td><td class="mono">tb_strategist_signals</td><td>전략 판단 (buy·hold·sell·확신도)</td><td class="mono">id · UNIQUE(ticker,cycle_ts,inv_type)</td></tr>
         <tr><td class="mono">tb_critic_verdict</td><td>반박 판정 (pass·reject·hold)</td><td class="mono">id · UNIQUE(signal_id)</td></tr>
         <tr><td class="mono">tb_account</td><td>계좌 (현금·평가·성향)</td><td class="mono">id · broker_account_id</td></tr>
-        <tr><td class="mono">tb_order</td><td>주문 — 브래킷 매수(<code>bracket</code>) 및 청산(<code>close</code>). 멱등 · 청산은 <code>closes_order_id</code>로 매수를 가리킨다</td><td class="mono">id · UNIQUE(account_id,signal_id)</td></tr>
+        <tr><td class="mono">tb_order</td><td>주문 — 브래킷 매수(<code>bracket</code>) 및 청산(<code>close</code>). 멱등 · 청산은 <code>closes_order_id</code>로 매수를 가리킨다 <span class="b b-hold">M5</span></td><td class="mono">id · UNIQUE(account_id,signal_id)</td></tr>
+        <tr><td class="mono">tb_order_plan</td><td>역할 09의 판단 — <b>집행과 보류 모두</b>. 방어선 발동을 SQL로 셀 수 있게 하는 관측 테이블 <span class="b b-new">M4 신규</span></td><td class="mono">id · UNIQUE(ticker,cycle_ts,account_id)</td></tr>
         <tr><td class="mono">tb_fill</td><td>체결 (수량·가격)</td><td class="mono">id · broker_fill_id</td></tr>
         <tr><td rowspan="2">회고</td><td class="mono">tb_review_price_snapshots</td><td>T+1~5 종가 스냅샷</td><td class="mono">(signal_id, day_offset)</td></tr>
         <tr><td class="mono">tb_review</td><td>회고 결과·lesson (수익률·적중)</td><td class="mono">signal_id</td></tr>
@@ -645,6 +655,10 @@ erDiagram
 
       <h3>테이블별 컬럼 명세 <span class="b b-gray">접이식 · 코드 정본 schema.sql 기준</span></h3>
       <p>클릭하면 펼쳐진다. 스키마 표는 <b>1행 = 1컬럼</b>, 각 표 아래엔 <b>🧾 row 예시(JSON)</b> — 전부 <b>NVDA 단일 시나리오</b>(07-20 인수 공시 → 매수 → 07-27 T+5 회고)로 값이 서로 이어져 cycle_ts·src_*_at을 눈으로 대조할 수 있다(참고용 가짜 데이터). <span class="b b-hold">M2</span> = 2차에서 변경·추가 예정.</p>
+      <div class="r-key">
+        <span><i style="background:var(--buy-bg);border:1px solid var(--buy)"></i>2차 <b>신규</b> 컬럼·테이블</span>
+        <span><i style="background:var(--hold-bg);border:1px solid var(--hold)"></i>2차 <b>제약 변경</b>(기존 컬럼)</span>
+      </div>
 
       <details class="schema"><summary><code>🧬 계보(provenance) 공통 컬럼이란</code><span class="sd">먼저 읽기 — 아래 표들의 "(계보)" 행이 이것</span><span class="cnt">설명</span></summary>
         <p style="margin:10px 16px 6px;font-size:13.5px;color:var(--ink-soft)"><b>계보 = 데이터의 "출생 기록"</b>이다. 마트 소고기에 산지·도축일·가공공장 라벨이 붙듯, LLM이 만든 점수마다 <b>원재료는 어디서 왔고(source·source_ref·captured_at) · 어떤 증거에서 파생됐고(evidence_id·parent_evidence_ids) · 누가 어떤 레시피로 만들었나(model_provider·model_name·prompt_version·policy_version·input_hash)</b>를 함께 기록한다. cycle_ts가 "시간표의 칸 번호"라면 계보는 "출생·제조 기록"으로, 서로 다른 것이다.</p>
@@ -1087,7 +1101,7 @@ erDiagram
                 <tr><td>inv_type</td><td>TEXT — ENUM aggressive·conservative</td><td>투자 성향</td></tr>
                 <tr><td>side</td><td>TEXT — ENUM buy·hold <span class="b b-hold">M2 +sell</span></td><td>판단 방향</td></tr>
                 <tr><td>conviction</td><td>NUMERIC 0~1</td><td>확신도 — 매수 문턱 0.65/0.75 · 과신 0.90</td></tr>
-                <tr><td>signal_consensus</td><td>SMALLINT 0~3</td><td>신호 동의 수 (설명용 — 게이트 아님)</td></tr>
+                <tr class="r-chg"><td>signal_consensus</td><td>SMALLINT <b>0~4</b></td><td>살아남은 표 중 매수 문턱을 넘은 수 (관측 지표 — 게이트 아님). 투표원이 4개(기술·공시·뉴스·모델)라 <b>만장일치 4에서 INSERT가 깨져</b> 범위를 넓혔다 <span class="b b-hold">M4 0~3→0~4</span></td></tr>
                 <tr><td>summary</td><td>TEXT NOT NULL</td><td>판단 요약</td></tr>
                 <tr><td>bull_case</td><td>TEXT</td><td>매수 논리</td></tr>
                 <tr><td>key_risk</td><td>TEXT</td><td>핵심 위험 1개 — buy면 필수 (Critic 통과 조건)</td></tr>
@@ -1224,7 +1238,7 @@ erDiagram
 }</pre></div>
       </details>
 
-      <details class="schema"><summary><code>tb_order</code><span class="sd">주문 (브래킷)</span><span class="cnt">17컬럼</span></summary>
+      <details class="schema"><summary><code>tb_order</code><span class="sd">주문 — 브래킷 매수 + 청산</span><span class="cnt">18컬럼 <span class="b b-new">M5 변경</span></span></summary>
               <div class="twrap"><table>
                 <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
                 <tr><td>id</td><td>BIGSERIAL · PK</td><td>대리키 — UNIQUE(account_id, signal_id)</td></tr>
@@ -1232,10 +1246,11 @@ erDiagram
                 <tr><td>account_id</td><td>BIGINT — FK → tb_account</td><td>어느 계좌의 주문인지</td></tr>
                 <tr><td>ticker</td><td>TEXT NOT NULL</td><td>종목</td></tr>
                 <tr><td>quantity</td><td>INT > 0</td><td>수량</td></tr>
-                <tr><td>entry_price</td><td>NUMERIC > 0</td><td>진입가 — CHECK stop < entry < take</td></tr>
-                <tr><td>stop_price</td><td>NUMERIC > 0</td><td>손절가 (SL −15%)</td></tr>
-                <tr><td>take_profit_price</td><td>NUMERIC > 0</td><td>익절가 (TP +20%)</td></tr>
-                <tr><td>order_type</td><td>TEXT DEFAULT 'bracket' — ENUM bracket</td><td>1차는 브래킷만</td></tr>
+                <tr class="r-chg"><td>entry_price</td><td>NUMERIC > 0</td><td><b>판단 시점 기준가</b> — 매수는 진입가, 청산은 결정가. 브래킷일 때만 CHECK stop &lt; entry &lt; take. <span class="b b-hold">M5 의미 명시</span></td></tr>
+                <tr class="r-chg"><td>stop_price</td><td>NUMERIC > 0 · <b>NULL 허용</b></td><td>손절가 (SL −15%) — <b>청산엔 없다</b>. 더미 값을 채우지 않는다 <span class="b b-hold">M5</span></td></tr>
+                <tr class="r-chg"><td>take_profit_price</td><td>NUMERIC > 0 · <b>NULL 허용</b></td><td>익절가 (TP +20%) — 청산엔 없다 <span class="b b-hold">M5</span></td></tr>
+                <tr class="r-chg"><td>order_type</td><td>TEXT DEFAULT 'bracket' — ENUM <b>bracket · close</b></td><td>브래킷 매수 / 청산 <span class="b b-hold">M5 +close</span></td></tr>
+                <tr class="r-new"><td>closes_order_id</td><td>BIGINT — FK → tb_order(id) · 청산은 <b>필수</b></td><td>어느 매수를 닫는가 — <b>실현손익의 짝</b>이자 명시적 계보 <span class="b b-new">M5 신규</span></td></tr>
                 <tr><td>status</td><td>TEXT — ENUM planned·submitted·filled·failed·canceled</td><td>주문 상태</td></tr>
                 <tr><td>idempotency_key</td><td>TEXT UNIQUE</td><td>중복 주문 차단 멱등키</td></tr>
                 <tr><td>broker_order_id</td><td>TEXT UNIQUE</td><td>브로커 측 주문 id</td></tr>
@@ -1264,6 +1279,27 @@ erDiagram
   "created_at": "2026-07-20T14:00:05Z",
   "updated_at": "2026-07-20T14:00:41Z"
 }</pre></div>
+      </details>
+
+      <details class="schema"><summary><code>tb_order_plan</code><span class="sd">역할 09의 판단 — 집행과 보류 모두</span><span class="cnt">13컬럼 <span class="b b-new">M4 신규</span></span></summary>
+        <p style="margin:10px 16px 6px;font-size:13.5px;color:var(--ink-soft)"><b>왜 필요했나</b> — 주문이 <b>생긴 경우만</b> <code>tb_order</code>에 남고, 방어선이 <b>막은 경우는 어디에도 저장되지 않았다</b>(JSONB 요약 문자열이 전부). 그래서 "이번 주에 갭 가드가 몇 번 걸렸나"를 SQL로 물을 수 없었고, <code>premarket_gap_max</code> 문턱을 "관측 후 보정"하겠다는 계획이 성립하지 않았다. 계좌별 계획을 전부 기록하므로 <b>다계좌 팬아웃의 관측 수단</b>이기도 하다.</p>
+              <div class="twrap"><table>
+                <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
+                <tr class="r-new"><td>id</td><td>BIGSERIAL · PK</td><td>대리키 — UNIQUE(ticker, cycle_ts, account_id)</td></tr>
+                <tr class="r-new"><td>run_id</td><td>TEXT NOT NULL</td><td>어느 실행의 판단인지</td></tr>
+                <tr class="r-new"><td>ticker</td><td>TEXT NOT NULL</td><td>종목</td></tr>
+                <tr class="r-new"><td>cycle_ts</td><td>TIMESTAMPTZ NOT NULL</td><td>사이클 슬롯</td></tr>
+                <tr class="r-new"><td>trade_date</td><td>DATE NOT NULL</td><td>거래일 (세션 기준)</td></tr>
+                <tr class="r-new"><td>account_id</td><td>BIGINT</td><td>어느 계좌의 판단인지 — 계좌마다 1행</td></tr>
+                <tr class="r-new"><td>signal_id</td><td>BIGINT</td><td>어느 전략 신호에서 나왔는지</td></tr>
+                <tr class="r-new"><td>decision</td><td>TEXT — ENUM planned · skipped</td><td>집행 / 보류</td></tr>
+                <tr class="r-new"><td>skipped_reason</td><td>TEXT</td><td>왜 막혔나 — <code>premarket_gap</code>·<code>late_entry</code>·<code>max_positions</code>·<code>min_cash</code>·<code>critic_rejected</code>·<code>daily_order_cap</code>·<code>risk_limit</code> 등</td></tr>
+                <tr class="r-new"><td>quantity</td><td>INT ≥ 0</td><td>수량 — 보류면 0</td></tr>
+                <tr class="r-new"><td>entry_price</td><td>NUMERIC</td><td>판단 시점 기준가</td></tr>
+                <tr class="r-new"><td>stop_price / take_profit_price</td><td>NUMERIC</td><td>계획된 손절·익절</td></tr>
+                <tr class="r-new"><td>created_at</td><td>TIMESTAMPTZ DEFAULT now()</td><td>기록 시각</td></tr>
+              </table></div>
+        <p style="margin:10px 16px 14px;font-size:13.5px;color:var(--ink-soft)"><b>제약</b> — <code>CHECK</code>로 집행↔보류를 상호배타 고정: 집행이면 사유가 없고 수량이 양수, 보류면 사유가 있고 수량이 0이다. 어느 쪽도 아닌 행은 들어올 수 없다.</p>
       </details>
 
       <details class="schema"><summary><code>tb_fill</code><span class="sd">체결</span><span class="cnt">8컬럼</span></summary>
@@ -2012,6 +2048,7 @@ erDiagram
       <p class="sec-intro">이 문서를 수정하면 표 맨 위에 한 줄 추가 + 버전 갱신 + git 커밋·태그.</p>
       <div class="twrap"><table>
         <tr><th>버전</th><th>날짜</th><th>수정자</th><th>변경 요약</th></tr>
+        <tr><td class="mono">v5.2</td><td class="mono">2026-07-19</td><td>문성혁 + Claude</td><td><b>스키마 문서 현행화 — 2차 추가분 시각 구분</b> — 컬럼 명세 표에 <b>행 배경 강조</b> 도입(초록=2차 신규 · 노랑=2차 제약 변경)과 범례 · <code>tb_order</code>에 <code>closes_order_id</code>·<code>order_type +close</code>·손절/익절 NULL 허용 반영 · <b><code>tb_order_plan</code> 표 신설</b>(M4 관측 테이블, 왜 필요했는지 포함) · <code>signal_consensus</code> 0~3→0~4 · ERD에 청산 자기참조·계좌별 판단 관계 추가 · 데이터 사전 갱신</td></tr>
         <tr><td class="mono">v5.1</td><td class="mono">2026-07-19</td><td>문성혁 + Claude</td><td><b>M6 완료 · M5 매도 주문 표현 확정</b> — 계좌 구독 팬아웃(계좌별 계획·집행, <b>실 브로커는 팬아웃 안 함</b> — 외부 계좌가 하나라 내부 7계좌를 순회하면 의도의 7배가 쌓인다) · 서킷 3종 배선(<code>max_weight</code>가 <code>POSITION_CAP_FRACTION</code> 리터럴 대체) · 계좌별 자본·포트폴리오 · 계좌 프로비저닝(테스트 2 + 데모 5: 공격 $150K/$100K/$5K · 안전 $100K/$5K) · <b>매도 주문 표현 = 별도 청산 행</b>(<code>order_type='close'</code>·<code>closes_order_id</code>, 브래킷 제약을 조건부로 — 청산에 더미 손절·익절을 채우지 않는다) · 신규설치 경로 == 마이그레이션 경로 확증 · 유닛 681 · 통합 63 green</td></tr>
         <tr><td class="mono">v5.0</td><td class="mono">2026-07-19</td><td>문성혁 + Claude</td><td><b>M4 검증 라운드 + M6 착수 · 트러블슈팅 섹션 신설</b> — 방어선 3종을 <b>강제 발동 E2E</b>로 검증(기다려서는 검증 불가: 크리틱이 대부분을 막아 매수일이 곧 실거래일이 된다) · <b>halted 생략이 런 전체를 죽이던 버그</b> 수정 · 크리틱 문턱 이중값 정리(0.60→0.70, 문서대로) · <b>tb_order_plan 신설</b>로 방어선 발동 관측 가능화 · <b>유령 설정 전수 감사</b>(선언됐으나 소비자 없는 값) · M6: 계좌 프로비저닝(테스트 2 + 데모 5) · 서킷 3종 배선(max_weight가 POSITION_CAP_FRACTION 리터럴 대체) · <b>자본이 계좌에서 오게 됨</b>(그 전엔 앱 전역 상한이 equity라 $5K와 $150K 계좌가 같은 크기로 주문) · conservative 프로필 도달 가능화 · 계좌 구독 팬아웃 · 계좌별 포트폴리오 · 유닛/웹 676 · 통합 58 green</td></tr>
         <tr><td class="mono">v4.9</td><td class="mono">2026-07-19</td><td>문성혁 + Claude</td><td><b>M4 완료 — 판단 방어선(8건 + 신설 2건)</b> — <b>role_05 CIK 하드코딩 발견·수정</b>(모든 종목이 NVDA 공시로 채점되던 상태 — 4-2 게이트가 거짓 입력 위에서 돌고 있었다) · <b>공시 부재 = 투표 기권</b>(0점이면 hard_negative_max에 걸려 무공시 종목 매수 전면 차단) · 프리마켓 갭 가드(<b>세션 한정 적용</b> — 장중 3%는 평범한 이동) · late_entry(<b>ret_5d 퍼센트/분수 100배 불일치 수정</b>) · halted 사전 조회 · Form 4 오인 차단 커널(<b>ownership XML 필드 부재 확인 → 본체는 알파 항목으로 백로그</b>, T+5 지평 불일치) · consensus 실계산 + CHECK 0~3→0~4 · 대표기사 <b>신뢰가중 랭킹</b>(importance는 LLM 출력이라 선정 시점 부재 → 원안 개정) + peak_importance 실저장 · 유닛/웹 649 green · 통합 30 green · 드라이런 01→11 완주(<b>실행에서만 드러난 SEC/NASDAQ User-Agent 충돌 2건 수정</b>)</td></tr>
