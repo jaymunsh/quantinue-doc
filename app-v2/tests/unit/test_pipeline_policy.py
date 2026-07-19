@@ -177,3 +177,25 @@ def test_role_timeout_override_gives_screening_a_longer_deadline() -> None:
     # 나머지 역할은 기본 보호를 그대로 유지한다.
     assert policy.timeout_for("07") == policy.role_timeout_seconds
     assert policy.timeout_for("10") == policy.role_timeout_seconds
+
+
+def test_macro_penalty_table_matches_frozen_first_generation_policy() -> None:
+    gates = load_mvp2_config(Path("config/pipeline.yaml")).gates
+
+    # 1차 동결본 s07 POLICY 이관: 0.5→-0.05 · 0.6→-0.10 · 0.7→-0.15
+    #                              0.8→-0.20 · 0.9→-0.30 · 1.0→-0.40
+    assert gates.macro_penalty(0.0) == 0.0
+    assert gates.macro_penalty(0.49) == 0.0
+    assert gates.macro_penalty(0.50) == 0.05
+    assert gates.macro_penalty(0.59) == 0.05
+    assert gates.macro_penalty(0.60) == 0.10
+    assert gates.macro_penalty(0.70) == 0.15
+    assert gates.macro_penalty(0.80) == 0.20
+    assert gates.macro_penalty(0.90) == 0.30
+    assert gates.macro_penalty(1.00) == 0.40
+
+
+def test_macro_penalty_never_exceeds_the_configured_cap() -> None:
+    gates = load_mvp2_config(Path("config/pipeline.yaml")).gates
+
+    assert gates.macro_penalty(1.0) <= gates.macro_penalty_cap

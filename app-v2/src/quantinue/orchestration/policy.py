@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING, Literal, assert_never
+from typing import TYPE_CHECKING, Final, Literal, assert_never
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
@@ -204,6 +204,16 @@ class ProfileConfig(BaseModel):
     min_cash_ratio: float = Field(default=0.10, ge=0, le=1)
 
 
+DEFAULT_MACRO_PENALTIES: Final[tuple[tuple[float, float], ...]] = (
+    (0.50, 0.05),
+    (0.60, 0.10),
+    (0.70, 0.15),
+    (0.80, 0.20),
+    (0.90, 0.30),
+    (1.00, 0.40),
+)
+
+
 class GatesConfig(BaseModel):
     """Decision-defence thresholds applied by roles 07 and 08."""
 
@@ -212,10 +222,23 @@ class GatesConfig(BaseModel):
     source_trust_min: float = Field(default=0.55, ge=0, le=1)
     hard_negative_max: float = Field(default=0.15, ge=0, le=1)
     macro_penalty_cap: float = Field(default=0.40, ge=0, le=1)
+    macro_penalty_table: tuple[tuple[float, float], ...] = DEFAULT_MACRO_PENALTIES
     snapshot_tolerance: float = Field(default=0.02, ge=0, le=1)
     critic_approval: float = Field(default=0.70, ge=0, le=1)
     overconfidence_conviction: float = Field(default=0.90, ge=0, le=1)
     overconfidence_approval: float = Field(default=0.80, ge=0, le=1)
+
+    def macro_penalty(self, risk_score: float) -> float:
+        """Return the conviction deduction for one macro risk score.
+
+        A hostile regime should shrink conviction rather than veto outright, so
+        the table is a graded slope bounded by the cap.
+        """
+        penalty = 0.0
+        for threshold, deduction in self.macro_penalty_table:
+            if risk_score >= threshold:
+                penalty = deduction
+        return min(penalty, self.macro_penalty_cap)
 
 
 class ScreeningConfig(BaseModel):

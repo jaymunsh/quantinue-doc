@@ -63,6 +63,14 @@ mvp2:
     source_trust_min: 0.55
     hard_negative_max: 0.15
     macro_penalty_cap: 0.40
+    # 1차 동결본 s07 POLICY 이관 — risk_score 구간별 확신도 감점
+    macro_penalty_table:
+      - [0.50, 0.05]
+      - [0.60, 0.10]
+      - [0.70, 0.15]
+      - [0.80, 0.20]
+      - [0.90, 0.30]
+      - [1.00, 0.40]
     snapshot_tolerance: 0.02
     critic_approval: 0.70
     overconfidence_conviction: 0.90
