@@ -15,7 +15,7 @@
 |---|---|
 | 작업 브랜치 | **`sunghyuk`** (여기서 계속 작업) |
 | main 병합 | **Wave 0~1 병합 완료**(커밋 `818416e`, `--no-ff`). **push는 안 함** — 공유 저장소이고 `app/`에 다른 작업자 WIP가 있어 사용자 확인 후 진행 |
-| 테스트 | 유닛/웹 **646 green** · 통합 **30 green** · ruff clean |
+| 테스트 | 유닛/웹 **649 green** · 통합 **30 green** · ruff clean |
 | DB | app-v2 전용 **포트 5445**(`app-v2-db-1`), M2 마이그레이션 적용 완료. 1차 `app-db-1`(5444)은 **다른 작업자 WIP — 불간섭** |
 | 앱 실행 포트 | **8020** (8000은 다른 프로세스 점유) |
 
@@ -28,8 +28,9 @@
 
 ### 다음 할 일
 1. **월요일 개장 시(KST 22:30)**: playbook **W0-7**(실 페이퍼 무장 — ⚠️ 사용자 확인 필수) → **W0-8**(스모크·첫 체결) → T+5 시계 가동
-2. **개장 전 드라이런 1회** — 갭 가드·halted가 실제 로그에 찍히는지 + **block 매체 LLM 호출 0** 실측(M4 미검증 이월분)
-3. 이후 **M5 매도**(최대 설계 작업 — 착수 시 첫 태스크는 매도 주문 표현 설계) → M6 계좌·서킷
+2. ✅ **드라이런 완료** (AAPL, HTTP 201, 01→11 완주) — 실행에서만 드러나는 결함 2건 수정(SEC UA 403 · NASDAQ과 UA 충돌). **단 갭 가드·late_entry·halted는 크리틱 선차단으로 미발동 — 유닛 검증만 된 상태**. block 매체도 표본에 차단 도메인이 없어 미실측. 상세: `m4-scope-decisions.md` §드라이런 실측
+3. ⚠️ **배포 전**: `QUANTINUE_HTTP_USER_AGENT`를 실제 연락 가능한 주소로 설정(SEC 공정접근 — 기본값은 동작하나 응답 불가)
+4. 이후 **M5 매도**(최대 설계 작업 — 착수 시 첫 태스크는 매도 주문 표현 설계) → M6 계좌·서킷
 
 ## 확정된 정책 (되묻지 말 것)
 
@@ -42,7 +43,7 @@
 
 ```bash
 cd app-v2
-uv run pytest tests/unit tests/test_web.py -q          # 646 green 유지
+uv run pytest tests/unit tests/test_web.py -q          # 649 green 유지
 uv run ruff check src tests
 uv run uvicorn quantinue.main:app --port 8020          # 8000 점유됨
 docker compose up -d db                                 # 5445
