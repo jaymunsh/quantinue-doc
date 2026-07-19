@@ -1,0 +1,86 @@
+# 유령 설정·컬럼 감사 (2026-07-19)
+
+> M4에서 같은 패턴의 결함이 반복해서 나와(`late_entry_max`·`peak_importance`·`signal_consensus` 전부 "선언됐는데 소비자 없음") `mvp2` 블록과 주요 테이블을 **전수 조사**한 기록.
+> **원칙**: 선언된 것은 배선하거나 삭제한다. config에 값이 있는데 아무 효과가 없는 상태가 쌓이면 시스템 신뢰가 죽고, **M7 학습 루프가 이걸 진짜 데이터로 착각한다.**
+
+## 왜 이게 위험한가
+
+세 가지가 동시에 일어난다:
+
+1. **문서와 코드가 갈라진다** — 설계 문서·playbook은 "한도 10개, 손실 4% 제한"이라 적혀 있는데 코드는 아무것도 안 막는다. 리뷰어도, 미래의 나도 문서를 믿는다.
+2. **조정이 무력하다** — yaml을 고쳐도 아무 일도 일어나지 않는다. "문턱은 config가 소유한다"는 규칙이 거짓이 된다.
+3. **학습이 오염된다** — M7은 DB 값을 진실로 읽는다. `signal_consensus`가 늘 0이면 "합의는 성과와 무관하다"는 교훈을 학습한다.
+
+---
+
+## 처리 완료
+
+| 항목 | 발견 | 처리 |
+|---|---|---|
+| `gates.critic_approval` | **값 두 개가 경쟁** — 0.70(mvp2 설계값)이 죽어 있고 낡은 `mvp.thresholds.critic_approval_score`(0.60)가 실제로 쓰였다. 시스템이 **문서보다 10포인트 느슨하게** 승인 중 | ✅ gates 단일 소유. 낡은 키 삭제. 문턱 0.60 → **0.70** |
+| role_09 결정 미저장 | 주문이 생긴 경우만 `tb_order`에 남고 **가드가 막은 경우는 SQL로 조회 불가**(JSONB 요약 문자열이 전부). `premarket_gap_max` 보정 계획이 바로 이 관측에 의존 | ✅ `tb_order_plan` 신설 — 집행/보류·사유·수량 기록 |
+| `config/pipeline.yaml` 주석 | "발동 사유는 `tb_order_plan`에 기록된다" — **그런 테이블이 없었다**(문서가 존재하지 않는 싱크를 가리킴) | ✅ 테이블을 실제로 만들어 주석을 참으로 만듦 |
+| `MockBroker.is_tradable` 부재 | role_10은 능력을 광고하는 브로커에게만 묻는다 → **드라이런에서 halted 가드가 구조적으로 발동 불가** | ✅ 추가 |
+
+---
+
+## 미해소 — 우선순위 순
+
+### 1. LLM 예산 상한이 전혀 강제되지 않는다
+
+`budget.daily_llm_usd`(현재 $3) 소비자 **0**. 뒷받침 테이블 `tb_llm_usage`도 참조 **0** — 쓰는 곳도 읽는 곳도 없다.
+→ **M8-2·8-3의 실체**. 그때까지 LLM 비용에 상한이 없다는 뜻이고, 로컬 MLX를 쓰는 동안은 금전 리스크가 없지만 클라우드 모델로 전환하는 순간 무방비다.
+
+### 2. 성향별 리스크 한도가 하나도 적용되지 않는다
+
+| 필드 | 상태 |
+|---|---|
+| `max_positions`(10/5) | 소비자 0 |
+| `max_weight`(0.20/0.10) | 소비자 0 — 테스트조차 없다 |
+| `daily_loss_limit`(0.04/0.02) | 소비자 0 |
+| `min_cash_ratio`(0.10/0.30) | 소비자 0 |
+| `risk_off_action` | 소비자 0 |
+
+role_09는 이것들 대신 **자체 상수**(`RISK_FRACTION`·`POSITION_CAP_FRACTION`)로 사이징한다.
+→ **M6-2 서킷브레이커의 실체**. ⚠️ **실 페이퍼 무장 전에 알고 있어야 할 사실** — 한도 없이 도는 상태로 T+5 학습 데이터가 쌓인다.
+
+### 3. `conservative` 프로필은 도달 불가
+
+`factory.py`가 `DEFAULT_PROFILE_NAME = "aggressive"`로 하드코딩하고, yaml의 `mvp.policy_profile`은 읽는 곳이 없다. 안전 성향 블록은 통째로 유령.
+→ **M6-1 계좌 구독 루프**가 해소해야 할 항목.
+
+### 4. `screening.llm_depth`(20) 미적용
+
+심층 분석 대상을 상위 20으로 자르는 코드가 없다 — 픽 **50개 전부**가 05~08을 탄다.
+→ M3 완료 기록의 "LLM 호출 종목 ≤ 20+보유"와 **불일치**. 비용·시간에 직결(위 1번과 맞물림).
+
+### 5. `exits.time_exit_bdays`(10) 미적용
+
+시간 기반 청산 로직 자체가 없다. 포지션에 보유 기한이 없다.
+→ **M5-4 청산 3층**의 ② 항목.
+
+### 6. 차단 사유가 계산되고 표시되지만 저장되지 않는다
+
+`skipped_rules`(크리틱)·`hard_block_reason`(공시·뉴스) 모두 도메인에서 생성되고 화면에 렌더되는데 **insert에 빠져 있다** → 왜 차단됐는지 DB로 사후 추적 불가.
+
+### 7. 기타 유령 컬럼
+
+- `tb_strategist_signals`: `src_disclosure_at`·`src_news_at`·`src_macro_at`(출처 FK가 항상 NULL) · `bull_case`·`key_risk`·`risk_rebuttal`·`counter_scenarios`·`persona_notes` · 계보 10필드
+- `tb_strategist_signals` **퇴화 값**: `sizing_hint`는 늘 `{}`, `current_price`/`day_high`/`day_low`/`close_prev`/`high_52w`/`low_52w`가 **전부 `decision_close` 하나로 채워짐**, `volume`/`turnover`는 늘 0 — 값이 있는 것처럼 보이지만 정보가 없다
+- `tb_disclosure_signal`: `importance`·`risk_score`·`sentiment_score`·`disclosure_count`·`top_evidence`·`summary` 미기록(원본 `tb_disclosure`에는 있는데 정규화 행에는 없음 — `tb_news_signal`과 비대칭)
+- `tb_news_signal`: `disclosure_ref`·`hard_block_reason`·`top_evidence` 미기록
+- `tb_order.updated_at`: **어떤 UPDATE도 쓰지 않고 트리거도 없다** → 상태가 여러 번 바뀌어도 `created_at == updated_at`
+
+---
+
+## 다음 마일스톤에 주는 함의
+
+- **M5** 착수 시 `exits.time_exit_bdays` 배선(§5)
+- **M6** 착수 시 §2·§3 일괄 해소 — 이게 M6의 본체다
+- **M7** 착수 전 §7의 퇴화 값 정리 — 학습 입력이 되기 전에
+- **M8** 착수 시 §1 (`tb_llm_usage` 포함)
+- **M9** 운영 콘솔의 "방어선 발동 내역"은 이제 `tb_order_plan`으로 만들 수 있다
+
+## 재발 방지
+
+새 config 키·DB 컬럼을 추가할 때 **같은 커밋에 소비자와 테스트를 넣는다.** 소비자가 다음 마일스톤이라면 키를 지금 만들지 않는다 — 설계 문서에만 적어두고, 배선하는 마일스톤에서 키를 만든다.

@@ -7,7 +7,8 @@
 
 1. **`docs/mvp2-planning/dev-playbook.md`** — 실행 정본. 마일스톤별 완료 표시(✅/🔶)와 남은 태스크, ⏳ 보완 목록이 전부 여기 있다.
 2. `docs/quantinue-integrated-design.html` — 설계 정본(v4.9). 확정 로직은 `#logic`, 결정 이력은 changelog.
-3. `docs/mvp2-planning/m4-scope-decisions.md` — **M4 범위 결정 기록**(2026-07-19). 코드 실사에서 나온 사실 F1~F8과 그에 따른 범위·순서 재정의(D1~D6). 각 결정에 근거와 "뒤집을 조건"을 병기 — 나중에 수정할 때 여기부터 볼 것.
+3. `docs/mvp2-planning/ghost-config-audit.md` — **유령 설정·컬럼 감사**(2026-07-19). 선언만 되고 소비자가 없는 값 전수 조사. ⚠️ **M5·M6·M8 착수 전 반드시 볼 것** — 성향별 리스크 한도와 LLM 예산 상한이 현재 하나도 적용되지 않는다.
+4. `docs/mvp2-planning/m4-scope-decisions.md` — **M4 범위 결정 기록**(2026-07-19). 코드 실사에서 나온 사실 F1~F8과 그에 따른 범위·순서 재정의(D1~D6). 각 결정에 근거와 "뒤집을 조건"을 병기 — 나중에 수정할 때 여기부터 볼 것.
 
 ## 현재 상태 (2026-07-19)
 
@@ -15,7 +16,7 @@
 |---|---|
 | 작업 브랜치 | **`sunghyuk`** (여기서 계속 작업) |
 | main 병합 | **Wave 0~1 병합 완료**(커밋 `818416e`, `--no-ff`). **push는 안 함** — 공유 저장소이고 `app/`에 다른 작업자 WIP가 있어 사용자 확인 후 진행 |
-| 테스트 | 유닛/웹 **649 green** · 통합 **30 green** · ruff clean |
+| 테스트 | 유닛/웹 **657 green** · 통합 **39 green** · ruff clean |
 | DB | app-v2 전용 **포트 5445**(`app-v2-db-1`), M2 마이그레이션 적용 완료. 1차 `app-db-1`(5444)은 **다른 작업자 WIP — 불간섭** |
 | 앱 실행 포트 | **8020** (8000은 다른 프로세스 점유) |
 
@@ -24,13 +25,15 @@
 - **M1** 슬롯 멱등·NYSE 캘린더·자동 스케줄러(config `mvp2.schedule.enabled=false`로 꺼둠)
 - **M2** 스키마·계약 일괄 확장 + 무손실 멱등 마이그레이션
 - **M3** 깔때기 복원 (2000 → 500 → 50 → 20)
+- **M4 검증 라운드** ✅ (2026-07-19) — 방어선 E2E 강제 발동 5종 · **halted 생략이 런을 죽이던 버그 수정** · 크리틱 문턱 이중값 정리(0.60→0.70) · `tb_order_plan` 신설로 방어선 발동 관측 가능화
 - **M4** ✅ **완료 (2026-07-19)** — 방어선 8건 + 신설 2건(4-0 role_05 CIK 실배선 · 4-9 role_09 배선). 범위 결정 근거는 `m4-scope-decisions.md`
 
 ### 다음 할 일
 1. **월요일 개장 시(KST 22:30)**: playbook **W0-7**(실 페이퍼 무장 — ⚠️ 사용자 확인 필수) → **W0-8**(스모크·첫 체결) → T+5 시계 가동
 2. ✅ **드라이런 완료** (AAPL, HTTP 201, 01→11 완주) — 실행에서만 드러나는 결함 2건 수정(SEC UA 403 · NASDAQ과 UA 충돌). **단 갭 가드·late_entry·halted는 크리틱 선차단으로 미발동 — 유닛 검증만 된 상태**. block 매체도 표본에 차단 도메인이 없어 미실측. 상세: `m4-scope-decisions.md` §드라이런 실측
-3. ⚠️ **배포 전**: `QUANTINUE_HTTP_USER_AGENT`를 실제 연락 가능한 주소로 설정(SEC 공정접근 — 기본값은 동작하나 응답 불가)
-4. 이후 **M5 매도**(최대 설계 작업 — 착수 시 첫 태스크는 매도 주문 표현 설계) → M6 계좌·서킷
+3. ⚠️ **W0-7 전에 알고 있을 것**: 성향별 리스크 한도(`max_positions`·`daily_loss_limit`·`min_cash_ratio`·`max_weight`)가 **현재 하나도 적용되지 않는다**(M6-2 본체). 페이퍼라 손실은 가짜지만 **T+5 학습 데이터는 진짜로 쌓인다** — 한도 없이 돌린 결과로 학습하게 된다. 상세: `ghost-config-audit.md`
+4. ⚠️ **배포 전**: `QUANTINUE_HTTP_USER_AGENT`를 실제 연락 가능한 주소로 설정(SEC 공정접근 — 기본값은 동작하나 응답 불가)
+5. 이후 **M5 매도**(최대 설계 작업 — 착수 시 첫 태스크는 매도 주문 표현 설계) → M6 계좌·서킷
 
 ## 확정된 정책 (되묻지 말 것)
 
@@ -43,7 +46,7 @@
 
 ```bash
 cd app-v2
-uv run pytest tests/unit tests/test_web.py -q          # 649 green 유지
+uv run pytest tests/unit tests/test_web.py -q          # 657 green 유지
 uv run ruff check src tests
 uv run uvicorn quantinue.main:app --port 8020          # 8000 점유됨
 docker compose up -d db                                 # 5445

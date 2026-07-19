@@ -157,6 +157,8 @@
 
 **완료 기준**: 게이트 경계값 단위 테스트(±0.001) · block 매체 LLM 호출 0 · 08 합성 코드 부재(grep) · 문턱 전부 yaml로만 변경 가능(코드 리터럴 grep 0).
 
+> ⚠️ **M5~M8 착수 전 `ghost-config-audit.md` 확인** — 선언만 되고 소비자가 없는 값 전수 조사(2026-07-19). 각 마일스톤이 배선해야 할 유령이 정리돼 있다: M5 = `exits.time_exit_bdays` · M6 = 성향별 리스크 한도 5종 + `conservative` 프로필 도달 불가 · M8 = `budget.daily_llm_usd`·`tb_llm_usage`. 추가로 `screening.llm_depth`(20) 미적용 — 픽 50개 전부가 LLM을 타고 있어 M3 완료 기록과 불일치.
+
 ## M5. 매도·보유 재평가 (R7-1) — Wave 2 · **최대 설계 작업**
 
 ⏳ **착수 시 첫 태스크 = 매도 주문 표현 설계 확정**: tb_order는 브래킷 매수 전용(CHECK order_type IN ('bracket')) — 매도(청산)는 ① order_type 'close' 추가 ② 브래킷 leg 취소 후 시장가 매도 ③ tb_fill side='sell' 활용. 스키마 영향 있으면 M2 마이그레이션에 추가.
@@ -261,6 +263,7 @@
 | M4 | ⏳ block 매체 LLM 호출 0 — 드라이런에서 필터는 돌았으나 표본에 차단 도메인 없음(차단 자체 미관측) |
 | M4 | ⏳ 갭 가드·late_entry·halted 실발동 미확인 — 크리틱 선차단·mock 브로커. 실 매수 성사 사이클에서 확인 |
 | M4 | ⚠️ 배포 전 `QUANTINUE_HTTP_USER_AGENT`를 실제 연락처로 설정(SEC 공정접근) |
+| 전반 | ⚠️ **유령 설정 감사 결과** — `ghost-config-audit.md`. 성향별 리스크 한도 5종·LLM 예산 상한·`llm_depth`·`time_exit_bdays`가 전부 미적용. 마일스톤별 귀속 정리됨 |
 | M4 신규 | ⏳ `role_05`가 `filings[0]`을 날짜 무관하게 사용 — 3개월 전 공시가 오늘 시그널로 채점될 수 있다. 신선도 창(`gates.disclosure_lookback_days`) 신설 필요 |
 | M7 이후 | Form 4 인사이더 시그널(ownership XML 파서 + 클러스터) — ⏳ 착수 전 T+5 지평 정합성 검토 · role_05 최근 N건 윈도우화 동반 |
 | M5 착수 시 | **매도 주문 표현 설계 확정**(order_type/leg 취소 방식) — 스키마 영향 시 M2에 추가 |
