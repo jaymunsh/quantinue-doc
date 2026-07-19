@@ -110,7 +110,23 @@
 
 **완료 기준**: public 1회 실행 → tb_universe 2,000행·tb_daily_pick ≤50행 · 장전 창 내(≤30분) 완료 · 레이트리밋 백오프 0 · LLM 호출 종목 ≤ 20+보유.
 
-## M4. 판단 방어선 (R3·R5) — Wave 2
+## M4. 판단 방어선 (R3·R5) — Wave 2 🔶 **진행 중 (2026-07-19, 4/8 완료)**
+
+> **완료분** (커밋 `163e594`·`33e854f`·`691d68d`·`51190d2`):
+> - **4-2 ✅ 07 게이트 3종** — ① `source_trust < gates.source_trust_min`(0.55) → 뉴스 점수를 **투표에서 제외**(가중 하향이 아니라 투표권 박탈) ② 매크로 감점표 적용 ③ `disclosure_score ≤ hard_negative_max`(0.15) → 매수 차단. 매수 문턱을 `MIN_CONVICTION` 상수 → **`profiles[성향].buy_threshold`**로 이동. `from_model`의 gates/profile을 **키워드 전용**으로 만들어 위치인자 오배치를 구조적으로 차단.
+> - **⏳4-2 해소** — 매크로 감점표를 1차 동결본 s07 POLICY에서 이관: `0.5→−0.05 · 0.6→−0.10 · 0.7→−0.15 · 0.8→−0.20 · 0.9→−0.30 · 1.0→−0.40`(cap 0.40). config `gates.macro_penalty_table` 소유.
+> - **4-1 ✅ 08 합성 시세 제거** — role_02가 일봉 경계에서 `PriceSnapshot`(현재가·고가·저가·**실제 전일종가**)을 박제해 전달. 기존 `close_prev=현재가` 합성은 급등 가드를 조용히 무력화하고 있었음. 스냅샷 부재 시 합성하지 않고 `missing_snapshot`(quality_gate) 보류. 괴리 > `snapshot_tolerance`(2%) → `stale_snapshot` 보류.
+> - **4-3 ✅ 과신 에스컬레이션** — `conviction ≥ 0.90` → 승인 문턱 0.70→0.80.
+> - **4-4 ✅ 출처등급** — 신규 `config/news_trust_policy.yaml`(도메인→allow/gray/block + 등급별 신뢰점수, 미등록 기본 gray) · `core/news_trust.py`(서브도메인 상속 매칭) · role_06에서 **block 매체를 select 전에 제거**(LLM 토큰·프레이밍 차단, 차단 건수 요약 노출) · `domain_sources.py`의 `grade="allow"`·`source_trust=1`·`permission` 상수 제거 → 정책 실값 기록. gray(0.50)가 07의 문턱(0.55)을 못 넘어 투표권을 잃는 **두 층의 맞물림을 테스트로 고정**.
+> - 완료 기준 대조: 08 합성 코드 grep **0** ✅ · 역할 코드 문턱 리터럴 **0** ✅ · 게이트 경계 테스트 **23개 green**(±0.001 포함) ✅ · 전체 **592 green** · ruff clean.
+>
+> **남은 작업 (4건)**
+> - 4-5 대표기사 하이브리드(관련성 필터 → `importance × 신뢰무게` 최상위) + `peak_importance` 실계산·저장 배선
+> - 4-6 Form 4 정책(LLM 우회 템플릿) — ⏳ SEC Form 4 파싱 필드(transactionCode·officerTitle) 소스 확인 선행
+> - 4-7 잔여 3건: consensus 실계산(`domain.py:129` 하드코딩 제거) · late_entry(ret_5d ≥ profiles별) · halted 체크(주문 직전 tradable 조회)
+> - 4-8 프리마켓 갭 가드(세션 정책 파생) — 문턱 `gates.premarket_gap_max`는 실측 후 확정
+>
+> ※ 미완: **block 매체 LLM 호출 0**은 코드로 보장했으나 실 실행 로그로는 아직 미검증(다음 실행에서 확인).
 
 | # | 태스크 | 파일 | 상세 |
 |---|---|---|---|
