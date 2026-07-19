@@ -112,7 +112,12 @@ class Judgment(ContractModel):
 
 
 class Order(ContractModel):
-    """Broker-independent bracket order contract."""
+    """Broker-independent order contract covering both entries and closes.
+
+    ``entry_price`` is the decision-time reference price, not necessarily a buy
+    price — on a close it is what the exit was priced against. The name predates
+    selling and was kept because renaming it would ripple through the schema.
+    """
 
     order_id: OrderId = Field(gt=0)
     signal_id: SignalId = Field(gt=0)
@@ -120,9 +125,12 @@ class Order(ContractModel):
     ticker: TickerSymbol
     quantity: int = Field(gt=0)
     entry_price: PositiveMoney
-    stop_price: PositiveMoney
-    take_profit_price: PositiveMoney
-    order_type: Literal["bracket"] = "bracket"
+    # 청산에는 보호 레그가 없다 — 더미 값을 채우면 원장이 거짓을 말하게 되고
+    # 나중에 "이 손절가는 뭐였지"라고 물었을 때 지어낸 숫자가 나온다.
+    stop_price: PositiveMoney | None = None
+    take_profit_price: PositiveMoney | None = None
+    order_type: Literal["bracket", "close"] = "bracket"
+    closes_order_id: OrderId | None = None
     status: OrderStatus
     idempotency_key: str = Field(min_length=1)
     broker_order_id: str | None = None
@@ -132,7 +140,22 @@ class Order(ContractModel):
 
     @model_validator(mode="after")
     def require_valid_bracket(self) -> "Order":
-        """Reject an inverted buy bracket at the trust boundary."""
+        """Enforce the DDL's conditional shape at the trust boundary.
+
+        db/schema.sql:144-148과 같은 규칙이다. 두 제약이 갈라지면 계약을 통과한
+        주문이 INSERT에서 터지므로, 여기서 먼저 막아 실패를 앞당긴다.
+        """
+        if self.order_type == "close":
+            if self.closes_order_id is None:
+                # 어느 매수를 닫는지가 실현손익의 짝이다. 없으면 이 청산은
+                # 영원히 짝을 못 찾고 성과 집계에서 유령이 된다.
+                message = "close order must name the order it closes"
+                raise ValueError(message)
+            return self
+        if self.stop_price is None or self.take_profit_price is None:
+            # 매수는 보호 없이 나갈 수 없다 — 이게 손절 공백을 막는 마지막 관문.
+            message = "bracket order requires stop and take-profit prices"
+            raise ValueError(message)
         prices_are_ordered = self.stop_price < self.entry_price < self.take_profit_price
         if not prices_are_ordered:
             message = "buy bracket must satisfy stop < entry < take-profit"

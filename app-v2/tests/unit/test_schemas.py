@@ -169,6 +169,61 @@ def test_order_rejects_inverted_bracket() -> None:
         )
 
 
+def test_close_order_needs_no_bracket_legs_but_must_name_what_it_closes() -> None:
+    """A close carries no stop/take-profit — filling them with dummies would lie."""
+    # Given/When
+    order = Order(
+        order_id=OrderId(9),
+        signal_id=SignalId(8),
+        account_id=AccountId(3),
+        ticker="NVDA",
+        quantity=1,
+        entry_price=Decimal(130),
+        order_type="close",
+        closes_order_id=OrderId(1),
+        status=OrderStatus.PLANNED,
+        idempotency_key="unique-close",
+    )
+
+    # Then
+    assert order.stop_price is None
+    assert order.take_profit_price is None
+    assert order.closes_order_id == 1
+
+
+def test_close_order_without_a_closed_order_is_rejected() -> None:
+    """closes_order_id is the realized-P&L pair — a close without it is orphaned."""
+    # Given/When/Then
+    with pytest.raises(ValidationError):
+        _ = Order(
+            order_id=OrderId(9),
+            signal_id=SignalId(8),
+            account_id=AccountId(3),
+            ticker="NVDA",
+            quantity=1,
+            entry_price=Decimal(130),
+            order_type="close",
+            status=OrderStatus.PLANNED,
+            idempotency_key="unique-orphan-close",
+        )
+
+
+def test_bracket_order_still_requires_its_protective_legs() -> None:
+    """Widening the model for closes must not let a buy through unprotected."""
+    # Given/When/Then
+    with pytest.raises(ValidationError):
+        _ = Order(
+            order_id=OrderId(1),
+            signal_id=SignalId(2),
+            account_id=AccountId(3),
+            ticker="NVDA",
+            quantity=1,
+            entry_price=Decimal(100),
+            status=OrderStatus.PLANNED,
+            idempotency_key="unique-unprotected",
+        )
+
+
 def test_order_and_review_identity_fields_match_domain_ddl() -> None:
     # Given/When: canonical persistence identities are inspected
     order_identity = {"order_id", "signal_id", "account_id"}
