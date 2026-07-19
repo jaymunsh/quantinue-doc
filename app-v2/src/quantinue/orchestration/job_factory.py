@@ -466,14 +466,18 @@ def build_analysis_job(  # noqa: PLR0913 - 각 인자가 교체 가능한 협력
 
     async def run(as_of: date) -> str:
         session = calendar.previous_trading_day(as_of)
-        outcomes = await job.run(as_of=as_of, session=session)
-        sides = Counter(outcome.side for outcome in outcomes)
-        approved = sum(1 for outcome in outcomes if outcome.approved)
-        return (
-            f"{len(outcomes)} analysed ({profile_name}):"
+        result = await job.run(as_of=as_of, session=session)
+        sides = Counter(outcome.side for outcome in result.outcomes)
+        approved = sum(1 for outcome in result.outcomes if outcome.approved)
+        detail = (
+            f"{len(result.outcomes)} analysed ({profile_name}):"
             f" buy {sides['buy']} / sell {sides['sell']} / hold {sides['hold']},"
             f" {approved} approved"
         )
+        if result.skipped:
+            # 조용히 빠뜨리지 않는다 — 범위가 몇이었는지가 원장에 남아야 한다.
+            detail += f", {result.skipped} skipped after model errors"
+        return detail
 
     return JobDefinition(name=name, run=run)
 

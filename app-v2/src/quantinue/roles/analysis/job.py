@@ -24,7 +24,11 @@ from typing import TYPE_CHECKING, Final
 from quantinue.core.market_calendar import NyseCalendar
 from quantinue.db.domain_records import CriticVerdictWrite, StrategistSignalWrite
 from quantinue.llm.provider import AnalysisTask
-from quantinue.roles.analysis.contracts import HoldingContext, analysis_prompt
+from quantinue.roles.analysis.contracts import (
+    HoldingContext,
+    analysis_prompt,
+    critique_prompt,
+)
 from quantinue.roles.exits.contracts import business_days_held
 from quantinue.roles.role_07_strategist.contracts import StrategyInput, StrategyOutput
 from quantinue.roles.role_08_critic.contracts import CriticInput, CriticVerdict
@@ -44,6 +48,7 @@ if TYPE_CHECKING:
     from quantinue.llm.provider import LlmAnalyzer
     from quantinue.orchestration.policy import GatesConfig, ProfileConfig
     from quantinue.roles.analysis.contracts import AnalysisSubject
+    from quantinue.roles.screening import RankedCandidate
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +59,19 @@ class AnalysisOutcome:
     side: str
     conviction: float
     approved: bool
+
+
+@dataclass(frozen=True, slots=True)
+class AnalysisRun:
+    """What one persona's pass over today's scope produced.
+
+    건너뛴 수를 함께 돌려주는 이유: 잡 원장(``tb_job_run.detail``)이 "20종목
+    분석"이라고만 적으면 범위가 22였다는 사실이 사라진다. 조용한 절단은
+    "전부 봤다"로 읽힌다.
+    """
+
+    outcomes: tuple[AnalysisOutcome, ...]
+    skipped: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,12 +87,12 @@ class AnalysisJob:
     # 종목당 프롬프트에 넣을 헤드라인 수(``news.headlines_per_ticker``).
     headlines_per_ticker: int = 5
 
-    async def run(self, *, as_of: date, session: date) -> tuple[AnalysisOutcome, ...]:
+    async def run(self, *, as_of: date, session: date) -> AnalysisRun:
         """Decide, verify, and persist one signal per ticker in scope."""
         domain = getattr(self.store, "domain", self.store)
         subjects = await domain.analysis_subjects(as_of, session)
         if not subjects:
-            return ()
+            return AnalysisRun(())
         tickers = tuple(subject.ticker for subject in subjects)
         filings = await domain.disclosure_evidence(session, tickers)
         headlines = await domain.news_evidence(
@@ -84,20 +102,47 @@ class AnalysisJob:
         # 매크로는 종목마다 같으므로 한 번만 읽는다. 이 값이 없으면 감점도
         # 차단도 없다 — 모르는 것을 근거로 막지 않는다.
         macro = await self._macro(domain, as_of)
+        # 스크리닝이 이미 계산한 창 지표. 원장에는 합성 점수 하나만 남아서
+        # 모델이 자기 방법론의 입력을 못 보고 있었다 — 다시 묻는 3.8초가
+        # 승인율을 좌우한다.
+        indicators = await self._indicators(domain, as_of, session)
         outcomes: list[AnalysisOutcome] = []
+        failures = 0
         for subject in subjects:
-            outcome = await self._analyse(
-                domain,
-                subject,
-                holdings.get(subject.ticker, HoldingContext()),
-                filings.get(subject.ticker, ()),
-                headlines.get(subject.ticker, ()),
-                macro,
-                as_of=as_of,
-            )
+            try:
+                outcome = await self._analyse(
+                    domain,
+                    subject,
+                    holdings.get(subject.ticker, HoldingContext()),
+                    filings.get(subject.ticker, ()),
+                    headlines.get(subject.ticker, ()),
+                    macro,
+                    indicators.get(subject.ticker),
+                    as_of=as_of,
+                )
+            except Exception:  # noqa: BLE001 - 종목 하나의 실패를 격리하는 자리다
+                # 종목 하나가 그날 판단 전체를 지우지 않게 한다. 실측: 구조화
+                # 출력을 한 번 놓친 종목 때문에 그 성향 22종목이 통째로 날아갔다.
+                # 이미 원장에 앉은 판단은 유효하고, 못 본 종목은 다음 슬롯이 본다.
+                failures += 1
+                continue
             if outcome is not None:
                 outcomes.append(outcome)
-        return tuple(outcomes)
+        if failures and not outcomes:
+            # 전 종목 실패는 종목 문제가 아니라 모델이 죽은 것이다. 조용히
+            # "0건 분석"으로 성공을 기록하면 슬롯이 잠겨 재시도되지 않는다.
+            message = f"every subject failed ({failures})"
+            raise RuntimeError(message)
+        return AnalysisRun(tuple(outcomes), failures)
+
+    async def _indicators(
+        self, domain: object, as_of: date, session: date
+    ) -> dict[str, RankedCandidate]:
+        """Read the window indicators behind today's scope, if this store has them."""
+        reader = getattr(domain, "pick_indicators", None)
+        if reader is None:
+            return {}
+        return await reader(as_of, session)
 
     async def _macro(self, domain: object, as_of: date) -> MacroSnapshot | None:
         """Read the regime once per run, if this store knows about it."""
@@ -143,6 +188,7 @@ class AnalysisJob:
         filings: tuple[str, ...],
         headlines: tuple[str, ...],
         macro: MacroSnapshot | None,
+        indicators: RankedCandidate | None,
         *,
         as_of: date,
     ) -> AnalysisOutcome | None:
@@ -151,7 +197,7 @@ class AnalysisJob:
         run_id = f"analysis:{as_of.isoformat()}:{self.profile_name}"
         evidence = await self.analyzer.analyze(
             AnalysisTask.STRATEGY,
-            analysis_prompt(subject, holding, filings, headlines),
+            analysis_prompt(subject, holding, filings, headlines, indicators),
             # 성향이 여기서 끊기면 두 페르소나가 같은 시스템 프롬프트로 돌고,
             # 원장에는 inv_type만 다른 **같은 확신도**가 두 줄 남는다.
             # 실제로 그랬다 — 문턱만 다르고 판단은 하나였다.
@@ -223,7 +269,7 @@ class AnalysisJob:
             )
         )
         verdict = await self._verify(
-            subject, decision, signal_id, cycle_ts, run_id, macro
+            subject, decision, signal_id, cycle_ts, run_id, macro, indicators
         )
         _ = await domain.save_verdict(
             CriticVerdictWrite(
@@ -252,6 +298,7 @@ class AnalysisJob:
         cycle_ts: datetime,
         run_id: str,
         macro: MacroSnapshot | None,
+        indicators: RankedCandidate | None,
     ) -> CriticVerdict:
         """Critique the proposal, or record why no critique was needed.
 
@@ -297,8 +344,13 @@ class AnalysisJob:
             return blocked.model_copy(update={"skipped_rules": skipped})
         review = await self.analyzer.analyze(
             AnalysisTask.CRITIC,
-            f"proposal={decision.side} ticker={subject.ticker}"
-            f" conviction={decision.conviction} rationale={decision.summary}",
+            critique_prompt(
+                subject,
+                decision.side,
+                decision.conviction,
+                decision.summary,
+                indicators,
+            ),
         )
         threshold = max(self.gates.critic_approval, 0.0)
         if decision.conviction >= self.gates.overconfidence_conviction:

@@ -367,3 +367,26 @@ async def test_local_transport_timeout_becomes_safe_transient_failure() -> None:
     assert captured.value.provider == "local"
     assert captured.value.reason == "model transport unavailable"
     assert raw_transport_detail not in str(captured.value)
+
+
+def test_the_local_path_honours_the_configured_retry_budget() -> None:
+    """`retries=0`이 코드에 굳어 있어서 성향 하나가 통째로 죽었다(실측).
+
+    구조화 출력을 한 번 놓치면 그 잡의 남은 종목 전부가 날아간다 —
+    2026-07-20 실행에서 conservative 22종목이 그렇게 사라졌다. 재시도 예산은
+    openai 경로처럼 config 소유여야 한다.
+    """
+    # Given
+    values = {
+        "llm_mode": LlmMode.LOCAL,
+        "local_llm_api_key": "wire-placeholder",
+        "local_llm_model": "contract-model",
+        "local_llm_base_url": "http://local.test/v1",
+        "llm_max_retries": 3,
+    }
+
+    # When
+    analyzer = build_llm_analyzer(Settings.model_validate(values))
+
+    # Then
+    assert getattr(analyzer, "_retries", None) == 3

@@ -277,3 +277,89 @@ async def test_a_referenced_pick_survives_the_scope_replacement() -> None:
     assert [(row.ticker, row.rank) for row in rows] == [("SCOPEKEEP", 1)]
     assert Decimal(str(rows[0].score)) == Decimal("0.9")
     await store.close()
+
+
+@pytest.mark.anyio
+async def test_the_prompt_indicators_agree_with_the_ranking_indicators() -> None:
+    """두 질의가 같은 창 계산을 쓴다는 것을 원장 수준에서 고정한다.
+
+    스크리닝 점수와 프롬프트 지표가 갈리면 "왜 이 점수인가"를 모델에게
+    설명할 수 없다. 계산 정의를 한 곳에 두는(``_WINDOW_INDICATORS_SQL``)
+    이유이고, 복사됐는지 여부를 이 테스트가 감시한다.
+    """
+    # Given
+    assert DATABASE_URL is not None
+    store = PostgresRunStore(DATABASE_URL)
+    await store.initialize()
+    await _seed_universe("AGREEA")
+    closes = [Decimal(100) + Decimal(index) for index in range(60)]
+    await store.domain.save_daily_bars(_series("AGREEA", closes))
+    await store.domain.save_daily_picks(
+        (
+            DailyPickWrite(
+                trade_date=_SESSION,
+                ticker="AGREEA",
+                universe_as_of=_SNAPSHOT,
+                bucket="trend_leader",
+                rank=1,
+                sector="test",
+                score=Decimal("0.5"),
+            ),
+        )
+    )
+
+    # When
+    ranked = await store.domain.rank_universe(
+        _SESSION,
+        _SNAPSHOT,
+        min_price_usd=1,
+        min_avg_dollar_vol=0,
+        min_history_sessions=1,
+    )
+    indicators = await store.domain.pick_indicators(_SESSION, _SESSION)
+
+    # Then
+    from_ranking = next(item for item in ranked if item.ticker == "AGREEA")
+    assert indicators["AGREEA"] == from_ranking
+    await store.close()
+
+
+@pytest.mark.anyio
+async def test_a_holding_the_ranking_filtered_out_still_gets_its_indicators() -> None:
+    """탈락한 보유야말로 매도 판단이 필요한 종목이다 — 유동성 문턱을 여기서
+    또 걸면 팔지 말지 정해야 할 종목만 지표 없이 판단대에 오른다."""
+    # Given: 거래대금이 랭킹 문턱에 한참 못 미치는 보유
+    assert DATABASE_URL is not None
+    store = PostgresRunStore(DATABASE_URL)
+    await store.initialize()
+    await _seed_universe("AGREETHIN")
+    closes = [Decimal(10) for _ in range(60)]
+    await store.domain.save_daily_bars(_series("AGREETHIN", closes, volume=10))
+    await store.domain.save_daily_picks(
+        (
+            DailyPickWrite(
+                trade_date=_SESSION,
+                ticker="AGREETHIN",
+                universe_as_of=_SNAPSHOT,
+                bucket="backfill",
+                rank=1,
+                sector="test",
+                score=Decimal(0),
+            ),
+        )
+    )
+
+    # When
+    ranked = await store.domain.rank_universe(
+        _SESSION,
+        _SNAPSHOT,
+        min_price_usd=5,
+        min_avg_dollar_vol=20_000_000,
+        min_history_sessions=60,
+    )
+    indicators = await store.domain.pick_indicators(_SESSION, _SESSION)
+
+    # Then
+    assert all(item.ticker != "AGREETHIN" for item in ranked)
+    assert "AGREETHIN" in indicators
+    await store.close()

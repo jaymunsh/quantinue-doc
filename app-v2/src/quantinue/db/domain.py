@@ -100,15 +100,18 @@ _BAR_VALUE_COLUMNS: Final = ("open", "high", "low", "close", "volume", "source")
 _BAR_WRITE_CHUNK: Final = 5_000
 
 
-# 전 유니버스 랭킹. 창 지표를 파이썬으로 계산하려면 2000종목 x 275세션(50만
-# 행)을 통째로 끌어와야 한다 — 그래서 계산을 데이터가 있는 쪽에 남긴다.
-# SQLAlchemy Core로 쓰지 않고 원문 SQL인 이유: 세 겹 윈도 함수는 코어 표현으로
-# 옮기면 무엇을 계산하는지가 보이지 않게 된다. 실측 3.8초/53만 봉.
+# 창 지표의 정의는 **여기 한 번만** 적는다. 같은 계산을 두 곳에 쓰기 때문이다:
+# 전 유니버스 랭킹(스크리닝)과, 그날 픽의 지표 조회(분석 프롬프트). 복사하면
+# 한쪽만 고쳐지는 날이 오고, 그때 "왜 스크리닝 점수와 프롬프트 지표가 다르냐"에
+# 답할 수 없게 된다. 다른 것은 **무엇을 훑는가**(scope_join)뿐이다.
+#
+# 창 지표를 파이썬으로 계산하려면 2000종목 x 275세션(50만 행)을 통째로 끌어와야
+# 한다 — 그래서 계산을 데이터가 있는 쪽에 남긴다. 실측 3.8초/53만 봉.
 #
 # RSI는 Wilder의 지수평활이 아니라 **단순평균(Cutler)** 이다. 윈도 프레임으로
 # 표현되어 SQL 한 문장에 들어가고, 우리 용도(상위 N 줄세우기)에서 두 방식의
 # 순위 차이는 미미하다 — 정밀도보다 "API 0콜"이 이 잡의 존재 이유다.
-_RANK_UNIVERSE_SQL = text("""
+_WINDOW_INDICATORS_SQL = """
 WITH scoped AS (
     SELECT b.trade_date, b.ticker, b.close, b.volume,
            b.close - LAG(b.close) OVER w AS delta,
@@ -121,7 +124,7 @@ WITH scoped AS (
            AVG(b.volume) OVER (w ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS average_volume,
            COUNT(*) OVER w AS sessions
     FROM tb_daily_bar b
-    JOIN tb_universe u ON u.ticker = b.ticker AND u.as_of_date = :universe_as_of
+    {scope_join}
     WHERE b.trade_date <= :session
     WINDOW w AS (PARTITION BY b.ticker ORDER BY b.trade_date)
 ),
@@ -140,10 +143,29 @@ SELECT ticker, close, ma20, ma50, high_252, volume, average_volume,
 FROM scored
 WHERE trade_date = :session
   AND close_20 IS NOT NULL
-  AND close >= :min_price
+"""
+
+_RANK_UNIVERSE_SQL = text(
+    _WINDOW_INDICATORS_SQL.format(
+        scope_join=(
+            "JOIN tb_universe u ON u.ticker = b.ticker AND u.as_of_date = :universe_as_of"
+        )
+    )
+    + """  AND close >= :min_price
   AND dollar_volume >= :min_dollar_volume
   AND sessions >= :min_sessions
-""")
+"""
+)
+
+# 그날 픽만 훑는 같은 계산. **유동성·최소이력 문턱을 걸지 않는다** — 여기서
+# 묻는 것은 "볼 만한 종목인가"(그건 스크리닝이 이미 답했다)가 아니라 "이미
+# 고른 종목이 어떻게 생겼나"이기 때문이다. 문턱을 또 걸면 탈락한 보유 종목이
+# 지표 없이 판단대에 오르는데, 매도 판단이 필요한 것이 정확히 그 종목들이다.
+_PICK_INDICATORS_SQL = text(
+    _WINDOW_INDICATORS_SQL.format(
+        scope_join="JOIN tb_daily_pick p ON p.ticker = b.ticker AND p.trade_date = :as_of"
+    )
+)
 
 
 # 그날의 분석 범위에서 빠진 행을 지우되, 이미 무언가가 매달린 행은 남긴다.
@@ -180,6 +202,21 @@ WHERE p.trade_date = :as_of
   AND b.trade_date > :session - INTERVAL '10 days'
 ORDER BY p.rank, b.trade_date
 """)
+
+
+def _ranked_candidate(row: object) -> RankedCandidate:
+    """Map one window-indicator row into the pure screening contract."""
+    return RankedCandidate(
+        ticker=row.ticker,  # pyright: ignore[reportAttributeAccessIssue]
+        close=Decimal(str(row.close)),  # pyright: ignore[reportAttributeAccessIssue]
+        ret_20d_pct=float(row.ret_20d_pct),  # pyright: ignore[reportAttributeAccessIssue]
+        ma20=Decimal(str(row.ma20)),  # pyright: ignore[reportAttributeAccessIssue]
+        ma50=Decimal(str(row.ma50)),  # pyright: ignore[reportAttributeAccessIssue]
+        high_252=Decimal(str(row.high_252)),  # pyright: ignore[reportAttributeAccessIssue]
+        rsi=float(row.rsi),  # pyright: ignore[reportAttributeAccessIssue]
+        volume=int(row.volume),  # pyright: ignore[reportAttributeAccessIssue]
+        average_volume=float(row.average_volume),  # pyright: ignore[reportAttributeAccessIssue]
+    )
 
 
 class PostgresDomainRepository:
@@ -368,19 +405,33 @@ class PostgresDomainRepository:
                 )
             ).all()
         return tuple(
-            RankedCandidate(
-                ticker=row.ticker,
-                close=Decimal(str(row.close)),
-                ret_20d_pct=float(row.ret_20d_pct),
-                ma20=Decimal(str(row.ma20)),
-                ma50=Decimal(str(row.ma50)),
-                high_252=Decimal(str(row.high_252)),
-                rsi=float(row.rsi),
-                volume=int(row.volume),
-                average_volume=float(row.average_volume),
-            )
+            _ranked_candidate(row)
             for row in rows
         )
+
+    async def pick_indicators(
+        self, as_of: date, session: date
+    ) -> dict[str, RankedCandidate]:
+        """Return the window indicators behind today's scope, keyed by ticker.
+
+        **왜 다시 계산하는가.** 스크리닝 잡이 몇 분 전에 같은 값을 계산했지만
+        그건 프로세스 안에만 있었고, 원장에 남는 것은 합성 점수 하나다
+        (``tb_daily_pick.score``). 그 점수만으로는 "왜 이 점수인가"를 모델에게
+        말해줄 수 없다 — 그리고 우리 두 페르소나는 오닐·미너비니 방법론에
+        정박돼 있어서 **정확히 이 지표들을 요구한다**.
+
+        저장하지 않고 다시 묻는 쪽을 골랐다. ``tb_technical``은 ``ret_5d``·
+        ``atr_pct``·``macd``·``rs_20``이 전부 NOT NULL인데 우리 랭킹은 그것들을
+        계산하지 않으므로, 재사용하려면 지어내야 한다. 없는 값을 0으로 채우는
+        것보다 3.8초를 다시 쓰는 편이 낫다(LLM 한 바퀴가 250초다).
+        """
+        async with self._engine.begin() as connection:
+            rows = (
+                await connection.execute(
+                    _PICK_INDICATORS_SQL, {"as_of": as_of, "session": session}
+                )
+            ).all()
+        return {row.ticker: _ranked_candidate(row) for row in rows}
 
     async def save_daily_picks(self, picks: tuple[DailyPickWrite, ...]) -> None:
         """Replace the session's analysis scope with this one, atomically.

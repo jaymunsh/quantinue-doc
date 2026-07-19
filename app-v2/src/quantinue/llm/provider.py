@@ -246,7 +246,13 @@ def build_llm_analyzer(settings: Settings, openai_client: AsyncOpenAI | None = N
                 ),
                 settings=model_settings,
             )
-            return PydanticAiAnalyzer(model, model_name, 0, provider)
+            # 재시도 예산은 openai 경로와 같이 config 소유다. 여기 0이 굳어
+            # 있어서, 모델이 구조화 출력을 **한 번** 놓친 순간 그 성향의 남은
+            # 종목이 전부 날아갔다(2026-07-20 실행: conservative 22종목).
+            # 로컬이라 재시도가 공짜에 가깝다는 점에서도 0을 고집할 이유가 없다.
+            return PydanticAiAnalyzer(
+                model, model_name, settings.llm_max_retries, provider
+            )
         case unreachable:
             assert_never(unreachable)
     return PydanticAiAnalyzer(

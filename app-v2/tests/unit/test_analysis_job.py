@@ -14,6 +14,7 @@ from quantinue.orchestration.policy import GatesConfig, ProfileConfig
 from quantinue.roles.analysis.contracts import AnalysisSubject
 from quantinue.roles.analysis.job import AnalysisJob
 from quantinue.roles.exits.contracts import OpenPosition
+from quantinue.roles.screening import RankedCandidate
 
 if TYPE_CHECKING:
     from quantinue.db.domain_records import CriticVerdictWrite, StrategistSignalWrite
@@ -49,6 +50,37 @@ class _Analyzer:
         )
 
 
+class _FragileAnalyzer(_Analyzer):
+    """An analyzer that blows up on whichever prompt contains a marker."""
+
+    def __init__(self, fails_for: str) -> None:
+        super().__init__(strategy=0.9)
+        self._fails_for = fails_for
+
+    async def analyze(
+        self, task: AnalysisTask, prompt: str, *, profile: str | None = None
+    ) -> AnalysisResult:
+        if self._fails_for in prompt:
+            message = "structured output missed"
+            raise RuntimeError(message)
+        return await super().analyze(task, prompt, profile=profile)
+
+
+def _indicators() -> RankedCandidate:
+    """A ticker in a textbook trend template, measured from stored bars."""
+    return RankedCandidate(
+        ticker="AAA",
+        close=Decimal("100.00"),
+        ret_20d_pct=12.4,
+        ma20=Decimal("105.00"),
+        ma50=Decimal("100.00"),
+        high_252=Decimal("102.0408"),
+        rsi=62.1,
+        volume=1_800,
+        average_volume=1_000.0,
+    )
+
+
 def _subject(ticker: str, rank: int = 1, score: float = 0.9) -> AnalysisSubject:
     return AnalysisSubject(
         ticker=ticker,
@@ -69,8 +101,10 @@ class _Domain:
         positions: tuple[OpenPosition, ...] = (),
         headlines: dict[str, tuple[str, ...]] | None = None,
         macro: tuple[str, float] | None = None,
+        indicators: dict[str, RankedCandidate] | None = None,
     ) -> None:
         self._macro = macro
+        self._indicators = indicators or {}
         self._subjects = subjects
         self._positions = positions
         self._headlines = headlines or {}
@@ -95,6 +129,12 @@ class _Domain:
     ) -> dict[str, tuple[str, ...]]:
         self.news_calls.append((session, tickers, limit))
         return self._headlines
+
+    async def pick_indicators(
+        self, as_of: date, session: date
+    ) -> dict[str, RankedCandidate]:
+        del as_of, session
+        return dict(self._indicators)
 
     async def latest_macro(self, as_of: date, max_age_minutes: int) -> object | None:
         del as_of, max_age_minutes
@@ -162,9 +202,9 @@ async def test_every_ticker_in_scope_gets_a_signal() -> None:
     domain = _Domain((_subject("AAA", 1), _subject("BBB", 2), _subject("CCC", 3)))
 
     # When
-    outcomes = await _job(domain, _Analyzer(strategy=0.9)).run(
+    outcomes = (await _job(domain, _Analyzer(strategy=0.9)).run(
         as_of=_AS_OF, session=_SESSION
-    )
+    )).outcomes
 
     # Then
     assert [outcome.ticker for outcome in outcomes] == ["AAA", "BBB", "CCC"]
@@ -178,9 +218,9 @@ async def test_a_held_ticker_whose_thesis_collapsed_is_sold() -> None:
     domain = _Domain((_subject("HELD", rank=15, score=0.1),), (_position("HELD"),))
 
     # When
-    outcomes = await _job(domain, _Analyzer(strategy=0.1)).run(
+    outcomes = (await _job(domain, _Analyzer(strategy=0.1)).run(
         as_of=_AS_OF, session=_SESSION
-    )
+    )).outcomes
 
     # Then
     assert outcomes[0].side == "sell"
@@ -194,9 +234,9 @@ async def test_the_same_collapse_on_a_ticker_we_do_not_own_is_only_a_hold() -> N
     domain = _Domain((_subject("NOTHELD", rank=15, score=0.1),))
 
     # When
-    outcomes = await _job(domain, _Analyzer(strategy=0.1)).run(
+    outcomes = (await _job(domain, _Analyzer(strategy=0.1)).run(
         as_of=_AS_OF, session=_SESSION
-    )
+    )).outcomes
 
     # Then
     assert outcomes[0].side == "hold"
@@ -225,7 +265,7 @@ async def test_a_hold_costs_no_model_call_for_review() -> None:
     domain = _Domain((_subject("MEH", score=0.5),))
 
     # When
-    outcomes = await _job(domain, analyzer).run(as_of=_AS_OF, session=_SESSION)
+    outcomes = (await _job(domain, analyzer).run(as_of=_AS_OF, session=_SESSION)).outcomes
 
     # Then
     assert outcomes[0].side == "hold"
@@ -277,7 +317,7 @@ async def test_a_rejected_proposal_still_produces_a_valid_verdict() -> None:
     analyzer = _Analyzer(strategy=0.9, critic=0.1)
 
     # When
-    outcomes = await _job(domain, analyzer).run(as_of=_AS_OF, session=_SESSION)
+    outcomes = (await _job(domain, analyzer).run(as_of=_AS_OF, session=_SESSION)).outcomes
 
     # Then: 예외 없이 두 종목 모두 판정을 받는다
     assert len(outcomes) == 2
@@ -362,9 +402,9 @@ async def test_a_high_ranking_holding_can_still_be_sold() -> None:
     domain = _Domain((_subject("HELD", rank=1, score=0.95),), (_position("HELD"),))
 
     # When
-    outcomes = await _job(domain, _Analyzer(strategy=0.1)).run(
+    outcomes = (await _job(domain, _Analyzer(strategy=0.1)).run(
         as_of=_AS_OF, session=_SESSION
-    )
+    )).outcomes
 
     # Then
     assert outcomes[0].side == "sell"
@@ -382,9 +422,9 @@ async def test_the_regime_reaches_the_judgement_under_the_persona_that_declared_
     domain = _Domain((_subject("AAA"),), macro=("risk_off", 0.5))
 
     # When: 감수하겠다고 선언한 성향
-    outcomes = await _job(
+    outcomes = (await _job(
         domain, _Analyzer(strategy=0.9), risk_off_action="penalty"
-    ).run(as_of=_AS_OF, session=_SESSION)
+    ).run(as_of=_AS_OF, session=_SESSION)).outcomes
 
     # Then: 매수까지 가되 감점은 받는다 — 같은 악재로 두 번 벌하지 않는다
     assert outcomes[0].side == "buy"
@@ -415,10 +455,109 @@ async def test_a_missing_macro_snapshot_neither_penalises_nor_blocks() -> None:
     domain = _Domain((_subject("AAA"),), macro=None)
 
     # When
-    outcomes = await _job(domain, _Analyzer(strategy=0.9), risk_off_action="no_new_buys").run(
+    outcomes = (await _job(domain, _Analyzer(strategy=0.9), risk_off_action="no_new_buys").run(
         as_of=_AS_OF, session=_SESSION
-    )
+    )).outcomes
 
     # Then
     assert domain.verdicts[0].category != "macro_riskoff"
     assert outcomes[0].side == "buy"
+
+
+@pytest.mark.anyio
+async def test_the_model_sees_the_indicators_its_methodology_asks_for() -> None:
+    """실행에서 잡힌 자기충돌: 07이 "거래량 데이터 없음"을 고백하고 08이 그것을
+    근거로 반박했다. 실 LLM 36건 중 승인 1~2건, 반박문이 전부 같은 말이었다.
+
+    스크리닝 SQL은 ma20/50·high_252·rsi·거래량을 **이미 계산한다**. 그런데
+    프롬프트에 가는 것은 합성 점수 하나뿐이라, 오닐(CAN SLIM)·미너비니(SEPA)에
+    정박된 페르소나가 자기 방법론의 핵심 입력을 못 본 채 판단했다.
+    """
+    # Given
+    domain = _Domain((_subject("AAA"),), indicators={"AAA": _indicators()})
+    analyzer = _Analyzer(strategy=0.9)
+
+    # When
+    _ = await _job(domain, analyzer).run(as_of=_AS_OF, session=_SESSION)
+
+    # Then
+    prompt = next(text for task, text in analyzer.prompts if task is AnalysisTask.STRATEGY)
+    assert "ma20=105.00" in prompt
+    assert "ma50=100.00" in prompt
+    assert "high_252_ratio=0.980" in prompt
+    assert "ret_20d_pct=12.40" in prompt
+    assert "rsi=62.1" in prompt
+    assert "vol_ratio=1.80" in prompt
+
+
+@pytest.mark.anyio
+async def test_a_pick_we_could_not_measure_says_so_rather_than_guessing() -> None:
+    """탈락한 보유는 랭킹에 없다(거래정지·유동성 미달). 없는 지표를 0으로 채우면
+    "약하다"로 읽히는데 사실은 "재지 못했다"다 — 매도 판단에서 특히 위험하다."""
+    # Given
+    domain = _Domain((_subject("HELD"),), (_position("HELD"),), indicators={})
+    analyzer = _Analyzer(strategy=0.5)
+
+    # When
+    _ = await _job(domain, analyzer).run(as_of=_AS_OF, session=_SESSION)
+
+    # Then
+    prompt = next(text for task, text in analyzer.prompts if task is AnalysisTask.STRATEGY)
+    assert "indicators=none" in prompt
+
+
+@pytest.mark.anyio
+async def test_the_critic_sees_the_same_evidence_the_proposal_was_built_on() -> None:
+    """원 증거를 못 보는 반박자는 산문만 공격할 수 있다.
+
+    지금까지 08에 간 것은 `proposal=... conviction=... rationale=...`이 전부라,
+    07이 정직하게 적은 약점이 그대로 반박 사유가 됐다. 주장 대 데이터로
+    검증하려면 08도 같은 증거를 봐야 한다.
+    """
+    # Given
+    domain = _Domain((_subject("AAA"),), indicators={"AAA": _indicators()})
+    analyzer = _Analyzer(strategy=0.9)
+
+    # When
+    _ = await _job(domain, analyzer).run(as_of=_AS_OF, session=_SESSION)
+
+    # Then
+    critique = next(text for task, text in analyzer.prompts if task is AnalysisTask.CRITIC)
+    assert "ma20=105.00" in critique
+    assert "proposal=buy" in critique
+
+
+@pytest.mark.anyio
+async def test_one_ticker_that_the_model_fumbles_does_not_erase_the_day() -> None:
+    """실측: conservative 22종목이 종목 하나의 구조화 출력 실패로 통째로 날아갔다.
+
+    재시도 예산을 config로 되돌린 뒤에도 남는 위험이다 — 예산을 다 써도 실패할
+    수 있고, 그때 이미 판단이 끝난 20종목까지 잃을 이유는 없다.
+    """
+    # Given: 두 번째 종목에서만 모델이 무너진다
+    domain = _Domain((_subject("AAA"), _subject("BAD"), _subject("CCC")))
+    analyzer = _FragileAnalyzer(fails_for="ticker=BAD")
+
+    # When
+    result = await _job(domain, analyzer).run(as_of=_AS_OF, session=_SESSION)
+
+    # Then
+    assert [outcome.ticker for outcome in result.outcomes] == ["AAA", "CCC"]
+    assert result.skipped == 1
+
+
+@pytest.mark.anyio
+async def test_a_model_that_never_answers_fails_the_job_loudly() -> None:
+    """전 종목이 실패하는 것은 종목 문제가 아니라 모델이 죽은 것이다.
+
+    조용히 "0건 분석"으로 성공 기록을 남기면 잡 원장이 거짓말을 하고, 그날
+    슬롯이 성공으로 잠겨 재시도되지 않는다.
+    """
+    # Given
+    domain = _Domain((_subject("AAA"), _subject("BBB")))
+
+    # When / Then
+    with pytest.raises(RuntimeError):
+        _ = await _job(domain, _FragileAnalyzer(fails_for="ticker=")).run(
+            as_of=_AS_OF, session=_SESSION
+        )

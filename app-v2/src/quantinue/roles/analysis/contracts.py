@@ -17,6 +17,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from decimal import Decimal
 
+    from quantinue.roles.screening import RankedCandidate
+
 
 @dataclass(frozen=True, slots=True)
 class AnalysisSubject:
@@ -45,11 +47,49 @@ class HoldingContext:
     business_days_held: int = 0
 
 
+def indicator_lines(indicators: RankedCandidate | None) -> tuple[str, ...]:
+    """State the window indicators as plain facts, or say we could not measure.
+
+    **왜 이것들인가.** 두 페르소나가 오닐(CAN SLIM)·미너비니(SEPA)에 정박돼
+    있어서 추세 템플릿(ma20/ma50과 가격의 위치)·52주 고점 근접·거래량 확인을
+    **명시적으로 요구한다**. 이 값들은 스크리닝 SQL이 이미 계산하는데 원장에는
+    합성 점수 하나만 남아서, 모델은 자기 방법론의 핵심 입력을 못 본 채
+    판단하고 있었다 — 그리고 그 사실을 근거에 정직하게 적었다. 크리틱이 그
+    고백을 반박 사유로 삼아 실 실행에서 승인율이 3%까지 떨어졌다.
+
+    ``vol_ratio``만 여기서 파생시키는 이유: 원장에 있는 것은 당일 거래량과
+    20일 평균 둘이고, 방법론이 묻는 것은 그 **비율**이다. 모델에게 나눗셈을
+    시키면 틀릴 수 있고, 틀린 값이 근거로 인용된다.
+
+    측정하지 못한 종목은 지어내지 않는다. 0으로 채우면 "약하다"로 읽히는데
+    사실은 "재지 못했다"이고, 그 차이는 매도 판단에서 정반대의 결론을 만든다.
+    """
+    if indicators is None:
+        return ("indicators=none",)
+    high_252_ratio = (
+        0.0
+        if indicators.high_252 <= 0
+        else float(indicators.close / indicators.high_252)
+    )
+    vol_ratio = (
+        0.0
+        if indicators.average_volume <= 0
+        else indicators.volume / indicators.average_volume
+    )
+    return (
+        f"ma20={indicators.ma20:.2f} ma50={indicators.ma50:.2f}"
+        f" ret_20d_pct={indicators.ret_20d_pct:.2f}",
+        f"high_252={indicators.high_252:.2f} high_252_ratio={high_252_ratio:.3f}"
+        f" rsi={indicators.rsi:.1f} vol_ratio={vol_ratio:.2f}",
+    )
+
+
 def analysis_prompt(
     subject: AnalysisSubject,
     holding: HoldingContext,
     filings: tuple[str, ...],
     headlines: tuple[str, ...] = (),
+    indicators: RankedCandidate | None = None,
 ) -> str:
     """Compose the one payload the strategist model sees for this ticker.
 
@@ -81,6 +121,32 @@ def analysis_prompt(
         lines.append("held_quantity=0")
     # 없는 것도 적는다. 증거가 비었다는 사실 자체가 판단 근거이고, 항목이
     # 통째로 빠지면 모델은 "안 알려줬다"와 "없었다"를 구분할 수 없다.
+    lines.extend(indicator_lines(indicators))
     lines.append(f"filings={','.join(filings) if filings else 'none'}")
     lines.append(f"headlines={' | '.join(headlines) if headlines else 'none'}")
+    return "\n".join(lines)
+
+
+def critique_prompt(
+    subject: AnalysisSubject,
+    side: str,
+    conviction: float,
+    rationale: str,
+    indicators: RankedCandidate | None,
+) -> str:
+    """Compose what the critic sees — the claim **and** the evidence behind it.
+
+    지금까지 08에 간 것은 ``proposal=... conviction=... rationale=...``이 전부라,
+    반박자가 볼 수 있는 것이 07의 산문뿐이었다. 원 증거를 못 보는 반박자는
+    주장을 데이터와 대조할 수 없고 산문의 약점을 공격할 수밖에 없다 — 그래서
+    07이 정직하게 적은 한계가 그대로 기각 사유가 되는 동어반복이 생겼다.
+    같은 증거를 주면 "네가 없다고 했다"가 아니라 "이 값으로는 부족하다"를
+    말할 수 있다.
+    """
+    lines = [
+        f"proposal={side} ticker={subject.ticker} conviction={conviction}",
+        f"close={subject.close} day_high={subject.high} day_low={subject.low}",
+        *indicator_lines(indicators),
+        f"rationale={rationale}",
+    ]
     return "\n".join(lines)
