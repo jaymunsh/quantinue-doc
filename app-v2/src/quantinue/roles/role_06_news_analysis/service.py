@@ -2,9 +2,11 @@
 
 from dataclasses import dataclass, replace
 from datetime import timedelta
+from pathlib import Path
 from typing import ClassVar, Protocol
 
 from quantinue.core.contracts import NewsSourceRecord, PipelineContext
+from quantinue.core.news_trust import load_news_trust_policy
 from quantinue.core.ontology import EvidenceKind
 from quantinue.core.schemas import Evidence
 from quantinue.llm.provider import AnalysisTask, LlmAnalyzer
@@ -16,6 +18,10 @@ from quantinue.market_data.models import (
 )
 from quantinue.roles.role_06_news_analysis.contracts import NewsSignal
 from quantinue.roles.role_06_news_analysis.selection import SelectedNewsItem, select_ticker_news
+
+NEWS_TRUST_POLICY = load_news_trust_policy(
+    Path(__file__).parents[4] / "config" / "news_trust_policy.yaml"
+)
 
 
 class RssNewsSource(Protocol):
@@ -71,7 +77,10 @@ class NewsAnalysis:
             else:
                 ticker_aware = False
                 items = await self.market_data.rss(str(context.run_id))
-            selection = select_ticker_news(items, query)
+            # 차단 매체는 LLM에 닿기 전에 버린다 — 토큰도, 프레이밍도 들이지 않는다.
+            allowed = tuple(item for item in items if not NEWS_TRUST_POLICY.is_blocked(item.url))
+            blocked_note = f" · 차단매체 {len(items) - len(allowed)}건 제외"
+            selection = select_ticker_news(allowed, query)
             source_records = tuple(
                 _source_record(selected, context) for selected in selection.items
             )
@@ -106,7 +115,8 @@ class NewsAnalysis:
                 ).add_stage(
                     self.component,
                     self.name,
-                    f"수집 {selection.fetched_count}건 · 관련 뉴스 0건 · 모델 분석 생략",
+                    f"수집 {selection.fetched_count}건{blocked_note}"
+                    " · 관련 뉴스 0건 · 모델 분석 생략",
                     evidence=evidence,
                 )
             item = selection.selected.item
@@ -162,7 +172,8 @@ class NewsAnalysis:
                 self.component,
                 self.name,
                 (
-                    f"수집 {selection.fetched_count}건 · 관련 {selection.relevant_count}건 · "
+                    f"수집 {selection.fetched_count}건{blocked_note}"
+                    f" · 관련 {selection.relevant_count}건 · "
                     f"대표 분석 {result.label}, 점수 {result.score:.2f}"
                 ),
                 evidence=evidence,

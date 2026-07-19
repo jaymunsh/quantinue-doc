@@ -1,0 +1,49 @@
+# 매체 신뢰 등급 정책 — 도메인이 판단에 얼마나 기여할 수 있는지 결정한다.
+#
+#   allow : 정상 투표. source_trust 그대로 반영.
+#   gray  : 투표는 하되 신뢰도를 낮게 본다(07 게이트에서 투표 박탈될 수 있음).
+#   block : LLM에 도달하기 전에 버린다. 행은 보존하되 is_dropped=true.
+#
+# 목록에 없는 도메인의 기본값은 default_grade가 정한다(모르는 매체는 신뢰하지 않는다).
+version: 1
+default_grade: gray
+
+# 등급별 신뢰 점수. 07의 source_trust_min(0.55)과 함께 투표권을 결정한다.
+trust_scores:
+  allow: 0.95
+  gray: 0.50
+  block: 0.0
+
+domains:
+  allow:
+    - reuters.com
+    - apnews.com
+    - bloomberg.com
+    - wsj.com
+    - ft.com
+    - cnbc.com
+    - sec.gov
+    - businesswire.com
+    - prnewswire.com
+    - globenewswire.com
+    - nasdaq.com
+    - marketwatch.com
+    - barrons.com
+    - investors.com
+  gray:
+    - seekingalpha.com
+    - benzinga.com
+    - fool.com
+    - zacks.com
+    - thestreet.com
+    - yahoo.com
+    - finance.yahoo.com
+    - investing.com
+  block:
+    # 루머·선동성 매체는 LLM 토큰을 쓰기 전에 버린다.
+    - pennystocks.com
+    - stocktwits.com
+    - reddit.com
+    - facebook.com
+    - x.com
+    - twitter.com
