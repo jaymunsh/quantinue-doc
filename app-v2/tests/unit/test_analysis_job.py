@@ -330,3 +330,24 @@ async def test_news_stays_out_of_the_vote() -> None:
 
     # Then: 투표에 들어갔다면 확신도가 뉴스 점수와 섞였을 것이다
     assert domain.signals[0].signal_consensus is not None
+
+
+@pytest.mark.anyio
+async def test_a_high_ranking_holding_can_still_be_sold() -> None:
+    """실 실행에서 잡힌 결함: 스크리닝 상위 보유는 산술적으로 팔 수 없었다.
+
+    확신도에 스크리닝 점수가 평균으로 섞여 있어서, 점수 0.95인 보유를 팔려면
+    모델이 음수를 내야 했다. 그런데 픽은 정의상 점수 상위다 — 매도 경로 전체가
+    닫혀 있었다. 실 LLM으로 -23% 포지션 3종목이 전부 hold/buy로 나온 것을
+    확인하고 재현한 케이스다.
+    """
+    # Given: 랭킹은 최상위, 모델은 강하게 약세, 그리고 우리가 들고 있다
+    domain = _Domain((_subject("HELD", rank=1, score=0.95),), (_position("HELD"),))
+
+    # When
+    outcomes = await _job(domain, _Analyzer(strategy=0.1)).run(
+        as_of=_AS_OF, session=_SESSION
+    )
+
+    # Then
+    assert outcomes[0].side == "sell"

@@ -171,6 +171,34 @@ class StrategyOutput(BaseModel):
         return round(min(1.0, max(0.0, penalised)), 3)
 
     @staticmethod
+    def vote_bearishness(
+        source: StrategyInput, gates: GatesConfig, model_score: float | None = None
+    ) -> float:
+        """Score the case for **leaving** this position, not for entering it.
+
+        **왜 확신도의 여집합이 아닌가.** 원래는 ``1 - conviction``이었는데,
+        conviction에는 기술 랭킹 점수(``technical_score``)가 평균으로 섞여 있다.
+        그런데 픽은 정의상 그 점수 상위에서 뽑히므로 보유 종목의 랭킹은 거의
+        항상 높다 — 실측 0.94~0.96. 그러면 공격형 문턱(0.60)을 넘기려면 모델이
+        **음수**를 내야 하고, 매도 경로가 산술적으로 닫힌다. 실 LLM으로 -23%
+        포지션 3종목을 돌려 확인했다: 약세 확신이 최대 0.447에서 멈췄다.
+
+        더 근본적으로, 랭킹이 답하는 질문은 "지금 사기 좋은가"이지 "계속 들고
+        있어야 하는가"가 아니다. 논지가 무너졌는지를 묻는데 그 논지의 근거였던
+        점수를 다시 평균에 넣으면, 자기 근거로 자기 붕괴를 반박하는 셈이다.
+        보유 맥락(진입가·미실현손익·보유일)을 본 유일한 판단자는 모델이다.
+
+        매크로 감점의 부호가 뒤집히는 것도 같은 이유다 — 확신도에서 빼는 값은
+        하방 판정에서는 더해야 대칭이 맞는다.
+        """
+        if model_score is None:
+            # 모델 없는 경로(구 러너 회귀)에서도 답은 있어야 한다. 있는 것으로만
+            # 답하되, 그게 랭킹뿐이라는 사실이 곧 판단의 한계다.
+            return round(min(1.0, max(0.0, 1.0 - source.technical_score)), 3)
+        bearish = 1.0 - model_score + gates.macro_penalty(source.macro_risk_score)
+        return round(min(1.0, max(0.0, bearish)), 3)
+
+    @staticmethod
     def vote_consensus(
         source: StrategyInput,
         gates: GatesConfig,
@@ -202,15 +230,17 @@ class StrategyOutput(BaseModel):
         gates: GatesConfig | None = None,
         profile: ProfileConfig | None = None,
         minimum_confidence: float = MIN_CONVICTION,
+        bearishness: float | None = None,
     ) -> Self:
         """Apply hard gates after schema-valid model output."""
         blockers = source.blockers(gates)
         threshold = profile.buy_threshold if profile is not None else minimum_confidence
         can_buy = source.is_daily_pick and conviction >= threshold and not blockers
-        # 확신도는 강세 확신이므로 그 여집합이 약세 확신이다. 별도의 매도
-        # 점수를 모델에 또 물으면 두 숫자가 서로 모순될 수 있다 — 하나의
-        # 판단에서 두 방향을 읽는 편이 일관된다.
-        bearishness = round(1.0 - conviction, 3)
+        # 약세 확신은 강세 확신의 여집합이 **아니다**(vote_bearishness 참조).
+        # 부르는 쪽이 안 주면 여집합으로 떨어지는데, 그 경로는 기술 랭킹이
+        # 섞인 값이라 보유 종목에서는 매도가 사실상 발동하지 않는다.
+        if bearishness is None:
+            bearishness = round(1.0 - conviction, 3)
         sell_threshold = (
             profile.sell_threshold if profile is not None else MIN_SELL_CONVICTION
         )

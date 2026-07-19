@@ -173,6 +173,12 @@ class AnalysisJob:
             evidence.reason,
             gates=self.gates,
             profile=self.profile,
+            # 하방은 상방과 다른 저울로 잰다. 확신도에는 스크리닝 점수가 섞여
+            # 있는데, 픽은 정의상 그 점수 상위라 보유 종목의 여집합은 낮게
+            # 눌린다 — 그대로 두면 매도가 산술적으로 발동하지 않는다.
+            bearishness=StrategyOutput.vote_bearishness(
+                strategy_input, self.gates, evidence.score
+            ),
         )
         signal_id = await domain.save_signal(
             StrategistSignalWrite(
