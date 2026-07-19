@@ -148,13 +148,19 @@ CREATE TABLE IF NOT EXISTS tb_order (
   parent_order_id TEXT, stop_leg_order_id TEXT, take_profit_leg_order_id TEXT,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (account_id, signal_id),
+  -- 두 제약에 이름을 명시하는 이유: 익명 CHECK는 Postgres가 tb_order_check,
+  -- tb_order_check1처럼 **선언 순서로** 이름을 짓는다. 마이그레이션은
+  -- ALTER ... ADD CONSTRAINT라 이름을 직접 대므로, 신규 설치와 마이그레이션의
+  -- 카탈로그가 정의는 같은데 이름만 갈렸다. 순서에 기대지 않게 못 박는다.
+  --
   -- 브래킷 삼중 제약은 매수에만 해당한다. 청산에는 손절·익절이 없으므로
   -- 더미 값을 채우는 대신 컬럼을 비운다.
-  CHECK (order_type <> 'bracket' OR (
+  CONSTRAINT tb_order_check CHECK (order_type <> 'bracket' OR (
     stop_price IS NOT NULL AND take_profit_price IS NOT NULL
     AND stop_price < entry_price AND entry_price < take_profit_price)),
   -- 청산은 반드시 어느 매수를 닫는지 가리켜야 한다(실현손익의 짝).
-  CHECK (order_type <> 'close' OR closes_order_id IS NOT NULL)
+  CONSTRAINT tb_order_close_target_check
+    CHECK (order_type <> 'close' OR closes_order_id IS NOT NULL)
 );
 CREATE TABLE IF NOT EXISTS tb_fill (
   id BIGSERIAL PRIMARY KEY, order_id BIGINT NOT NULL REFERENCES tb_order(id), side TEXT NOT NULL CHECK (side IN ('buy','sell')),
