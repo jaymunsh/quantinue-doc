@@ -118,9 +118,3 @@ mvp2:
     history_days: 400
   budget:
     daily_llm_usd: 3.0
-phase_2:
-  accounts: 5
-  news_interval_minutes: 5
-  strategist_interval_minutes: 10
-  add_job_run_audit: true
-  add_prompt_and_model_versions: true
