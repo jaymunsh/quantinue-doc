@@ -200,3 +200,12 @@ CREATE TABLE IF NOT EXISTS tb_daily_bar (
   PRIMARY KEY (trade_date, ticker),
   CHECK (low <= open AND open <= high), CHECK (low <= close AND close <= high)
 );
+
+-- Phase 2: 잡 실행 원장. 신규 테이블이라 무손실 — 기존 행에 손대지 않는다.
+CREATE TABLE IF NOT EXISTS tb_job_run (
+  job_name TEXT NOT NULL, slot_date DATE NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('running','succeeded','failed')),
+  detail TEXT, started_at TIMESTAMPTZ NOT NULL DEFAULT now(), finished_at TIMESTAMPTZ,
+  PRIMARY KEY (job_name, slot_date),
+  CHECK ((status = 'running') = (finished_at IS NULL))
+);

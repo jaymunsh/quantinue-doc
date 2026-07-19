@@ -240,3 +240,15 @@ CREATE TABLE IF NOT EXISTS tb_benchmark_price (
   price_date DATE NOT NULL, ticker TEXT NOT NULL, close NUMERIC NOT NULL CHECK (close > 0),
   PRIMARY KEY (price_date, ticker)
 );
+
+-- 잡 실행 원장. PK가 "잡 하나는 하루 한 번"을 DB 수준에서 강제한다 —
+-- 스케줄러가 60초마다 깨어나도 잡 본문은 예약에 성공한 틱에서만 돈다.
+-- 예약(running)과 성공(succeeded)을 구분하는 이유: 예약만 하고 죽은 실행을
+-- 성공으로 세면 그 주기를 통째로 잃는다(주간 잡이면 한 주).
+CREATE TABLE IF NOT EXISTS tb_job_run (
+  job_name TEXT NOT NULL, slot_date DATE NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('running','succeeded','failed')),
+  detail TEXT, started_at TIMESTAMPTZ NOT NULL DEFAULT now(), finished_at TIMESTAMPTZ,
+  PRIMARY KEY (job_name, slot_date),
+  CHECK ((status = 'running') = (finished_at IS NULL))
+);

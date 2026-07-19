@@ -43,6 +43,7 @@ _TABLES = (
     "tb_critic_verdict",
     "tb_order_plan",
     "tb_daily_bar",
+    "tb_job_run",
     "tb_account",
     "tb_order",
     "tb_fill",
@@ -230,6 +231,59 @@ class PostgresDomainRepository:
             )
             for ticker, bar in bars.items()
         }
+
+    async def reserve_job_run(self, job_name: str, slot_date: date) -> bool:
+        """Claim today's slot for one job, returning whether this caller won it.
+
+        스케줄러는 60초마다 깨어나므로 "이미 돌았나"를 앱 메모리로 판단하면
+        재시작 한 번에 무너진다. PK 충돌을 예약 실패로 읽으면 판정이 DB에
+        있게 되고, 프로세스가 여럿이어도 잡 본문은 한 번만 돈다.
+        """
+        table = self._table("tb_job_run")
+        statement = (
+            insert(table)
+            .values(job_name=job_name, slot_date=slot_date, status="running")
+            .on_conflict_do_nothing(index_elements=["job_name", "slot_date"])
+        )
+        async with self._engine.begin() as connection:
+            result = await connection.execute(statement)
+        return result.rowcount == 1
+
+    async def finish_job_run(
+        self,
+        job_name: str,
+        slot_date: date,
+        *,
+        succeeded: bool,
+        detail: str | None = None,
+    ) -> None:
+        """Close out a reserved slot with its outcome."""
+        table = self._table("tb_job_run")
+        statement = (
+            table.update()
+            .where(table.c.job_name == job_name, table.c.slot_date == slot_date)
+            .values(
+                status="succeeded" if succeeded else "failed",
+                detail=detail,
+                finished_at=func.now(),
+            )
+        )
+        async with self._engine.begin() as connection:
+            _ = await connection.execute(statement)
+
+    async def last_job_success(self, job_name: str) -> date | None:
+        """Return the last slot this job actually completed, if any.
+
+        예약(running)이나 실패(failed)는 세지 않는다. 이 값이 주기 판정의
+        입력이므로(``is_job_due``), 실패한 실행을 성공으로 세면 다음 주기까지
+        재시도가 막힌다 — 주간 잡이면 한 주를 잃는다.
+        """
+        table = self._table("tb_job_run")
+        statement = select(func.max(table.c.slot_date)).where(
+            table.c.job_name == job_name, table.c.status == "succeeded"
+        )
+        async with self._engine.begin() as connection:
+            return (await connection.execute(statement)).scalar_one_or_none()
 
     async def active_accounts(self) -> tuple[AccountRiskState, ...]:
         """Return every account that subscribes to this cycle, in stable order.

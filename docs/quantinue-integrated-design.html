@@ -1519,6 +1519,46 @@ erDiagram
 }</pre></div>
       </details>
 
+      <details class="schema"><summary><code>tb_daily_bar</code><span class="sd"><span class="b b-new">재설계 Phase 2</span> 일봉 원장 — 스크리닝·브래킷 판정·시가평가의 단일 출처</span><span class="cnt">9컬럼</span></summary>
+              <div class="twrap"><table>
+                <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
+                <tr><td>trade_date</td><td>DATE · PK</td><td>세션일 — PK가 하루 1행을 고정해 재적재로 값이 흔들리지 않게 한다</td></tr>
+                <tr><td>ticker</td><td>TEXT · PK</td><td>종목</td></tr>
+                <tr><td>open · high · low · close</td><td>NUMERIC > 0</td><td>시·고·저·종. 고저는 브래킷 발동 판정(D5), 종가는 시가평가(D8)·시간 청산 기준가</td></tr>
+                <tr><td>volume</td><td>BIGINT ≥ 0</td><td>거래량</td></tr>
+                <tr><td>source</td><td>TEXT</td><td>수집 출처(<code>alpaca-iex</code> 등) — 폴백 체인 중 어느 소스가 준 값인지</td></tr>
+                <tr><td>created_at</td><td>TIMESTAMPTZ</td><td>적재 시각</td></tr>
+                <tr><td colspan="3">CHECK <code>low ≤ open ≤ high</code> · <code>low ≤ close ≤ high</code> — 불가능한 봉을 원장에 들이지 않는다</td></tr>
+              </table></div>
+                    <div class="rowex"><div class="rt">🧾 row 예시 — DB에 실제로 앉는 한 줄 (참고용 가짜 데이터 · NVDA 시나리오)</div><pre>{
+  "trade_date": "2026-07-20",
+  "ticker": "NVDA",
+  "open": 171.20, "high": 176.40, "low": 170.05, "close": 175.80,
+  "volume": 214803110,
+  "source": "alpaca-iex"
+}</pre></div>
+      </details>
+
+      <details class="schema"><summary><code>tb_job_run</code><span class="sd"><span class="b b-new">재설계 Phase 2</span> 잡 실행 원장 — "잡 하나는 하루 한 번"을 DB가 강제</span><span class="cnt">6컬럼</span></summary>
+              <div class="twrap"><table>
+                <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
+                <tr><td>job_name</td><td>TEXT · PK</td><td>잡 이름(<code>universe</code>·<code>daily_bars</code>·<code>exits</code> …)</td></tr>
+                <tr><td>slot_date</td><td>DATE · PK</td><td>실행 슬롯(하루). 스케줄러가 60초마다 깨어나도 예약에 성공한 틱에서만 본문이 돈다</td></tr>
+                <tr><td>status</td><td>TEXT · CHECK</td><td><code>running</code>·<code>succeeded</code>·<code>failed</code>. 예약만 하고 죽은 실행을 성공으로 세면 그 주기를 통째로 잃는다</td></tr>
+                <tr><td>detail</td><td>TEXT · NULL</td><td>실패 사유 또는 실행 요약</td></tr>
+                <tr><td>started_at · finished_at</td><td>TIMESTAMPTZ</td><td>시작·종료. 종료는 미완료 시 NULL</td></tr>
+                <tr><td colspan="3">CHECK <code>(status='running') = (finished_at IS NULL)</code> — 상태와 종료시각이 어긋난 행을 만들 수 없다</td></tr>
+              </table></div>
+                    <div class="rowex"><div class="rt">🧾 row 예시 — DB에 실제로 앉는 한 줄 (참고용 가짜 데이터)</div><pre>{
+  "job_name": "daily_bars",
+  "slot_date": "2026-07-20",
+  "status": "succeeded",
+  "detail": "1987 bars",
+  "started_at": "2026-07-20T09:05:00Z",
+  "finished_at": "2026-07-20T09:05:41Z"
+}</pre></div>
+      </details>
+
       <h3>2차(MVP-2) 스키마 변경 <span class="b b-gray">M2 완료 · as-built</span></h3>
       <p>아래 변경은 코드 3파일(schema.sql·schemas.py/ontology.py·pipeline.yaml)에 <b>먼저</b> 반영한 뒤 구현이 따라온다(착수 순서 규칙). <b>2026-07-18 M2에서 전부 적용 완료</b> — 신규 설치는 <code>db/schema.sql</code>, 기존 DB는 멱등 <code>db/migrations/mvp2.sql</code>로 올린다(두 경로가 동일 카탈로그로 수렴함을 컬럼 344·제약 134 비교로 검증).</p>
       <div class="note"><b>기존 DB 업그레이드 시 알아둘 것</b> — ① <code>reason</code>의 기존 텍스트는 버리지 않고 <code>{"legacy": "원문"}</code>으로 감싸 보존한다. ② <code>tb_critic_verdict.source</code>(fresh/cache/cooldown, 캐시 상태)는 계보의 <code>source</code>(출처)와 이름이 겹쳐 <b><code>verdict_source</code>로 리네임</b>했다 — 6개 계보 테이블의 컬럼 이름을 통일하기 위함. ③ 계보 10컬럼은 전부 NULL 허용 — 기존 행은 계보 없이 남고 <b>신규 기록부터 채운다</b>.</div>

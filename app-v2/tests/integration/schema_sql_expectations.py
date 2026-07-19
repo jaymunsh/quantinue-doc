@@ -30,6 +30,7 @@ TABLES = {
     "tb_llm_usage",
     "tb_benchmark_price",
     "tb_daily_bar",
+    "tb_job_run",
     "tb_order_plan",
 }
 PK = {
@@ -57,6 +58,7 @@ PK = {
     "tb_llm_usage": ("id",),
     "tb_benchmark_price": ("price_date", "ticker"),
     "tb_daily_bar": ("trade_date", "ticker"),
+    "tb_job_run": ("job_name", "slot_date"),
 }
 UNIQUE = {
     "tb_disclosure": {("filing_no",)},
@@ -215,6 +217,12 @@ CHECKS = {
         # 이게 깨진 봉은 브래킷 발동 판정을 거짓으로 만든다.
         ("low", "open", "high"): ("low <= open", "open <= high"),
         ("low", "close", "high"): ("low <= close", "close <= high"),
+    },
+    "tb_job_run": {
+        ("status",): ("'running'", "'succeeded'", "'failed'"),
+        # 상태와 종료시각이 어긋난 행을 만들 수 없게 묶는다 — running인데
+        # 끝난 시각이 있거나, 끝났는데 없는 행은 주기 판정을 거짓으로 만든다.
+        ("status", "finished_at"): ("'running'", "finished_at is null"),
     },
     "tb_macro": {
         ("regime",): ("'risk_on'", "'risk_off'"),
