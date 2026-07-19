@@ -22,6 +22,7 @@ import pytest
 from quantinue.core.market_calendar import NyseCalendar
 from quantinue.roles.role_11_reviewer.calendar import UsEquityTradingCalendar
 
+
 # 비교 창은 XNYS 데이터가 실제로 덮는 구간 안이어야 한다 — 라이브러리의
 # 마지막 세션을 넘겨 물으면 DateOutOfBounds가 난다(청산 잡이 예전에 같은
 # 경계에서 예외를 맞았고, 그때 business_days_held를 0 반환으로 고쳤다).
@@ -46,7 +47,7 @@ def test_both_calendars_agree_on_every_session_in_range(start: date, end: date) 
         day
         for day in _days(start, end)
         # 주말은 양쪽 다 자명하게 휴장이라 비교 대상이 아니다.
-        if day.weekday() < 5  # noqa: PLR2004 - 토·일 제외
+        if day.weekday() < 5
         and exchange.is_trading_day(day) is (day in holidays)
     ]
 
