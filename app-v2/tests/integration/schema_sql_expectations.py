@@ -31,6 +31,7 @@ TABLES = {
     "tb_benchmark_price",
     "tb_daily_bar",
     "tb_job_run",
+    "tb_disclosure_raw",
     "tb_order_plan",
 }
 PK = {
@@ -59,6 +60,7 @@ PK = {
     "tb_benchmark_price": ("price_date", "ticker"),
     "tb_daily_bar": ("trade_date", "ticker"),
     "tb_job_run": ("job_name", "slot_date"),
+    "tb_disclosure_raw": ("filing_no",),
 }
 UNIQUE = {
     "tb_disclosure": {("filing_no",)},
@@ -217,6 +219,11 @@ CHECKS = {
         # 이게 깨진 봉은 브래킷 발동 판정을 거짓으로 만든다.
         ("low", "open", "high"): ("low <= open", "open <= high"),
         ("low", "close", "high"): ("low <= close", "close <= high"),
+    },
+    "tb_disclosure_raw": {
+        # 하드 이벤트라면 어떤 이벤트인지 반드시 있어야 한다 — 근거 없는 즉시
+        # 청산을 원장 수준에서 막는다.
+        ("is_hard_event", "event_type"): ("is_hard_event", "event_type is not null"),
     },
     "tb_job_run": {
         ("status",): ("'running'", "'succeeded'", "'failed'"),

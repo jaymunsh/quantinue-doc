@@ -1559,6 +1559,32 @@ erDiagram
 }</pre></div>
       </details>
 
+      <details class="schema"><summary><code>tb_disclosure_raw</code><span class="sd"><span class="b b-new">재설계 Phase 2</span> 공시 원시 원장 — 그날 전 시장 제출분(픽 무관)</span><span class="cnt">10컬럼</span></summary>
+              <div class="twrap"><table>
+                <tr><th>컬럼</th><th>타입·제약</th><th>설명</th></tr>
+                <tr><td>filing_no</td><td>TEXT · PK</td><td>EDGAR 접수번호. 같은 날 같은 종목이 여러 건을 낼 수 있어 (날짜,티커)로는 행을 못 가른다</td></tr>
+                <tr><td>trade_date</td><td>DATE</td><td>제출 세션일</td></tr>
+                <tr><td>ticker · cik</td><td>TEXT</td><td>CIK→티커 매칭 결과. 매칭 안 되는 행(펀드·SPV·비상장)은 저장하지 않는다</td></tr>
+                <tr><td>form_type</td><td>TEXT</td><td>SEC 폼 타입(<code>25-NSE</code>·<code>8-K</code> …)</td></tr>
+                <tr><td>company_name · source_ref</td><td>TEXT</td><td>발행사명 · EDGAR 경로</td></tr>
+                <tr><td>event_type</td><td>TEXT · NULL</td><td><code>ontology.EventType</code>. 규칙 기반 판정 — LLM 없이 폼 타입으로만 정한다</td></tr>
+                <tr><td>is_hard_event</td><td>BOOLEAN</td><td>상장폐지·등록말소(<code>25</code>·<code>25-NSE</code>·<code>15-12B/G</code>·<code>15-15D</code>) → 즉시 청산 대상</td></tr>
+                <tr><td>created_at</td><td>TIMESTAMPTZ</td><td>적재 시각</td></tr>
+                <tr><td colspan="3">CHECK <code>is_hard_event = false OR event_type IS NOT NULL</code> — 근거 없는 즉시 청산을 원장이 막는다<br>
+                <b>FK 없음이 설계다.</b> <code>tb_disclosure</code>(채점 결과)는 <code>(trade_date,ticker) → tb_daily_pick</code>을 걸어 그날 분석 대상이 아닌 종목에 행을 넣을 수 없다. 일괄 수집이 노리는 것이 정확히 그 바깥 — 스크리너에서 탈락한 보유 종목의 상장폐지 공시다</td></tr>
+              </table></div>
+                    <div class="rowex"><div class="rt">🧾 row 예시 — DB에 실제로 앉는 한 줄 (2026-07-15 실수집)</div><pre>{
+  "filing_no": "0001354457-26-000694",
+  "trade_date": "2026-07-15",
+  "ticker": "CPRX", "cik": "1369568",
+  "form_type": "25-NSE",
+  "company_name": "CATALYST PHARMACEUTICALS, INC.",
+  "source_ref": "edgar/data/1369568/0001354457-26-000694.txt",
+  "event_type": "delisting_halt",
+  "is_hard_event": true
+}</pre></div>
+      </details>
+
       <h3>2차(MVP-2) 스키마 변경 <span class="b b-gray">M2 완료 · as-built</span></h3>
       <p>아래 변경은 코드 3파일(schema.sql·schemas.py/ontology.py·pipeline.yaml)에 <b>먼저</b> 반영한 뒤 구현이 따라온다(착수 순서 규칙). <b>2026-07-18 M2에서 전부 적용 완료</b> — 신규 설치는 <code>db/schema.sql</code>, 기존 DB는 멱등 <code>db/migrations/mvp2.sql</code>로 올린다(두 경로가 동일 카탈로그로 수렴함을 컬럼 344·제약 134 비교로 검증).</p>
       <div class="note"><b>기존 DB 업그레이드 시 알아둘 것</b> — ① <code>reason</code>의 기존 텍스트는 버리지 않고 <code>{"legacy": "원문"}</code>으로 감싸 보존한다. ② <code>tb_critic_verdict.source</code>(fresh/cache/cooldown, 캐시 상태)는 계보의 <code>source</code>(출처)와 이름이 겹쳐 <b><code>verdict_source</code>로 리네임</b>했다 — 6개 계보 테이블의 컬럼 이름을 통일하기 위함. ③ 계보 10컬럼은 전부 NULL 허용 — 기존 행은 계보 없이 남고 <b>신규 기록부터 채운다</b>.</div>

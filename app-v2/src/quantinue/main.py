@@ -38,7 +38,7 @@ from quantinue.orchestration.factory import (
     build_default_orchestrator,
     build_market_data,
 )
-from quantinue.orchestration.job_factory import build_job_runner
+from quantinue.orchestration.job_factory import JobSources, build_job_runner
 from quantinue.orchestration.policy import load_mvp2_config, load_pipeline_document
 from quantinue.orchestration.scheduler import CycleScheduler, TickDecision
 from quantinue.orchestration.slots import slot_of
@@ -114,7 +114,7 @@ def create_app(  # noqa: C901, PLR0915
         selected_settings,
         mvp2_config,
         store=selected_store,
-        market_data=build_market_data(selected_settings),
+        sources=JobSources(market_data=build_market_data(selected_settings)),
     )
 
     @asynccontextmanager

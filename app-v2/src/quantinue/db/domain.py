@@ -20,6 +20,7 @@ from quantinue.db.domain_records import (
     DailyBarWrite,
     OrderPlanWrite,
     OrderReconciliation,
+    RawDisclosureWrite,
     StrategistSignalWrite,
 )
 from quantinue.db.domain_sources import save_source_records
@@ -44,6 +45,7 @@ _TABLES = (
     "tb_order_plan",
     "tb_daily_bar",
     "tb_job_run",
+    "tb_disclosure_raw",
     "tb_account",
     "tb_order",
     "tb_fill",
@@ -230,22 +232,69 @@ class PostgresDomainRepository:
             for row in rows
         }
 
+    async def save_raw_disclosures(self, filings: tuple[RawDisclosureWrite, ...]) -> None:
+        """Upsert one session's whole-market filings.
+
+        접수번호가 PK다. 수집은 재시도될 수 있는데 (날짜, 티커)로는 행을 못
+        가른다 — 같은 종목이 같은 날 여러 건을 낸다.
+        """
+        if not filings:
+            return
+        table = self._table("tb_disclosure_raw")
+        async with self._engine.begin() as connection:
+            for filing in filings:
+                fields = {
+                    "trade_date": filing.trade_date,
+                    "ticker": filing.ticker,
+                    "cik": filing.cik,
+                    "form_type": filing.form_type,
+                    "company_name": filing.company_name,
+                    "source_ref": filing.source_ref,
+                    "event_type": filing.event_type,
+                    "is_hard_event": filing.is_hard_event,
+                }
+                _ = await connection.execute(
+                    insert(table)
+                    .values(filing_no=filing.filing_no, **fields)
+                    .on_conflict_do_update(index_elements=["filing_no"], set_=fields)
+                )
+
+    async def hard_event_tickers(self, trade_date: date) -> frozenset[str]:
+        """Return the tickers whose day carried a hard event."""
+        table = self._table("tb_disclosure_raw")
+        statement = select(table.c.ticker).where(
+            table.c.trade_date == trade_date, table.c.is_hard_event.is_(True)
+        )
+        async with self._engine.begin() as connection:
+            rows = (await connection.execute(statement)).all()
+        return frozenset(row.ticker for row in rows)
+
     async def exit_observations(
         self, trade_date: date, tickers: tuple[str, ...]
     ) -> dict[str, DailyObservation]:
-        """Project stored bars into what the exit rules consume.
+        """Project stored bars and hard events into what the exit rules consume.
 
-        일봉이 청산의 두 입력을 동시에 준다: 고저는 브래킷 발동 판정에,
-        종가는 시간 청산의 기준가에. 하드 이벤트는 아직 여기서 오지 않는다 —
-        공시·뉴스 일괄 수집(Phase 2 후반)이 붙으면 그때 합류한다.
+        일봉이 청산의 두 입력을 준다: 고저는 브래킷 발동 판정에, 종가는 시간
+        청산의 기준가에. 하드 이벤트(상장폐지·등록말소)는 공시 원장에서 온다.
+
+        **관측 키를 봉 기준으로만 만들면 안 된다.** 거래가 정지되면 그날 봉이
+        찍히지 않는데, 그게 정확히 상장폐지 케이스다 — 봉만 보면 팔아야 할 바로
+        그 종목이 관측에서 조용히 사라진다. 그래서 두 집합의 합집합으로 만든다.
         """
         bars = await self.daily_bars(trade_date, tickers)
+        hard_events = await self.hard_event_tickers(trade_date)
+        observed = set(bars) | (hard_events & set(tickers))
         return {
             ticker: DailyObservation(
-                day_range=DailyRange(low=bar.low, high=bar.high),
-                last_price=bar.close,
+                day_range=(
+                    DailyRange(low=bars[ticker].low, high=bars[ticker].high)
+                    if ticker in bars
+                    else None
+                ),
+                last_price=bars[ticker].close if ticker in bars else None,
+                has_hard_event=ticker in hard_events,
             )
-            for ticker, bar in bars.items()
+            for ticker in observed
         }
 
     async def reserve_job_run(self, job_name: str, slot_date: date) -> bool:

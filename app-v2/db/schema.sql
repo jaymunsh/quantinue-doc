@@ -252,3 +252,16 @@ CREATE TABLE IF NOT EXISTS tb_job_run (
   PRIMARY KEY (job_name, slot_date),
   CHECK ((status = 'running') = (finished_at IS NULL))
 );
+
+-- 공시 원시 원장. tb_disclosure(채점 결과)와 따로 두는 이유는 FK다 — 그쪽은
+-- (trade_date, ticker) → tb_daily_pick을 걸어 그날 분석 대상이 아닌 종목에는
+-- 행을 넣을 수 없는데, 일괄 수집이 노리는 것이 정확히 그 바깥이다(스크리너에서
+-- 탈락한 보유 종목의 상장폐지 공시). 그래서 여기엔 FK를 걸지 않는다.
+CREATE TABLE IF NOT EXISTS tb_disclosure_raw (
+  filing_no TEXT NOT NULL, trade_date DATE NOT NULL, ticker TEXT NOT NULL,
+  cik TEXT NOT NULL, form_type TEXT NOT NULL, company_name TEXT NOT NULL,
+  source_ref TEXT NOT NULL, event_type TEXT, is_hard_event BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (filing_no),
+  CHECK (is_hard_event = false OR event_type IS NOT NULL)
+);

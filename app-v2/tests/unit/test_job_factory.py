@@ -15,6 +15,7 @@ from quantinue.core.market_calendar import NyseCalendar
 from quantinue.db.domain_records import DailyBarWrite
 from quantinue.market_data.models import Provenance, SecuritySnapshot
 from quantinue.orchestration.job_factory import (
+    JobSources,
     TickerSource,
     build_daily_bars_job,
     build_exit_job,
@@ -233,7 +234,7 @@ def test_without_alpaca_credentials_only_the_exit_job_is_registered() -> None:
 
     # Then
     assert runner is not None
-    assert [job.name for job in runner.jobs] == ["exits"]
+    assert [job.name for job in runner.jobs] == ["disclosures", "exits"]
 
 
 def test_with_credentials_collection_is_registered_before_the_exit_job() -> None:
@@ -248,7 +249,7 @@ def test_with_credentials_collection_is_registered_before_the_exit_job() -> None
 
     # Then
     assert runner is not None
-    assert [job.name for job in runner.jobs] == ["daily_bars", "exits"]
+    assert [job.name for job in runner.jobs] == ["daily_bars", "disclosures", "exits"]
 
 
 @pytest.mark.anyio
@@ -260,7 +261,8 @@ async def test_the_registered_exit_job_reads_holdings_from_the_store() -> None:
 
     # When
     assert runner is not None
-    _ = await runner.jobs[0].run(_MONDAY)
+    exits = next(job for job in runner.jobs if job.name == "exits")
+    _ = await exits.run(_MONDAY)
 
     # Then
     assert domain.observation_calls == [(_FRIDAY, ("AAA", "BBB"))]
@@ -370,12 +372,13 @@ async def test_bars_cover_the_universe_snapshot_as_well_as_holdings() -> None:
     domain.members[date(2026, 7, 13)] = ("UNIA", "HELD", "UNIB")
     source = _Source(())
     runner = build_job_runner(
-        _settings(), Mvp2Config(), store=_Store(domain), bar_source=source
+        _settings(), Mvp2Config(), store=_Store(domain), sources=JobSources(bars=source)
     )
 
     # When
     assert runner is not None
-    _ = await runner.jobs[0].run(_MONDAY)
+    bars = next(job for job in runner.jobs if job.name == "daily_bars")
+    _ = await bars.run(_MONDAY)
 
     # Then: 보유가 앞, 유니버스가 뒤, 중복은 한 번만
     assert source.calls == [(_FRIDAY, ("HELD", "UNIA", "UNIB"))]
@@ -392,7 +395,8 @@ async def test_the_exit_job_ignores_the_universe_and_looks_only_at_holdings() ->
 
     # When
     assert runner is not None
-    _ = await runner.jobs[-1].run(_MONDAY)
+    exits = next(job for job in runner.jobs if job.name == "exits")
+    _ = await exits.run(_MONDAY)
 
     # Then
     assert domain.observation_calls == [(_FRIDAY, ("HELD",))]
@@ -408,9 +412,14 @@ def test_the_universe_job_is_registered_first() -> None:
         _settings(key="k", secret="s"),
         Mvp2Config(),
         store=_Store(domain),
-        market_data=_Screener((_snapshot("AAA", 1),)),
+        sources=JobSources(market_data=_Screener((_snapshot("AAA", 1),))),
     )
 
     # Then
     assert runner is not None
-    assert [job.name for job in runner.jobs] == ["universe", "daily_bars", "exits"]
+    assert [job.name for job in runner.jobs] == [
+        "universe",
+        "daily_bars",
+        "disclosures",
+        "exits",
+    ]

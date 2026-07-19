@@ -12,12 +12,14 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, time
 from typing import TYPE_CHECKING, Protocol, TypeAlias
 
 from quantinue.broker.mock import MockBroker
 from quantinue.core.market_calendar import NyseCalendar
 from quantinue.market_data.alpaca_bars import AlpacaBarSource
+from quantinue.market_data.sec_daily_index import SecDailyIndexSource
 from quantinue.orchestration.job_runner import JobDefinition, JobRunner
 from quantinue.roles.exits.job import ExitJob
 from quantinue.roles.role_01_universe_screener.contracts import (
@@ -29,7 +31,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from quantinue.core.config import Settings
-    from quantinue.db.domain_records import DailyBarWrite
+    from quantinue.db.domain_records import DailyBarWrite, RawDisclosureWrite
     from quantinue.market_data.models import SecuritySnapshot
     from quantinue.orchestration.policy import Mvp2Config, ScreeningConfig
     from quantinue.roles.exits import DailyObservation
@@ -130,6 +132,47 @@ def build_universe_job(
     return JobDefinition(name=name, run=run)
 
 
+class _FilingSource(Protocol):
+    async def filings(self, trade_date: date) -> tuple[RawDisclosureWrite, ...]:
+        """Fetch one session's whole-market filings."""
+        ...
+
+
+class _FilingSink(Protocol):
+    async def save_raw_disclosures(
+        self, filings: tuple[RawDisclosureWrite, ...]
+    ) -> None:
+        """Upsert the collected filings into the raw ledger."""
+        ...
+
+
+def build_disclosures_job(
+    *,
+    source: _FilingSource,
+    domain: _FilingSink,
+    calendar: NyseCalendar,
+    name: str = "disclosures",
+) -> JobDefinition:
+    """Collect the last closed session's filings for the whole market.
+
+    종목 목록을 받지 않는 유일한 수집 잡이다 — 인덱스가 그날 전부를 주므로
+    누구를 볼지 미리 정할 필요가 없다. 그래서 스크리너에서 탈락한 보유 종목의
+    상장폐지 공시도 자연히 걸린다. 그게 이 잡의 존재 이유다.
+
+    거래일만 묻는 책임이 여기 있다: SEC는 없는 인덱스에 403을 주는데 그건
+    User-Agent 정책 차단과 구분되지 않아서, 어댑터는 아무것도 삼키지 않는다.
+    """
+
+    async def run(as_of: date) -> str:
+        session = calendar.previous_trading_day(as_of)
+        filings = await source.filings(session)
+        await domain.save_raw_disclosures(filings)
+        hard = sum(1 for filing in filings if filing.is_hard_event)
+        return f"{len(filings)} filings ({hard} hard) for {session.isoformat()}"
+
+    return JobDefinition(name=name, run=run)
+
+
 def build_daily_bars_job(
     *,
     source: _BarSource,
@@ -175,21 +218,36 @@ def build_exit_job(
     return JobDefinition(name=name, run=run)
 
 
+@dataclass(frozen=True, slots=True)
+class JobSources:
+    """The collection adapters, injectable so tests never touch the network.
+
+    한 묶음으로 둔 이유: 잡이 늘 때마다 ``build_job_runner``의 인자가 늘면
+    호출부가 매번 바뀐다. 여기 None인 항목은 그 잡을 등록하지 않는다는 뜻이고,
+    ``disclosures``만 기본 어댑터로 채워진다 — SEC는 자격증명이 없어서
+    항상 쓸 수 있기 때문이다.
+    """
+
+    market_data: _UniverseSource | None = None
+    bars: _BarSource | None = None
+    disclosures: _FilingSource | None = None
+
+
 def build_job_runner(
     settings: Settings,
     config: Mvp2Config,
     *,
     store: object,
-    market_data: _UniverseSource | None = None,
-    bar_source: _BarSource | None = None,
+    sources: JobSources | None = None,
 ) -> JobRunner | None:
     """Assemble the background job runner for this application, if it can run.
 
-    잡 등록 **순서가 계약이다**: 유니버스 → 일봉 → 청산. 수집이 청산보다 먼저
-    와야 오늘 봉으로 판단하고, 유니버스가 수집보다 먼저 와야 그 주에 새로 든
-    종목이 봉 없이 남지 않는다. 한 틱 안에서 순서대로 돌기 때문에 이 순서가
-    그대로 데이터 의존성을 만족시킨다.
+    잡 등록 **순서가 계약이다**: 유니버스 → 일봉 → 공시 → 청산. 수집이 청산보다
+    먼저 와야 오늘 시세·공시로 판단하고, 유니버스가 일봉보다 먼저 와야 그 주에
+    새로 든 종목이 봉 없이 남지 않는다. 한 틱 안에서 순서대로 돌기 때문에 이
+    순서가 그대로 데이터 의존성을 만족시킨다.
     """
+    selected = sources or JobSources()
     domain = getattr(store, "domain", None)
     if domain is None:
         # 메모리 스토어에는 tb_job_run이 없다 — 멱등의 근거가 없으면 안 돈다.
@@ -221,12 +279,13 @@ def build_job_runner(
     jobs: list[JobDefinition] = []
     key = settings.alpaca_api_key.get_secret_value().strip()
     secret = settings.alpaca_secret_key.get_secret_value().strip()
-    if market_data is not None:
+    if selected.market_data is not None:
         jobs.append(
             build_universe_job(
-                source=market_data, domain=domain, config=config.screening
+                source=selected.market_data, domain=domain, config=config.screening
             )
         )
+    bar_source = selected.bars
     if bar_source is None and key and secret:
         bar_source = AlpacaBarSource(
             key_id=key,
@@ -242,6 +301,13 @@ def build_job_runner(
                 calendar=calendar,
             )
         )
+    jobs.append(
+        build_disclosures_job(
+            source=selected.disclosures or SecDailyIndexSource(),
+            domain=domain,
+            calendar=calendar,
+        )
+    )
     # 자격증명이 없어도 청산은 등록한다. 이미 저장된 봉만으로도 판단할 수 있고,
     # 관측이 없는 종목은 ExitJob이 알아서 건너뛴다 — 수집 실패가 매도로
     # 둔갑하지 않는다.

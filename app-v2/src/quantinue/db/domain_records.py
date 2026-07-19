@@ -170,3 +170,25 @@ class DailyBarWrite:
     close: Decimal
     volume: int
     source: str
+
+
+@dataclass(frozen=True, slots=True)
+class RawDisclosureWrite:
+    """One filing from the day's whole-market index, matched to a ticker.
+
+    ``tb_disclosure``(채점 결과)와 따로 두는 이유: 그쪽은
+    ``(trade_date, ticker) → tb_daily_pick`` FK를 걸어 **그날 분석 대상이 아닌
+    종목에는 행을 넣을 수 없다**. 그런데 일괄 수집이 노리는 것이 정확히 그
+    바깥이다 — 스크리너에서 탈락한 보유 종목의 상장폐지 공시. 원시 원장은
+    픽과 무관하게 받고, 채점은 분석 대상에만 한다.
+    """
+
+    filing_no: str
+    trade_date: date
+    ticker: str
+    cik: str
+    form_type: str
+    company_name: str
+    source_ref: str
+    event_type: str | None
+    is_hard_event: bool
