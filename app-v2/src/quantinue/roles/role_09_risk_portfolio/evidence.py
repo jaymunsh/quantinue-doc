@@ -1,11 +1,16 @@
-"""Shared late-stage evidence boundary and pipeline-trace adapter."""
+"""The freshness and lineage boundary every sizing decision must clear.
+
+구 11단계 러너의 트레이스를 증거로 바꾸던 어댑터(``evidence_from_pipeline_traces``)가
+같이 있었는데, 그건 ``PipelineContext``를 받았으므로 러너와 함께 죽었다. 남은
+``LateStageEvidenceInput``은 러너와 무관한 계약이다 — 배분 잡의
+``RiskPortfolioInput``이 이것을 상속해 "5분 지난 증거로 주문 크기를 정하지
+않는다"는 M4 방어선을 그대로 받는다.
+"""
 
 from datetime import timedelta
 
 from pydantic import Field, model_validator
 
-from quantinue.core.contracts import PipelineContext
-from quantinue.core.ontology import EvidenceKind
 from quantinue.core.schemas import AwareDateTime, ContractModel, Evidence
 
 
@@ -43,42 +48,3 @@ class LateStageEvidenceInput(ContractModel):
             message = "evidence lineage references an unavailable parent"
             raise ValueError(message)
         return self
-
-
-def evidence_from_pipeline_traces(
-    context: PipelineContext, components: tuple[str, ...]
-) -> tuple[Evidence, ...]:
-    """Convert completed role traces into an explicit ordered evidence chain."""
-    by_id = {trace.evidence_id: trace for trace in context.evidence_trace}
-    required = {
-        trace.evidence_id for trace in context.evidence_trace if trace.component in components
-    }
-    pending = list(required)
-    while pending:
-        trace = by_id[pending.pop()]
-        for parent_id in trace.parent_evidence_ids:
-            if parent_id in by_id and parent_id not in required:
-                required.add(parent_id)
-                pending.append(parent_id)
-    selected = tuple(trace for trace in context.evidence_trace if trace.evidence_id in required)
-    return tuple(
-        Evidence(
-            evidence_id=trace.evidence_id,
-            run_id=trace.run_id,
-            source=trace.source,
-            source_ref=trace.source_ref,
-            observed_at=trace.observed_at,
-            captured_at=trace.captured_at,
-            confidence=trace.confidence,
-            kind=EvidenceKind.MODEL_OUTPUT,
-            parent_evidence_ids=tuple(
-                parent for parent in trace.parent_evidence_ids if parent in required
-            ),
-            model_name=trace.model_name,
-            model_provider=trace.model_provider,
-            prompt_version=trace.prompt_version,
-            policy_version=trace.policy_version,
-            input_hash=trace.input_hash,
-        )
-        for trace in selected
-    )

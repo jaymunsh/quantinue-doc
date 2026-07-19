@@ -112,9 +112,7 @@ class _Domain:
         self.signals: list[StrategistSignalWrite] = []
         self.verdicts: list[CriticVerdictWrite] = []
 
-    async def analysis_subjects(
-        self, as_of: date, session: date
-    ) -> tuple[AnalysisSubject, ...]:
+    async def analysis_subjects(self, as_of: date, session: date) -> tuple[AnalysisSubject, ...]:
         del as_of, session
         return self._subjects
 
@@ -130,9 +128,7 @@ class _Domain:
         self.news_calls.append((session, tickers, limit))
         return self._headlines
 
-    async def pick_indicators(
-        self, as_of: date, session: date
-    ) -> dict[str, RankedCandidate]:
+    async def pick_indicators(self, as_of: date, session: date) -> dict[str, RankedCandidate]:
         del as_of, session
         return dict(self._indicators)
 
@@ -180,11 +176,12 @@ def _job(
     *,
     headlines_per_ticker: int = 5,
     risk_off_action: str = "penalty",
+    gates: GatesConfig | None = None,
 ) -> AnalysisJob:
     return AnalysisJob(
         store=_Store(domain),
         analyzer=analyzer,
-        gates=GatesConfig(evidence_max_age_minutes=2_880),
+        gates=gates or GatesConfig(evidence_max_age_minutes=2_880),
         profile=ProfileConfig(
             buy_threshold=0.65,
             sell_threshold=0.60,
@@ -202,9 +199,9 @@ async def test_every_ticker_in_scope_gets_a_signal() -> None:
     domain = _Domain((_subject("AAA", 1), _subject("BBB", 2), _subject("CCC", 3)))
 
     # When
-    outcomes = (await _job(domain, _Analyzer(strategy=0.9)).run(
-        as_of=_AS_OF, session=_SESSION
-    )).outcomes
+    outcomes = (
+        await _job(domain, _Analyzer(strategy=0.9)).run(as_of=_AS_OF, session=_SESSION)
+    ).outcomes
 
     # Then
     assert [outcome.ticker for outcome in outcomes] == ["AAA", "BBB", "CCC"]
@@ -218,9 +215,9 @@ async def test_a_held_ticker_whose_thesis_collapsed_is_sold() -> None:
     domain = _Domain((_subject("HELD", rank=15, score=0.1),), (_position("HELD"),))
 
     # When
-    outcomes = (await _job(domain, _Analyzer(strategy=0.1)).run(
-        as_of=_AS_OF, session=_SESSION
-    )).outcomes
+    outcomes = (
+        await _job(domain, _Analyzer(strategy=0.1)).run(as_of=_AS_OF, session=_SESSION)
+    ).outcomes
 
     # Then
     assert outcomes[0].side == "sell"
@@ -234,9 +231,9 @@ async def test_the_same_collapse_on_a_ticker_we_do_not_own_is_only_a_hold() -> N
     domain = _Domain((_subject("NOTHELD", rank=15, score=0.1),))
 
     # When
-    outcomes = (await _job(domain, _Analyzer(strategy=0.1)).run(
-        as_of=_AS_OF, session=_SESSION
-    )).outcomes
+    outcomes = (
+        await _job(domain, _Analyzer(strategy=0.1)).run(as_of=_AS_OF, session=_SESSION)
+    ).outcomes
 
     # Then
     assert outcomes[0].side == "hold"
@@ -333,9 +330,7 @@ async def test_the_collected_headlines_reach_the_evidence_synthesis() -> None:
     박탈된다 — 수집·저장해놓고 판단에 한 글자도 못 보태는 유령이 된다.
     """
     # Given
-    domain = _Domain(
-        (_subject("AAA"),), headlines={"AAA": ("FDA approves the thing",)}
-    )
+    domain = _Domain((_subject("AAA"),), headlines={"AAA": ("FDA approves the thing",)})
     analyzer = _Analyzer(strategy=0.9)
 
     # When
@@ -402,9 +397,9 @@ async def test_a_high_ranking_holding_can_still_be_sold() -> None:
     domain = _Domain((_subject("HELD", rank=1, score=0.95),), (_position("HELD"),))
 
     # When
-    outcomes = (await _job(domain, _Analyzer(strategy=0.1)).run(
-        as_of=_AS_OF, session=_SESSION
-    )).outcomes
+    outcomes = (
+        await _job(domain, _Analyzer(strategy=0.1)).run(as_of=_AS_OF, session=_SESSION)
+    ).outcomes
 
     # Then
     assert outcomes[0].side == "sell"
@@ -422,9 +417,11 @@ async def test_the_regime_reaches_the_judgement_under_the_persona_that_declared_
     domain = _Domain((_subject("AAA"),), macro=("risk_off", 0.5))
 
     # When: 감수하겠다고 선언한 성향
-    outcomes = (await _job(
-        domain, _Analyzer(strategy=0.9), risk_off_action="penalty"
-    ).run(as_of=_AS_OF, session=_SESSION)).outcomes
+    outcomes = (
+        await _job(domain, _Analyzer(strategy=0.9), risk_off_action="penalty").run(
+            as_of=_AS_OF, session=_SESSION
+        )
+    ).outcomes
 
     # Then: 매수까지 가되 감점은 받는다 — 같은 악재로 두 번 벌하지 않는다
     assert outcomes[0].side == "buy"
@@ -455,9 +452,11 @@ async def test_a_missing_macro_snapshot_neither_penalises_nor_blocks() -> None:
     domain = _Domain((_subject("AAA"),), macro=None)
 
     # When
-    outcomes = (await _job(domain, _Analyzer(strategy=0.9), risk_off_action="no_new_buys").run(
-        as_of=_AS_OF, session=_SESSION
-    )).outcomes
+    outcomes = (
+        await _job(domain, _Analyzer(strategy=0.9), risk_off_action="no_new_buys").run(
+            as_of=_AS_OF, session=_SESSION
+        )
+    ).outcomes
 
     # Then
     assert domain.verdicts[0].category != "macro_riskoff"
@@ -561,3 +560,61 @@ async def test_a_model_that_never_answers_fails_the_job_loudly() -> None:
         _ = await _job(domain, _FragileAnalyzer(fails_for="ticker=")).run(
             as_of=_AS_OF, session=_SESSION
         )
+
+
+# --- 크리틱 승인 문턱의 소유권 ---------------------------------------------
+# 구 러너 삭제로 role_08 서비스를 통해 이 규칙을 고정하던 test_critic_threshold_
+# ownership이 사라졌다. 규칙 자체는 분석 잡(job.py의 threshold 계산)에 그대로
+# 살아 있으므로 대체 테스트를 여기 둔다 — 삭제 커밋과 같은 커밋이다.
+
+
+def _gates(**overrides: float) -> GatesConfig:
+    return GatesConfig(evidence_max_age_minutes=2_880, **overrides)  # pyright: ignore[reportArgumentType]
+
+
+@pytest.mark.anyio
+async def test_the_approval_threshold_comes_from_gates_not_the_analyzer() -> None:
+    """문턱의 소유자는 config다. 크리틱 점수가 그것을 넘어야 승인이다."""
+    # Given: 같은 반박 점수(0.50)를 문턱만 바꿔 두 번 통과시킨다.
+    # 강세 확신은 0.75 — 과신 구간(기본 0.90) **아래**여야 이 테스트가 재는 것이
+    # 승인 문턱 하나로 남는다. 0.90을 쓰면 과신 상향에 걸려 원인이 섞인다.
+    lenient = _Domain((_subject("AAA", 1),))
+    strict = _Domain((_subject("AAA", 1),))
+
+    # When
+    _ = await _job(
+        lenient, _Analyzer(strategy=0.75, critic=0.50), gates=_gates(critic_approval=0.40)
+    ).run(as_of=_AS_OF, session=_SESSION)
+    _ = await _job(
+        strict, _Analyzer(strategy=0.75, critic=0.50), gates=_gates(critic_approval=0.60)
+    ).run(as_of=_AS_OF, session=_SESSION)
+
+    # Then
+    assert lenient.verdicts[0].decision == "pass"
+    assert strict.verdicts[0].decision == "reject"
+
+
+@pytest.mark.anyio
+async def test_overconfidence_raises_the_bar_the_proposal_must_clear() -> None:
+    """과신할수록 반박을 더 세게 통과해야 한다(M4 승인 문턱 규칙 승계)."""
+    # Given: 같은 크리틱 점수인데 강세 확신만 과신 구간으로 올린다.
+    # 확신도는 모델 점수와 **같지 않다** — 스크리닝 점수가 섞여 들어간다
+    # (strategy 0.70 → conviction 0.80). 그래서 구간을 모델 점수가 아니라
+    # 실제 확신도 기준으로 잡는다.
+    calm = _Domain((_subject("AAA", 1),))
+    overconfident = _Domain((_subject("AAA", 1),))
+    gates = _gates(
+        critic_approval=0.40, overconfidence_conviction=0.90, overconfidence_approval=0.90
+    )
+
+    # When
+    _ = await _job(calm, _Analyzer(strategy=0.70, critic=0.50), gates=gates).run(
+        as_of=_AS_OF, session=_SESSION
+    )
+    _ = await _job(overconfident, _Analyzer(strategy=0.99, critic=0.50), gates=gates).run(
+        as_of=_AS_OF, session=_SESSION
+    )
+
+    # Then
+    assert calm.verdicts[0].decision == "pass"
+    assert overconfident.verdicts[0].decision == "reject"

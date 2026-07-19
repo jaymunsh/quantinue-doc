@@ -1,6 +1,5 @@
 """Configuration boundary tests."""
 
-from dataclasses import fields
 from decimal import Decimal
 
 import pytest
@@ -10,7 +9,6 @@ from pydantic_settings import SettingsConfigDict
 from quantinue.core.config import BrokerMode, DataMode, LlmMode, Settings
 from quantinue.orchestration.policy import AllocationConfig, PipelinePolicy
 from quantinue.roles.role_09_risk_portfolio.contracts import RiskPortfolioInput
-from quantinue.roles.role_09_risk_portfolio.service import RiskPortfolio
 
 
 class IsolatedSettings(Settings):
@@ -221,12 +219,12 @@ def test_the_daily_order_cap_default_agrees_everywhere() -> None:
 
     실효값의 단일 소유자는 mvp2.allocation.daily_new_order_cap이고, 나머지는
     전부 그 값(5)에 정렬한다. 이 테스트는 다음 드리프트를 커밋 시점에 잡는다.
+
+    확인 지점이 넷에서 셋으로 줄었다 — role_09 **서비스**의 기본값은 구 러너와
+    함께 죽었다. 남은 셋(Settings·PipelinePolicy·RiskPortfolioInput)은 전부
+    살아 있는 소비자를 갖는다: 배분 잡이 RiskPortfolioInput을 만든다.
     """
     owner = AllocationConfig().daily_new_order_cap
-    service_default = next(
-        item.default for item in fields(RiskPortfolio) if item.name == "daily_new_order_cap"
-    )
     assert Settings.model_fields["daily_new_order_cap"].default == owner
     assert PipelinePolicy.model_fields["daily_new_order_cap"].default == owner
-    assert service_default == owner
     assert RiskPortfolioInput.model_fields["daily_new_order_cap"].default == owner

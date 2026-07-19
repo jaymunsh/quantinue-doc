@@ -5,8 +5,7 @@ from decimal import Decimal
 import anyio
 import pytest
 
-from quantinue.broker.mock import MockBroker
-from quantinue.core.contracts import PipelineContext, PipelineRequest
+from quantinue.core.contracts import PipelineRequest
 from quantinue.db.domain_records import InsufficientSimulatedCashError
 from quantinue.db.memory import InMemoryRunStore
 from quantinue.db.simulated_portfolio import (
@@ -14,7 +13,6 @@ from quantinue.db.simulated_portfolio import (
     SimulatedOrder,
     SimulatedOrderStatus,
 )
-from quantinue.roles.role_10_order_execution.service import OrderExecution
 
 NOW = datetime(2026, 7, 14, 1, tzinfo=UTC)
 OPENING_CASH = Decimal("1000000.00")
@@ -93,58 +91,6 @@ async def test_memory_ledger_concurrent_same_fill_identity_is_atomic() -> None:
     assert snapshot.account.current_cash == Decimal("999800.00")
     assert len(snapshot.orders) == 1
     assert len(snapshot.fills) == 1
-
-
-@pytest.mark.anyio
-async def test_role_10_real_mock_fill_updates_memory_portfolio() -> None:
-    # Given
-    store = InMemoryRunStore()
-    role = OrderExecution(MockBroker(), store)
-    request = PipelineRequest(ticker="NVDA", cycle_ts=NOW)
-    context = PipelineContext(request=request).add_stage("08", "critic", "approved")
-    context = context.add_stage("09", "risk", "buy planned")
-    context = replace(
-        context,
-        last_price=100.0,
-        quantity=2,
-        stop_loss=85.0,
-        take_profit=120.0,
-        signal_id=101,
-        account_id=1,
-    )
-
-    # When
-    result = await role.execute(context)
-
-    # Then
-    snapshot = await store.simulated_portfolio(OPENING_CASH)
-    assert result.order is not None
-    assert result.order.status == "filled"
-    assert snapshot.account.current_cash == Decimal("999800.00")
-    assert snapshot.positions[0].quantity == 2
-    assert snapshot.positions[0].average_cost == Decimal("100.00")
-
-
-@pytest.mark.anyio
-async def test_role_10_zero_quantity_does_not_create_local_ledger_entries() -> None:
-    # Given
-    store = InMemoryRunStore()
-    role = OrderExecution(MockBroker(), store)
-    context = replace(
-        PipelineContext(request=PipelineRequest(ticker="NVDA", cycle_ts=NOW)),
-        quantity=0,
-        stop_loss=85.0,
-        take_profit=120.0,
-    )
-
-    # When
-    result = await role.execute(context)
-
-    # Then
-    snapshot = await store.simulated_portfolio(OPENING_CASH)
-    assert result.order is None
-    assert snapshot.orders == ()
-    assert snapshot.fills == ()
 
 
 @pytest.mark.anyio

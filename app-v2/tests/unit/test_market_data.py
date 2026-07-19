@@ -7,13 +7,8 @@ import httpx2
 import pytest
 from pydantic import ValidationError
 
-from quantinue.broker.mock import MockBroker
 from quantinue.core.config import DataMode, Settings
-from quantinue.core.contracts import PipelineContext, PipelineRequest
 from quantinue.core.errors import HttpFailureError, ValidationFailureError
-from quantinue.core.ontology import Regime
-from quantinue.db.store import InMemoryRunStore
-from quantinue.llm.provider import DeterministicAnalyzer
 from quantinue.market_data import (
     HTTP_CLIENT_POLICY,
     FixtureMarketData,
@@ -23,14 +18,6 @@ from quantinue.market_data import (
 )
 from quantinue.market_data.factory import build_market_data
 from quantinue.market_data.models import TickerNewsQuery
-from quantinue.orchestration.factory import build_roles
-from quantinue.orchestration.failure_policy import classify_failure
-from quantinue.orchestration.pipeline import PipelineOrchestrator
-from quantinue.roles.role_01_universe_screener.service import UniverseScreener
-from quantinue.roles.role_02_technical_analysis.service import TechnicalAnalysis
-from quantinue.roles.role_04_macro_analysis.service import MacroAnalysis
-from quantinue.roles.role_05_disclosure_analysis.service import DisclosureAnalysis
-from quantinue.roles.role_06_news_analysis.service import NewsAnalysis
 
 
 def test_owned_http_factory_exposes_required_transport_policy() -> None:
@@ -77,72 +64,6 @@ def test_data_mode_selects_fixture_or_public_adapter() -> None:
 
 
 @pytest.mark.anyio
-async def test_public_market_data_is_injected_into_all_data_roles() -> None:
-    # Given
-    source = HttpMarketData(
-        build_http_client(
-            transport=httpx2.MockTransport(lambda request: httpx2.Response(200, request=request))
-        ),
-        MarketDataEndpoints.defaults(),
-    )
-
-    # When
-    roles = build_roles(DeterministicAnalyzer(), broker=MockBroker(), market_data=source)
-
-    # Then
-    assert isinstance(roles[0], UniverseScreener)
-    assert isinstance(roles[1], TechnicalAnalysis)
-    assert isinstance(roles[3], MacroAnalysis)
-    assert isinstance(roles[4], DisclosureAnalysis)
-    assert isinstance(roles[5], NewsAnalysis)
-    assert roles[0].market_data is source
-    assert roles[1].market_data is source
-    assert roles[3].market_data is source
-    assert roles[4].market_data is source
-    assert roles[5].market_data is source
-    await source.aclose()
-
-
-def test_explicit_fixture_provider_is_not_hidden_by_composition() -> None:
-    # Given
-    source = FixtureMarketData()
-
-    # When
-    roles = build_roles(DeterministicAnalyzer(), MockBroker(), source)
-
-    # Then
-    assert isinstance(roles[0], UniverseScreener)
-    assert isinstance(roles[1], TechnicalAnalysis)
-    assert isinstance(roles[3], MacroAnalysis)
-    assert isinstance(roles[4], DisclosureAnalysis)
-    assert isinstance(roles[5], NewsAnalysis)
-    assert roles[0].market_data is source
-    assert roles[1].market_data is source
-    assert roles[3].market_data is source
-    assert roles[4].market_data is source
-    assert roles[5].market_data is source
-
-
-@pytest.mark.anyio
-async def test_orchestrator_closes_owned_public_market_data() -> None:
-    # Given
-    client = build_http_client(
-        transport=httpx2.MockTransport(lambda request: httpx2.Response(200, request=request))
-    )
-    source = HttpMarketData(
-        client,
-        MarketDataEndpoints.defaults(),
-    )
-    orchestrator = PipelineOrchestrator((), InMemoryRunStore())
-    orchestrator.own_resource(source)
-
-    # When
-    await orchestrator.close()
-
-    # Then
-    assert client.is_closed is True
-
-
 def test_public_defaults_require_no_secret_query_parameters() -> None:
     # Given / When
     endpoints = MarketDataEndpoints.defaults()
@@ -334,14 +255,11 @@ async def test_ticker_news_http_outage_remains_retryable() -> None:
     )
 
     # When / Then
-    with pytest.raises(HttpFailureError) as captured:
+    with pytest.raises(HttpFailureError):
         _ = await source.ticker_news(
             TickerNewsQuery(ticker="NVDA", company_name="NVIDIA Corporation"), "news-outage"
         )
     await source.aclose()
-    decision = classify_failure(captured.value)
-    assert decision.retryable is True
-    assert decision.failure.error_code == "TRANSIENT_HTTP_FAILURE"
 
 
 @pytest.mark.anyio
@@ -427,12 +345,9 @@ async def test_unusable_fred_csv_is_a_typed_validation_failure(payload: str) -> 
     )
 
     # When / Then
-    with pytest.raises(ValidationFailureError) as captured:
+    with pytest.raises(ValidationFailureError):
         _ = await source.macro("DFF", "invalid-fred-run")
     await source.aclose()
-    decision = classify_failure(captured.value)
-    assert decision.retryable is False
-    assert decision.failure.error_code == "VALIDATION_FAILURE"
 
 
 @pytest.mark.anyio
@@ -448,43 +363,9 @@ async def test_fred_transport_failure_remains_retryable() -> None:
     )
 
     # When / Then
-    with pytest.raises(httpx2.ReadError) as captured:
+    with pytest.raises(httpx2.ReadError):
         _ = await source.macro("DFF", "transport-fred-run")
     await source.aclose()
-    decision = classify_failure(captured.value)
-    assert decision.retryable is True
-    assert decision.failure.error_code == "TRANSPORT_FAILURE"
-
-
-@pytest.mark.anyio
-async def test_role04_uses_latest_dff_for_rate_and_risk() -> None:
-    # Given
-    observed = datetime(2026, 7, 14, 20, tzinfo=UTC)
-
-    def handler(request: httpx2.Request) -> httpx2.Response:
-        return httpx2.Response(
-            200,
-            request=request,
-            text="observation_date,DFF\n2026-07-10,9.99\n",
-        )
-
-    source = HttpMarketData(
-        build_http_client(transport=httpx2.MockTransport(handler)),
-        MarketDataEndpoints.defaults(),
-        clock=lambda: observed,
-    )
-    context = PipelineContext(request=PipelineRequest(ticker="NVDA", cycle_ts=observed))
-
-    # When
-    result = await MacroAnalysis(source).execute(context)
-    await source.aclose()
-
-    # Then
-    assert result.macro_output is not None
-    assert result.macro_output.rate == 9.99
-    assert result.macro_output.risk_score == pytest.approx(0.8325)
-    assert result.macro_output.regime is Regime.RISK_OFF
-    assert "DFF 9.99%" in result.stages[-1].summary
 
 
 @pytest.mark.anyio
@@ -617,12 +498,9 @@ async def test_nasdaq_embedded_failure_code_is_a_typed_fetch_error() -> None:
     )
 
     # When / Then
-    with pytest.raises(ValidationFailureError) as captured:
+    with pytest.raises(ValidationFailureError):
         _ = await source.candles("NVDA", "embedded-failure-run")
     await source.aclose()
-    decision = classify_failure(captured.value)
-    assert decision.retryable is False
-    assert decision.failure.error_code == "VALIDATION_FAILURE"
 
 
 @pytest.mark.anyio
@@ -663,12 +541,9 @@ async def test_nasdaq_unusable_candle_payload_is_a_typed_fetch_error(
     )
 
     # When / Then
-    with pytest.raises(ValidationFailureError) as captured:
+    with pytest.raises(ValidationFailureError):
         _ = await source.candles("NVDA", "unusable-payload-run")
     await source.aclose()
-    decision = classify_failure(captured.value)
-    assert decision.retryable is False
-    assert decision.failure.error_code == "VALIDATION_FAILURE"
 
 
 @pytest.mark.anyio
@@ -684,12 +559,9 @@ async def test_candle_http_outage_uses_retryable_http_classification(status_code
     )
 
     # When / Then
-    with pytest.raises(HttpFailureError) as captured:
+    with pytest.raises(HttpFailureError):
         _ = await source.candles("NVDA", "http-outage-run")
     await source.aclose()
-    decision = classify_failure(captured.value)
-    assert decision.retryable is True
-    assert decision.failure.error_code == "TRANSIENT_HTTP_FAILURE"
 
 
 @pytest.mark.anyio
@@ -720,12 +592,9 @@ async def test_http_failure_is_typed_with_source_context() -> None:
 
     # When / Then
     source = HttpMarketData(client, endpoints)
-    with pytest.raises(HttpFailureError) as captured:
+    with pytest.raises(HttpFailureError):
         _ = await source.screener("run-3")
     await source.aclose()
-    decision = classify_failure(captured.value)
-    assert decision.retryable is True
-    assert decision.failure.error_code == "TRANSIENT_HTTP_FAILURE"
 
 
 @pytest.mark.anyio
