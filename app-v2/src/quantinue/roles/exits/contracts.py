@@ -57,6 +57,12 @@ class OpenPosition:
     stop_price: Decimal | None
     take_profit_price: Decimal | None
     filled_on: date
+    # 진입을 결정한 성향. 청산은 새 판단이 아니라 **끝난 논지의 마무리**이므로
+    # 매수와 같은 페르소나로 기록돼야 role_11이 자기 판단의 결말을 찾을 수 있다.
+    # 계좌가 아니라 진입 시그널에서 가져오는 이유: tb_account.inv_type은
+    # nullable이라 없을 수 있는데, 진입 시그널의 inv_type은 NOT NULL이다 —
+    # 즉 추측하지 않고도 항상 답이 있다.
+    inv_type: str = "aggressive"
 
 
 @dataclass(frozen=True, slots=True)

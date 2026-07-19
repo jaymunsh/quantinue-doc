@@ -166,7 +166,7 @@ class ExitJob:
                 summary=f"{decision.reason.value} exit",
                 decision_close=decision.reference_price,
                 evidence=(),
-                inv_type="aggressive",
+                inv_type=position.inv_type,
             )
         )
         return await domain.reserve_close_order(

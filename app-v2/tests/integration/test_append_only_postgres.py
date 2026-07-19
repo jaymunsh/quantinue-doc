@@ -75,6 +75,7 @@ async def test_postgres_keeps_first_ledger_rows_when_conflicting_payload_replays
         summary="first strategist summary",
         decision_close=Decimal(100),
         evidence=("initial:strategy",),
+        inv_type="aggressive",
         disclosure_score=Decimal("0.8"),
         news_score=Decimal("0.7"),
     )
@@ -213,6 +214,7 @@ async def test_postgres_keeps_first_ledger_rows_when_conflicting_payload_replays
             summary="conflicting strategist summary",
             decision_close=Decimal(1),
             evidence=("conflicting:strategy",),
+            inv_type="aggressive",
             disclosure_score=Decimal("0.001"),
             news_score=Decimal("0.001"),
         )

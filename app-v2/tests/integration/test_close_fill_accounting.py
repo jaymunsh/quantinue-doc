@@ -57,6 +57,7 @@ async def _signal_for(
         last_price=100.0,
         side=side,
         conviction=0.8,
+        inv_type="aggressive",
         critic_approved=True,
     )
     result = await store.stage_completed("08", context, context)

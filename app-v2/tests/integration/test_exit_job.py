@@ -26,14 +26,16 @@ _INSERT_SIGNAL = """INSERT INTO tb_strategist_signals(
     trade_date,ticker,cycle_ts,inv_type,side,conviction,
     signal_consensus,summary,evidence,sizing_hint,decision_close,current_price,
     day_high,day_low,close_prev,volume,turnover,high_52w,low_52w)
-VALUES (:day,:ticker,:cycle,'aggressive','buy',0.800,
+VALUES (:day,:ticker,:cycle,:inv_type,'buy',0.800,
     2,'fixture','[]','{}',100,100,100,100,100,0,0,100,100)
 RETURNING id"""
 
 _ENTRY_DAY = date(2026, 7, 6)
 
 
-async def _seed_holding(database_url: str, suffix: str) -> tuple[int, str]:
+async def _seed_holding(
+    database_url: str, suffix: str, inv_type: str = "aggressive"
+) -> tuple[int, str]:
     """Seed one account holding 2 shares bought at 100 with an 85/120 bracket."""
     engine = create_async_engine(database_url)
     ticker = f"EXJ{suffix}"
@@ -43,10 +45,10 @@ async def _seed_holding(database_url: str, suffix: str) -> tuple[int, str]:
                 """INSERT INTO tb_account(
                     broker_account_id,currency,cash,equity,buying_power,is_paper,
                     status,inv_type)
-                VALUES (:bid,'USD',100000,100000,100000,TRUE,'active','aggressive')
+                VALUES (:bid,'USD',100000,100000,100000,TRUE,'active',:inv_type)
                 RETURNING id"""
             ),
-            {"bid": f"TEST-EXITJOB-{suffix}"},
+            {"bid": f"TEST-EXITJOB-{suffix}", "inv_type": inv_type},
         )
         _ = await connection.execute(
             text(
@@ -70,6 +72,7 @@ async def _seed_holding(database_url: str, suffix: str) -> tuple[int, str]:
                 "day": _ENTRY_DAY,
                 "ticker": ticker,
                 "cycle": datetime(2026, 7, 6, 14, tzinfo=UTC),
+                "inv_type": inv_type,
             },
         )
         order_id = await connection.scalar(
@@ -266,6 +269,7 @@ async def _seed_second_position(database_url: str, account_id: int, ticker: str)
                 "ticker": ticker,
                 # 진입 시그널끼리는 cycle_ts로 갈린다 — 다른 날 산 두 번째 매수.
                 "cycle": datetime(2026, 7, 6, 15, tzinfo=UTC),
+                "inv_type": "aggressive",
             },
         )
         order_id = await connection.scalar(
@@ -326,4 +330,40 @@ async def test_two_open_positions_in_one_ticker_both_close() -> None:
         if position.ticker == ticker
     ]
     assert remaining == []
+    await store.close()
+
+
+@pytest.mark.anyio
+async def test_the_close_signal_inherits_the_persona_that_opened_the_position() -> None:
+    """청산 시그널의 성향은 진입을 결정한 그 성향이어야 한다.
+
+    지금까지는 리터럴 'aggressive'가 박혀 있었다. 원장의 유일성 축이
+    ``(ticker, cycle_ts, inv_type)``이라 이름이 틀리면 conservative 계좌의
+    매수와 매도가 서로 다른 페르소나의 기록으로 갈라지고, role_11이 자기
+    판단의 결말을 못 찾는다. 청산은 새 판단이 아니라 **끝난 논지의 마무리**다.
+    """
+    # Given: a conservative account holding a position it decided on as conservative.
+    assert DATABASE_URL is not None
+    account_id, ticker = await _seed_holding(DATABASE_URL, "persona", "conservative")
+    store = PostgresRunStore(DATABASE_URL)
+    await store.initialize()
+    job = ExitJob(store=store, broker=MockBroker(), time_exit_bdays=10)
+
+    # When
+    closed = await job.run(as_of=date(2026, 7, 9), observations=_stopped_out(ticker))
+
+    # Then
+    assert len(closed) == 1
+    engine = create_async_engine(DATABASE_URL)
+    async with engine.begin() as connection:
+        inv_type = await connection.scalar(
+            text(
+                """SELECT s.inv_type FROM tb_order o
+                JOIN tb_strategist_signals s ON s.id = o.signal_id
+                WHERE o.account_id = :account AND o.order_type = 'close'"""
+            ),
+            {"account": account_id},
+        )
+    await engine.dispose()
+    assert inv_type == "conservative"
     await store.close()

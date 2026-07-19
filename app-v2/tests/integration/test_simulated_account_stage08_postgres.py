@@ -58,6 +58,7 @@ async def test_component_08_second_distinct_run_does_not_reset_debited_account()
         last_price=100.0,
         side="buy",
         conviction=0.8,
+        inv_type="aggressive",
         critic_approved=True,
     )
     first_result = await store.stage_completed("08", first_context, first_context)
@@ -95,6 +96,7 @@ async def test_component_08_second_distinct_run_does_not_reset_debited_account()
         last_price=120.0,
         side="buy",
         conviction=0.7,
+        inv_type="aggressive",
         critic_approved=True,
     )
     second_result = await store.stage_completed("08", second_context, second_context)
@@ -131,6 +133,7 @@ async def test_memory_and_postgres_public_store_contracts_produce_exact_snapshot
         last_price=125.0,
         side="buy",
         conviction=0.8,
+        inv_type="aggressive",
         critic_approved=True,
     )
     postgres_context = await postgres.stage_completed(

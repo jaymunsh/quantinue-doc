@@ -86,6 +86,7 @@ def build_roles(  # noqa: PLR0913 - one composition seam per replaceable collabo
     profile: ProfileConfig = DEFAULT_PROFILE,
     disclosure: DisclosureConfig = DEFAULT_DISCLOSURE,
     profiles: Mapping[str, ProfileConfig] | None = None,
+    profile_name: str = DEFAULT_PROFILE_NAME,
 ) -> tuple[PipelineRole, ...]:
     """Compose the replaceable role implementations in canonical order."""
     selected_store = store or InMemoryRunStore()
@@ -102,6 +103,7 @@ def build_roles(  # noqa: PLR0913 - one composition seam per replaceable collabo
             policy.thresholds.strategist_buy_score,
             gates,
             profile,
+            profile_name,
         ),
         Critic(
             analyzer,

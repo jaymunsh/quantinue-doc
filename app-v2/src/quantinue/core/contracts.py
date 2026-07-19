@@ -286,6 +286,9 @@ class PipelineContext:
     news_analysis: AnalysisResult | None = None
     conviction: float | None = None
     side: str | None = None
+    # 어느 성향으로 판단했는가. 원장의 유일성 축이라 기록 시점에 다시 추측하면
+    # 안 되고, 판단한 역할(07)이 직접 남겨야 한다.
+    inv_type: str | None = None
     strategy_output: StrategyOutput | None = None
     critic_approved: bool = False
     critic_verdict: CriticVerdict | None = None

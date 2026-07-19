@@ -417,6 +417,7 @@ class PostgresDomainRepository:
         """
         orders = self._table("tb_order")
         fills = self._table("tb_fill")
+        signals = self._table("tb_strategist_signals")
         async with self._engine.begin() as connection:
             rows = (
                 await connection.execute(
@@ -429,9 +430,16 @@ class PostgresDomainRepository:
                         orders.c.entry_price,
                         orders.c.stop_price,
                         orders.c.take_profit_price,
+                        # 청산 시그널이 물려받을 성향. 계좌가 아니라 진입 시그널이
+                        # 출처인 이유는 OpenPosition 주석 참조.
+                        signals.c.inv_type,
                         func.min(fills.c.filled_at).label("first_filled_at"),
                     )
-                    .select_from(orders.join(fills, fills.c.order_id == orders.c.id))
+                    .select_from(
+                        orders.join(fills, fills.c.order_id == orders.c.id).join(
+                            signals, signals.c.id == orders.c.signal_id
+                        )
+                    )
                     .where(_is_open_position(orders), fills.c.side == "buy")
                     .group_by(
                         orders.c.id,
@@ -442,6 +450,7 @@ class PostgresDomainRepository:
                         orders.c.entry_price,
                         orders.c.stop_price,
                         orders.c.take_profit_price,
+                        signals.c.inv_type,
                     )
                     # 순서를 고정한다 — 청산도 일일 예산을 쓰게 되면 실행마다
                     # 다른 포지션이 먼저 처리되는 일이 없어야 한다.
@@ -465,6 +474,7 @@ class PostgresDomainRepository:
                     else Decimal(str(row.take_profit_price))
                 ),
                 filled_on=row.first_filled_at.date(),
+                inv_type=row.inv_type,
             )
             for row in rows
         )

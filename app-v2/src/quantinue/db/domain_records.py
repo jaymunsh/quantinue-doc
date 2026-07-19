@@ -22,10 +22,15 @@ class StrategistSignalWrite:
     summary: str
     decision_close: Decimal
     evidence: tuple[str, ...]
+    # 기본값이 없는 이유: 이 열은 `UNIQUE (ticker, cycle_ts, inv_type)`의 축이라
+    # 어느 페르소나가 판단했는지가 곧 행의 정체성이다. 기본값을 두면 부르는
+    # 쪽이 말하지 않아도 통과하는데, 실제로 그렇게 해서 aggressive로 돌린
+    # 판단이 원장에 전부 conservative로 찍혀 있었다 — 성향 2종 팬아웃이
+    # 붙는 순간 두 페르소나가 같은 행을 덮어쓴다. 말하지 않으면 못 쓰게 한다.
+    inv_type: str
     disclosure_score: Decimal = Decimal(0)
     news_score: Decimal = Decimal(0)
     signal_consensus: int = 0
-    inv_type: str = "conservative"
 
 
 @dataclass(frozen=True, slots=True)

@@ -5,6 +5,7 @@ from datetime import date
 from decimal import Decimal
 
 from quantinue.core.contracts import AccountOrderPlan, PipelineContext
+from quantinue.core.typing import require_value
 from quantinue.db.domain import PostgresDomainRepository
 from quantinue.db.domain_records import (
     AccountWrite,
@@ -154,6 +155,12 @@ async def persist_domain_stage(  # noqa: C901 - one branch per persisted stage
             summary="pipeline strategist decision",
             decision_close=price,
             evidence=tuple(item.evidence_id for item in result.evidence_trace),
+            # 여기서 성향을 다시 고르지 않는다. 판단한 역할(07)이 남긴 것을 그대로
+            # 옮길 뿐이다 — 기록 계층이 자기 판단으로 이름을 정하면 원장과 실제
+            # 판단이 어긋나고, 그게 정확히 지금까지 벌어진 일이었다.
+            inv_type=require_value(
+                result.inv_type, component="08", field_name="inv_type"
+            ),
             disclosure_score=Decimal(str(result.disclosure_score or 0)),
             news_score=Decimal(str(result.news_score or 0)),
             signal_consensus=result.signal_consensus or 0,

@@ -24,6 +24,11 @@ class Strategist:
     strategist_buy_score: float = 0.70
     gates: GatesConfig = DEFAULT_GATES
     profile: ProfileConfig = DEFAULT_PROFILE
+    # `profile`은 문턱 값만 들고 자기 이름을 모른다(yaml에서 이름은 선언 키다).
+    # 그런데 원장은 이름으로 행을 가른다 — 그래서 값과 이름을 함께 주입받고,
+    # 판단이 끝나면 이름을 결과에 남긴다. 기본값이 실제로 쓰이는 일이 없도록
+    # 조립 경로를 테스트가 고정한다(test_signal_inv_type.py).
+    profile_name: str = "aggressive"
     component: ClassVar[str] = "07"
     name: ClassVar[str] = "전략 종합"
 
@@ -71,6 +76,7 @@ class Strategist:
             context,
             conviction=conviction,
             side=side,
+            inv_type=self.profile_name,
             strategy_output=gated,
             signal_consensus=StrategyOutput.vote_consensus(
                 strategy_input, self.gates, self.profile, model_result.score

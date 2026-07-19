@@ -73,6 +73,7 @@ async def test_stage08_uses_session_trade_date_from_technical_snapshot() -> None
         last_price=128.4,
         side="hold",
         conviction=0.5,
+        inv_type="aggressive",
     )
 
     # When
@@ -87,7 +88,13 @@ async def test_stage08_uses_session_trade_date_from_technical_snapshot() -> None
 async def test_stage08_falls_back_to_cycle_date_without_technical_output() -> None:
     domain = RecordingDomain()
     request = PipelineRequest(ticker="NVDA", cycle_ts=datetime(2026, 7, 18, 13, 0, tzinfo=UTC))
-    context = PipelineContext(request=request, last_price=128.4, side="hold", conviction=0.5)
+    context = PipelineContext(
+        request=request,
+        last_price=128.4,
+        side="hold",
+        conviction=0.5,
+        inv_type="aggressive",
+    )
 
     _ = await persist_domain_stage(domain, _account(), "08", context)
 
