@@ -281,7 +281,7 @@
       </div>
       <button class="theme-btn" id="themeBtn" type="button" aria-label="다크모드 전환">🌙</button>
     </div>
-    <span class="rail-ver">v4.8 · MVP-2</span>
+    <span class="rail-ver">v4.9 · MVP-2</span>
 
     <nav class="nav" aria-label="주요 섹션">
       <div class="nav-group">시작</div>
@@ -1605,13 +1605,42 @@ erDiagram
       <details class="schema"><summary><code>06 대표 기사 선발</code><span class="sd">뉴스 집계의 얼굴 1건</span><span class="cnt">as-built → <span class="b b-hold">M2 개정</span></span></summary>
         <div style="padding:6px 16px 16px;font-size:14px;line-height:1.8">
           <b>as-built</b>: 관련성 점수(제목50·스니펫25·회사명 매칭) 최상위, 동률 시 published_at 최신 → canonical_url → index.<br>
-          <b><span class="b b-hold">M2 개정(하이브리드)</span></b>: ① 관련성 필터로 오귀속 차단(통과/탈락) → ② 통과분 중 <code>importance × 신뢰무게(w)</code> 최상위 1건, 동률 published_at 최신 → id. 신뢰무게 w = 확신도 × 확인계수(확정 1.0 / 소문 0.5) × 매체등급.
+          <b>M4 개정(as-built)</b>: ① 관련성 필터로 오귀속 차단(통과/탈락) → ② 통과분을 <b>신뢰가중 → 관련성 → 최신 → canonical_url</b> 순으로 랭크. 신뢰가중 = 매체등급 신뢰점수 × provenance 확신도.<br>
+          <b>원안에서 바뀐 이유</b>: <code>importance</code>는 <b>LLM 출력</b>인데 대표기사 선정은 LLM 호출보다 <b>먼저</b> 일어난다 — 선정 시점에 존재하지 않는 값이라 원안(<code>importance × w</code>)은 구현 불가. 상위 K건을 모두 LLM에 태우면 뉴스 토큰이 K배가 되어 일일 예산 가드와 충돌한다.<br>
+          <b>관련성을 2순위로 남긴 이유</b>: 완전히 빼면 <b>같은 매체의 두 기사가 동률</b>이 되어 URL 알파벳순으로 뽑힌다(기존 계약 테스트가 잡아냄). 신뢰가 매체를 고르고, 관련성이 그 안에서 기사를 고른다.
         </div>
       </details>
 
       <details class="schema"><summary><code>06 importance vs peak_importance</code><span class="sd">대세 vs 한 방</span><span class="cnt">M2</span></summary>
         <div style="padding:6px 16px 16px;font-size:14px;line-height:1.8">
-          <b>importance</b> = 신뢰가중 <b>평균</b>(전체 흐름의 대세). <b>peak_importance</b> = 신뢰 검증분 <b>최댓값</b>(큰 단일 촉매 경보). 예: 로이터 0.90 + 블로그 4건 0.20 → importance 0.38, peak 0.90. 판단: 둘 다 높으면 강한 후보, peak만 높으면 재확인 후 보류, importance만 높으면 우선순위 하향, 둘 다 낮으면 제외.
+          <b>M4 as-built</b>: 사이클당 대표기사 1건만 모델을 타므로 <b>importance</b> = 그 대표기사의 점수, <b>peak_importance</b> = <code>GREATEST(현재, 당일 해당 종목 최댓값)</code> — 장중에 식은 뉴스가 아침의 최고치를 지우지 않게. 설계 원안(신뢰가중 평균 vs 검증분 최댓값)은 다건 분석을 전제하며, 그건 예산 확보 후 재검토 대상.<br>
+          <b>원안(참고)</b>: <b>importance</b> = 신뢰가중 <b>평균</b>(전체 흐름의 대세). <b>peak_importance</b> = 신뢰 검증분 <b>최댓값</b>(큰 단일 촉매 경보). 예: 로이터 0.90 + 블로그 4건 0.20 → importance 0.38, peak 0.90. 판단: 둘 다 높으면 강한 후보, peak만 높으면 재확인 후 보류, importance만 높으면 우선순위 하향, 둘 다 낮으면 제외.
+        </div>
+      </details>
+
+      <details class="schema"><summary><code>05 공시 — 발행인 결속·기권</code><span class="sd">남의 회사 공시로 채점하지 않기</span><span class="cnt">M4 as-built</span></summary>
+        <div style="padding:6px 16px 16px;font-size:14px;line-height:1.8">
+          요청 종목의 <b>CIK로만</b> 조회한다(SEC <code>company_tickers.json</code>, 프로세스당 1회 캐시). <b>발견된 결함</b>: 그 전까지 CIK가 하드코딩(NVDA)돼 <b>모든 종목이 NVDA 공시로 채점</b>되고 있었다 — 07의 4표 중 1표와 강악재 차단 게이트가 거짓 입력 위에서 돌던 상태.<br>
+          <b>기권 규칙</b>: CIK 미해결 · 최근 공시 없음 · 판독 가능한 공시 없음 → <b>LLM 미호출 + 점수 부재</b>. 0점이 아니다 — 0점은 <code>hard_negative_max</code>(0.15)에 걸려 <b>무공시 종목의 매수를 전부 차단</b>한다. 부재는 악재가 아니라 침묵이다.<br>
+          <b>소유권 신고서(Form 3/4/5)</b>: config <code>mvp2.disclosure.llm_bypass_forms</code>로 후보에서 제외. 대형주는 Form 4를 상시 제출해 <b>최신 1건이 실질 8-K를 밀어낸다</b>. ownership XML 없이는 인사이더 매수/매도를 구분할 수 없어 점수를 지어내지 않는다.
+        </div>
+      </details>
+
+      <details class="schema"><summary><code>07 투표 기권과 consensus</code><span class="sd">침묵은 동의가 아니다</span><span class="cnt">M4 as-built</span></summary>
+        <div style="padding:6px 16px 16px;font-size:14px;line-height:1.8">
+          <b>기권 2종</b>: ① 뉴스 <code>source_trust &lt; 0.55</code> → 투표권 박탈(가중 하향 아님) ② 공시 부재 → 투표 제외. 둘 다 "믿을 수 없는 신호는 평균을 끌어내리는 대신 아예 빠진다"는 같은 원칙.<br>
+          <b><code>signal_consensus</code></b> = 살아남은 표 중 매수 문턱을 넘은 수(0~4). <b>게이트가 아니라 관측 지표</b> — 기록만 하고 판정에 쓰지 않는다(M7 학습 루프가 읽는다). 박탈된 표는 동의할 수 없다.<br>
+          <b>스키마 수정</b>: CHECK가 <code>0~3</code>이었으나 투표원이 실제로 4개(technical·disclosure·news·model)라 만장일치에서 INSERT가 깨졌다 → <code>0~4</code>.
+        </div>
+      </details>
+
+      <details class="schema"><summary><code>09·10 주문 직전 방어선 3종</code><span class="sd">갭·과열·거래정지</span><span class="cnt">M4 as-built</span></summary>
+        <div style="padding:6px 16px 16px;font-size:14px;line-height:1.8">
+          <b>① 프리마켓 갭 가드</b> — 분석 기준가(직전 종가) 대비 절대 이동 &gt; <code>gates.premarket_gap_max</code>(3%, ⏳잠정) → 신규 매수 보류. 금요일 종가로 만든 진입가·손절·익절은 월요일 갭업 뒤엔 <b>존재하지 않는 가격</b>을 가리킨다. 방향 무관 — 급락도 브래킷을 똑같이 무의미하게 만든다.<br>
+          <b>적용 창 한정</b>: 프리마켓 전체 + 개장 후 <code>gap_guard_open_minutes</code>(30분)까지만. <b>장중 3% 이동은 평범한 하루</b>라 종일 적용하면 정상 매수를 계속 막는다 — 3%가 의미를 갖는 건 밤사이 갭일 때뿐이다.<br>
+          <b>② late_entry</b> — 5일 수익률 &gt; <code>profiles[성향].late_entry_max</code>(공격 0.15 / 안전 0.12) → 신규 매수 금지. 이미 달린 뒤엔 남은 상승분보다 손절까지의 거리가 길다. 하락은 late_entry가 아니다.<br>
+          <b>③ halted</b> — 제출 직전 <code>GET /v2/assets/{symbol}</code>로 <code>tradable &amp;&amp; status=active</code> 확인. 조회 실패는 통과 처리(불안정한 엔드포인트가 전체 거래 중단이 되면 안 되고, 진짜 정지 종목은 제출 시점에 거부된다).<br>
+          발동은 전부 <code>skipped_reason</code>으로 기록된다 — 문턱 조정의 근거가 되는 관측치다.
         </div>
       </details>
 
@@ -1910,6 +1939,7 @@ erDiagram
       <p class="sec-intro">이 문서를 수정하면 표 맨 위에 한 줄 추가 + 버전 갱신 + git 커밋·태그.</p>
       <div class="twrap"><table>
         <tr><th>버전</th><th>날짜</th><th>수정자</th><th>변경 요약</th></tr>
+        <tr><td class="mono">v4.9</td><td class="mono">2026-07-19</td><td>문성혁 + Claude</td><td><b>M4 완료 — 판단 방어선(8건 + 신설 2건)</b> — <b>role_05 CIK 하드코딩 발견·수정</b>(모든 종목이 NVDA 공시로 채점되던 상태 — 4-2 게이트가 거짓 입력 위에서 돌고 있었다) · <b>공시 부재 = 투표 기권</b>(0점이면 hard_negative_max에 걸려 무공시 종목 매수 전면 차단) · 프리마켓 갭 가드(<b>세션 한정 적용</b> — 장중 3%는 평범한 이동) · late_entry(<b>ret_5d 퍼센트/분수 100배 불일치 수정</b>) · halted 사전 조회 · Form 4 오인 차단 커널(<b>ownership XML 필드 부재 확인 → 본체는 알파 항목으로 백로그</b>, T+5 지평 불일치) · consensus 실계산 + CHECK 0~3→0~4 · 대표기사 <b>신뢰가중 랭킹</b>(importance는 LLM 출력이라 선정 시점 부재 → 원안 개정) + peak_importance 실저장 · 유닛/웹 646 green · 통합 30 green</td></tr>
         <tr><td class="mono">v4.8</td><td class="mono">2026-07-18</td><td>문성혁 + Claude</td><td><b>M3 완료 — 깔때기 복원(Wave 1 종료)</b> — 유니버스 50→2,000 + <b>시총 정렬로 응답순 버그 수정</b> · 하드 필터(주가 $5·20일 평균 거래대금 $20M) 신설 · 오늘의 픽 10→50 · 폭은 전부 config 소유 · <b>일봉이 종목당 1콜(~3s)이라 가격 조회는 시총 상위 500으로 제한</b>(소스 제약, #logic 카드) · 역할별 타임아웃 오버라이드 신설 · 실행 검증 152초 완주</td></tr>
         <tr><td class="mono">v4.7</td><td class="mono">2026-07-18</td><td>문성혁 + Claude</td><td><b>M2 완료 — 스키마·계약 일괄 확장</b> — reason JSONB ×4(legacy 보존)·공시signal +2·side +sell·07/08 계보 10 ×2·신규 3테이블·tb_account 확장·config mvp2(profiles/gates/screening/exits/budget) · <b>critic <code>source</code>→<code>verdict_source</code> 동명 충돌 해소</b> · 멱등 마이그레이션으로 W0 실데이터 무손실 적용 검증(행수 동일·2회 멱등·신규설치 경로와 카탈로그 일치)</td></tr>
         <tr><td class="mono">v4.6</td><td class="mono">2026-07-18</td><td>문성혁 + Claude</td><td><b>M1 완료 — 자동 스케줄·슬롯 멱등</b> — slot_of 슬롯 양자화(같은 슬롯 = 런 1개, 기존 claim 재사용·신규 락 0) · NYSE 캘린더(XNYS·DST 검증·current_session) · CycleScheduler 60s 틱(거래일·세션·due 게이트, 기본 disabled) · catch-up=첫 틱 + /api/scheduler/catchup·status · 테스트 542 green(#logic 카드 신설)</td></tr>

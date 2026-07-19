@@ -6,7 +6,7 @@
 ## ⭐ 먼저 읽을 것
 
 1. **`docs/mvp2-planning/dev-playbook.md`** — 실행 정본. 마일스톤별 완료 표시(✅/🔶)와 남은 태스크, ⏳ 보완 목록이 전부 여기 있다.
-2. `docs/quantinue-integrated-design.html` — 설계 정본(v4.8). 확정 로직은 `#logic`, 결정 이력은 changelog.
+2. `docs/quantinue-integrated-design.html` — 설계 정본(v4.9). 확정 로직은 `#logic`, 결정 이력은 changelog.
 3. `docs/mvp2-planning/m4-scope-decisions.md` — **M4 범위 결정 기록**(2026-07-19). 코드 실사에서 나온 사실 F1~F8과 그에 따른 범위·순서 재정의(D1~D6). 각 결정에 근거와 "뒤집을 조건"을 병기 — 나중에 수정할 때 여기부터 볼 것.
 
 ## 현재 상태 (2026-07-19)
@@ -15,7 +15,7 @@
 |---|---|
 | 작업 브랜치 | **`sunghyuk`** (여기서 계속 작업) |
 | main 병합 | **Wave 0~1 병합 완료**(커밋 `818416e`, `--no-ff`). **push는 안 함** — 공유 저장소이고 `app/`에 다른 작업자 WIP가 있어 사용자 확인 후 진행 |
-| 테스트 | 유닛/웹 **592 green** · 통합 **30 green** · ruff clean |
+| 테스트 | 유닛/웹 **646 green** · 통합 **30 green** · ruff clean |
 | DB | app-v2 전용 **포트 5445**(`app-v2-db-1`), M2 마이그레이션 적용 완료. 1차 `app-db-1`(5444)은 **다른 작업자 WIP — 불간섭** |
 | 앱 실행 포트 | **8020** (8000은 다른 프로세스 점유) |
 
@@ -24,11 +24,11 @@
 - **M1** 슬롯 멱등·NYSE 캘린더·자동 스케줄러(config `mvp2.schedule.enabled=false`로 꺼둠)
 - **M2** 스키마·계약 일괄 확장 + 무손실 멱등 마이그레이션
 - **M3** 깔때기 복원 (2000 → 500 → 50 → 20)
-- **M4** 🔶 **4/8 진행** — 07 게이트 3종·08 합성 제거·과신 에스컬레이션·출처등급 완료
+- **M4** ✅ **완료 (2026-07-19)** — 방어선 8건 + 신설 2건(4-0 role_05 CIK 실배선 · 4-9 role_09 배선). 범위 결정 근거는 `m4-scope-decisions.md`
 
 ### 다음 할 일
 1. **월요일 개장 시(KST 22:30)**: playbook **W0-7**(실 페이퍼 무장 — ⚠️ 사용자 확인 필수) → **W0-8**(스모크·첫 체결) → T+5 시계 가동
-2. **M4 남은 4건**: 4-5 대표기사 하이브리드 · 4-6 Form 4 · 4-7 잔여 3건(consensus·late_entry·halted) · 4-8 프리마켓 갭 가드
+2. **개장 전 드라이런 1회** — 갭 가드·halted가 실제 로그에 찍히는지 + **block 매체 LLM 호출 0** 실측(M4 미검증 이월분)
 3. 이후 **M5 매도**(최대 설계 작업 — 착수 시 첫 태스크는 매도 주문 표현 설계) → M6 계좌·서킷
 
 ## 확정된 정책 (되묻지 말 것)
@@ -42,7 +42,7 @@
 
 ```bash
 cd app-v2
-uv run pytest tests/unit tests/test_web.py -q          # 592 green 유지
+uv run pytest tests/unit tests/test_web.py -q          # 646 green 유지
 uv run ruff check src tests
 uv run uvicorn quantinue.main:app --port 8020          # 8000 점유됨
 docker compose up -d db                                 # 5445
