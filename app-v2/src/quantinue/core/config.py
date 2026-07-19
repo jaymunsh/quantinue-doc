@@ -107,11 +107,6 @@ class Settings(BaseSettings):
     trading_enabled: bool = False
     control_room_token: SecretStr = SecretStr("")
     simulated_account_opening_cash_usd: SimulatedAccountOpeningCashUsd = Decimal("1000000.00")
-    max_app_order_exposure_usd: AppOrderExposureUsd = Decimal("1000.00")
-    # 기본 5 — 단일 소유자는 mvp2.allocation.daily_new_order_cap이고 여기는
-    # 그 값에 정렬한다(드리프트 고정 테스트 있음). .env가 구 러너에는 1을 준다.
-    daily_new_order_cap: int = Field(default=5, ge=1, le=100)
-    default_ticker: str = Field(default="NVDA", min_length=1, max_length=12)
 
     @field_validator("alpaca_base_url")
     @classmethod

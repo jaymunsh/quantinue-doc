@@ -7,7 +7,7 @@ from pydantic import SecretStr, ValidationError
 from pydantic_settings import SettingsConfigDict
 
 from quantinue.core.config import BrokerMode, DataMode, LlmMode, Settings
-from quantinue.orchestration.policy import AllocationConfig, PipelinePolicy
+from quantinue.orchestration.policy import AllocationConfig
 from quantinue.roles.role_09_risk_portfolio.contracts import RiskPortfolioInput
 
 
@@ -151,31 +151,13 @@ def test_selected_alpaca_mode_accepts_nonempty_secret_credentials() -> None:
     assert settings.broker_mode is BrokerMode.ALPACA
 
 
-def test_daily_new_order_cap_must_be_positive() -> None:
-    with pytest.raises(ValidationError):
-        _ = Settings.model_validate({"daily_new_order_cap": 0})
-
-
-def test_first_cycle_order_controls_default_to_one_thousand_usd_and_one_attempt() -> None:
+def test_simulated_opening_cash_is_one_million() -> None:
+    """모의 계좌 초기 자본은 살아 있다 — 화면과 포트폴리오 투영이 읽는다."""
     # Given / When
-    settings = IsolatedSettings()
-
-    # Then
-    assert settings.max_app_order_exposure_usd == Decimal("1000.00")
-    # 5는 mvp2.allocation.daily_new_order_cap(단일 소유자)에 정렬된 값이다.
-    assert settings.daily_new_order_cap == 5
-
-
-def test_simulated_opening_cash_is_one_million_and_independent_of_exposure_cap() -> None:
-    # Given / When
-    settings = IsolatedSettings(
-        simulated_account_opening_cash_usd=Decimal("1000000.00"),
-        max_app_order_exposure_usd=Decimal("1000.00"),
-    )
+    settings = IsolatedSettings(simulated_account_opening_cash_usd=Decimal("1000000.00"))
 
     # Then
     assert settings.simulated_account_opening_cash_usd == Decimal("1000000.00")
-    assert settings.max_app_order_exposure_usd == Decimal("1000.00")
 
 
 @pytest.mark.parametrize("opening_cash", ["0", "-0.01", "1000000.001"])
@@ -185,13 +167,6 @@ def test_simulated_opening_cash_requires_a_positive_usd_cent_amount(
     # Given / When / Then
     with pytest.raises(ValidationError):
         _ = IsolatedSettings.model_validate({"simulated_account_opening_cash_usd": opening_cash})
-
-
-@pytest.mark.parametrize("exposure", ["0", "-0.01", "1000.001"])
-def test_app_order_exposure_requires_a_positive_usd_cent_amount(exposure: str) -> None:
-    # Given / When / Then
-    with pytest.raises(ValidationError):
-        _ = IsolatedSettings.model_validate({"max_app_order_exposure_usd": exposure})
 
 
 def test_selected_local_mode_rejects_empty_key() -> None:
@@ -220,11 +195,11 @@ def test_the_daily_order_cap_default_agrees_everywhere() -> None:
     실효값의 단일 소유자는 mvp2.allocation.daily_new_order_cap이고, 나머지는
     전부 그 값(5)에 정렬한다. 이 테스트는 다음 드리프트를 커밋 시점에 잡는다.
 
-    확인 지점이 넷에서 셋으로 줄었다 — role_09 **서비스**의 기본값은 구 러너와
-    함께 죽었다. 남은 셋(Settings·PipelinePolicy·RiskPortfolioInput)은 전부
-    살아 있는 소비자를 갖는다: 배분 잡이 RiskPortfolioInput을 만든다.
+    확인 지점이 넷에서 **하나**로 줄었다. 나머지 셋(role_09 서비스 기본값 ·
+    PipelinePolicy · Settings.daily_new_order_cap)은 전부 구 러너와 함께
+    죽었고, 소비자를 잃은 설정 키를 남겨두면 그게 다음 세대의 유령이 된다.
+    남은 확인은 배분 잡이 실제로 만드는 입력(RiskPortfolioInput)이 소유자와
+    같은 기본값을 갖는가 하나다.
     """
     owner = AllocationConfig().daily_new_order_cap
-    assert Settings.model_fields["daily_new_order_cap"].default == owner
-    assert PipelinePolicy.model_fields["daily_new_order_cap"].default == owner
     assert RiskPortfolioInput.model_fields["daily_new_order_cap"].default == owner
