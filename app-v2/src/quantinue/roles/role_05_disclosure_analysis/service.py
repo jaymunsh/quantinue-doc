@@ -1,6 +1,6 @@
 """Analyze official disclosures through the LLM boundary."""
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from typing import ClassVar, Protocol
 
@@ -44,7 +44,7 @@ class DisclosureAnalysis:
     analyzer: LlmAnalyzer
     source: SecDisclosureSource = FixtureSecDisclosureSource()
     market_data: MarketData | None = None
-    disclosure: DisclosureConfig = DisclosureConfig()
+    disclosure: DisclosureConfig = field(default_factory=DisclosureConfig)
     component: ClassVar[str] = "05"
     name: ClassVar[str] = "공시 분석"
 
