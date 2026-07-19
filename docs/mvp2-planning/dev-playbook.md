@@ -182,7 +182,11 @@
 | # | 태스크 | 파일 | 상세 |
 |---|---|---|---|
 | 6-1 | 계좌 구독 루프 | `orchestration/pipeline.py`·role_09 | 09~10을 `for account in active_accounts:` 루프로 — 계좌의 inv_type → profiles 파라미터 적용(문턱·사이징·한도). 리서치(01~08)는 루프 밖 1회 |
-| 6-2 | 서킷 4종 | role_09 확장(기존 노출 한도 예약 구조 위) | max_positions(10/5) · max_weight(20%/10%) · daily_loss_limit(−4%/−2%: 당일 시작 equity 대비 실현+평가 손실 → 도달 시 당일 신규 매수 중단 플래그, 익영업일 자동 해제) · min_cash(10%/30%). 발동 기록(사유)+알림 훅(M8) ⏳ 당일 시작 equity 기준 저장 위치 설계(간단: 일별 equity 스냅샷) |
+| 6-2 🔶 | 서킷 4종 → **3/4 완료** | role_09 확장(기존 노출 한도 예약 구조 위) | max_positions(10/5) · max_weight(20%/10%) · daily_loss_limit(−4%/−2%: 당일 시작 equity 대비 실현+평가 손실 → 도달 시 당일 신규 매수 중단 플래그, 익영업일 자동 해제) · min_cash(10%/30%). 발동 기록(사유)+알림 훅(M8)
+
+**✅ 완료 (2026-07-19)**: `max_positions`·`max_weight`·`min_cash_ratio` 배선. `max_weight`가 `POSITION_CAP_FRACTION` 0.25 리터럴을 대체(같은 개념의 이중 표현 해소). 자본이 계좌에서 오게 됨 + `inv_type`이 프로필 선택. 발동 사유는 `tb_order_plan`에 기록(M4에서 신설). E2E-5 green(같은 신호 → 공격 200주/안전 100주).
+
+**⏳ `daily_loss_limit`만 잔존 — M5 이후.** 지금 구현하면 **발동할 수 없다**: ① 매도 경로가 없어 실현손실이 구조적으로 0 ② `tb_account.equity`가 체결 시 갱신되지 않아(현금만 차감) 미실현손실을 잴 수 없다. 전제: M5 매도 · 보유 시가평가(M7-4 가격 수집 재사용 가능) · **당일 시작 equity 스냅샷**(설계안 `tb_account_equity_daily(account_id, trade_date, opening_equity)` — ⚠️ **소비자와 같은 커밋에 만들 것**, 먼저 만들면 유령이 된다) · 익영업일 자동 해제(M1 `add_business_days`). **판정은 E2E-3** — 그게 green이 되기 전엔 "적용됨"으로 기록 금지. 상세: `ghost-config-audit.md` §2 |
 | 6-3 | 시뮬 멀티계좌 | `db/` simulated portfolio 계열 | 단일 계좌 가정 제거 — 계좌별 현금·보유·손익 |
 | 6-4 | 계좌 프로비저닝 | 신규 스크립트 `scripts/provision_accounts.py` | **금액 개정 2026-07-19(문성혁)**: 데모 5 = **공격형 $150K·$100K·$5K / 안전형 $100K·$5K** (기존 $1M·$50K 안 폐기) · 테스트 2 = **$100K×2**(공격형·안전형 각 1, is_test 라벨 = broker_account_id 접두 `TEST-`) + tb_user 연결(관리자 생성). ⚠️ **이 구성이 M6의 하드 전제** — 앱 전체에 값이 하나뿐인 현재 구조로는 자본이 다른 계좌 5개를 표현할 수 없고, `conservative` 프로필은 도달 자체가 불가능하다(§ghost-config-audit 2·3) |
 
