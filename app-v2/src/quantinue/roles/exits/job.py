@@ -13,7 +13,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
@@ -150,9 +150,17 @@ class ExitJob:
                 run_id=f"exit:{as_of.isoformat()}:{position.order_id}",
                 trade_date=as_of,
                 ticker=position.ticker,
-                # 진입 시그널과 같은 (ticker, cycle_ts, inv_type)이면 UNIQUE에
-                # 걸린다. 청산 시각을 쓰면 자연히 갈린다.
-                cycle_ts=datetime.combine(as_of, datetime.min.time(), tzinfo=UTC),
+                # 시그널의 UNIQUE 축은 (ticker, cycle_ts, inv_type)인데 청산은
+                # **포지션 단위**다. 한 계좌가 같은 종목을 두 번 사서 둘 다
+                # 열려 있으면(다른 날 매수) 날짜만으로는 두 청산이 같은 시그널
+                # 행을 공유하게 되고, 두 번째 close 주문이
+                # UNIQUE(account_id, signal_id)에 걸려 죽는다 — 한 포지션이
+                # 못 팔린 채 남는다. 실제로 실행 중에 이렇게 터졌다.
+                #
+                # 그래서 닫는 매수 주문 id로 시각을 갈라준다. 결정적이라 재실행이
+                # 같은 값을 내고(멱등), 진입 시그널의 장중 시각과도 겹치지 않는다.
+                cycle_ts=datetime.combine(as_of, time(), tzinfo=UTC)
+                + timedelta(microseconds=position.order_id),
                 side="sell",
                 conviction=Decimal("1.000"),
                 summary=f"{decision.reason.value} exit",

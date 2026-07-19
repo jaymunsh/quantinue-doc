@@ -253,3 +253,77 @@ async def test_a_position_without_an_observation_is_left_alone() -> None:
     # Then
     assert closed == ()
     await store.close()
+
+
+async def _seed_second_position(database_url: str, account_id: int, ticker: str) -> int:
+    """Add a second open bracket for the same account and ticker."""
+    engine = create_async_engine(database_url)
+    async with engine.begin() as connection:
+        signal_id = await connection.scalar(
+            text(_INSERT_SIGNAL),
+            {
+                "day": _ENTRY_DAY,
+                "ticker": ticker,
+                # 진입 시그널끼리는 cycle_ts로 갈린다 — 다른 날 산 두 번째 매수.
+                "cycle": datetime(2026, 7, 6, 15, tzinfo=UTC),
+            },
+        )
+        order_id = await connection.scalar(
+            text(
+                """INSERT INTO tb_order(
+                    signal_id,account_id,ticker,quantity,entry_price,stop_price,
+                    take_profit_price,status,idempotency_key,order_type)
+                VALUES (:signal,:account,:ticker,3,100,85,120,'filled',:key,'bracket')
+                RETURNING id"""
+            ),
+            {
+                "signal": signal_id,
+                "account": account_id,
+                "ticker": ticker,
+                "key": f"exitjob-{ticker}-buy2",
+            },
+        )
+        _ = await connection.execute(
+            text(
+                """INSERT INTO tb_fill(
+                    order_id,side,quantity,price,filled_at,broker_fill_id)
+                VALUES (:order,'buy',3,100,:at,:key)"""
+            ),
+            {
+                "order": order_id,
+                "at": datetime(2026, 7, 6, 15, tzinfo=UTC),
+                "key": f"exitjob-{ticker}-buy2-fill",
+            },
+        )
+    await engine.dispose()
+    return int(order_id or 0)
+
+
+@pytest.mark.anyio
+async def test_two_open_positions_in_one_ticker_both_close() -> None:
+    """같은 계좌가 같은 종목을 두 번 사서 둘 다 열려 있을 수 있다.
+
+    청산 시그널의 cycle_ts를 날짜로만 잡으면 두 포지션이 같은
+    (ticker, cycle_ts, inv_type) 시그널 행을 공유하고, 두 번째 청산 주문이
+    UNIQUE(account_id, signal_id)에 걸려 죽는다 — 한 포지션이 못 팔린 채 남는다.
+    """
+    # Given
+    assert DATABASE_URL is not None
+    account_id, ticker = await _seed_holding(DATABASE_URL, "dbl")
+    _ = await _seed_second_position(DATABASE_URL, account_id, ticker)
+    store = PostgresRunStore(DATABASE_URL)
+    await store.initialize()
+    job = ExitJob(store=store, broker=MockBroker(), time_exit_bdays=10)
+
+    # When
+    closed = await job.run(as_of=date(2026, 7, 9), observations=_stopped_out(ticker))
+
+    # Then: 두 건 다 닫힌다
+    assert len(closed) == 2
+    remaining = [
+        position
+        for position in await store.domain.open_positions()
+        if position.ticker == ticker
+    ]
+    assert remaining == []
+    await store.close()
