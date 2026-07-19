@@ -138,3 +138,16 @@ class AccountRiskState:
     equity: Decimal
     open_position_count: int
     inv_type: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class CloseOrderReservation:
+    """One idempotent close order awaiting broker execution."""
+
+    signal_id: int
+    account_id: int
+    ticker: str
+    quantity: int
+    reference_price: Decimal
+    closes_order_id: int
+    idempotency_key: str

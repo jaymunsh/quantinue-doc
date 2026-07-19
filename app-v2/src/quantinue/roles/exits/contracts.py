@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from enum import StrEnum, unique
 from typing import TYPE_CHECKING
 
+from exchange_calendars.errors import DateOutOfBounds
+
 from quantinue.broker.bracket_trigger import BracketLeg, evaluate_bracket
 
 if TYPE_CHECKING:
@@ -87,15 +89,23 @@ def business_days_held(
 
     달력일이 아니라 영업일이다. 달력일로 세면 주말·휴장이 낀 보유가 실제보다
     오래 산 것처럼 보여 정상 포지션이 일찍 잘린다. M1 캘린더를 쓰는 이유.
+
+    거래소 캘린더는 유한한 구간만 안다. 그 밖의 날짜면 **0을 돌려준다** —
+    보유 기간을 셀 수 없다는 뜻이고, 셀 수 없을 때 시간 청산을 발동시키면
+    모르는 것을 근거로 파는 셈이 된다. 같은 이유로 role_09의 갭 가드도
+    범위 밖에서는 측정을 포기한다.
     """
     if as_of <= filled_on:
         return 0
     held = 0
     cursor = filled_on
-    while cursor < as_of:
-        cursor = calendar.add_business_days(cursor, 1)
-        if cursor <= as_of:
-            held += 1
+    try:
+        while cursor < as_of:
+            cursor = calendar.add_business_days(cursor, 1)
+            if cursor <= as_of:
+                held += 1
+    except (ValueError, DateOutOfBounds):
+        return 0
     return held
 
 

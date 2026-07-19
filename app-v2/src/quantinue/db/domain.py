@@ -1,5 +1,6 @@
 """PostgreSQL repository for canonical trading and delayed-review rows."""
 
+from datetime import date
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
@@ -12,6 +13,7 @@ from quantinue.db.contracts import AppOrderExposureStatus
 from quantinue.db.domain_records import (
     AccountRiskState,
     AccountWrite,
+    CloseOrderReservation,
     CompletedFillWrite,
     CriticVerdictWrite,
     OrderPlanWrite,
@@ -254,6 +256,106 @@ class PostgresDomainRepository:
             )
             for row in rows
         )
+
+    async def ensure_holding_in_scope(self, trade_date: date, ticker: str) -> bool:
+        """Register a held ticker as in scope for this day, so a signal can exist.
+
+        ``tb_strategist_signals``는 ``(trade_date, ticker) → tb_daily_pick``을
+        참조한다. 즉 "그날 분석 대상이 아니었던 종목에는 판단을 남길 수 없다"는
+        제약이다. 매수만 있을 때는 자연히 지켜졌지만(사려면 후보여야 하니까),
+        청산은 **스크리너에서 탈락한 보유 종목**에도 일어난다.
+
+        재설계에서 그날의 분석 대상은 "상위 N과 보유의 합집합"이다 — 보유는 정의상 범위
+        안이다. 그래서 이건 제약을 우회하는 게 아니라 그 사실을 기록하는 것이고,
+        ``bucket='backfill'``이 "스크리닝이 고른 게 아니다"를 정직하게 말한다.
+        (Phase 3의 스크리닝 잡이 이 일을 넘겨받으면 여기서는 사라진다.)
+
+        Returns whether the ticker could be put in scope at all.
+        """
+        picks = self._table("tb_daily_pick")
+        universe = self._table("tb_universe")
+        async with self._engine.begin() as connection:
+            existing = await connection.scalar(
+                select(picks.c.ticker).where(
+                    picks.c.trade_date == trade_date, picks.c.ticker == ticker
+                )
+            )
+            if existing is not None:
+                return True
+            # 계보의 뿌리는 유니버스다. 한 번도 유니버스에 없던 종목은 보유일 수
+            # 없으므로, 없으면 지어내지 않고 실패로 보고한다.
+            universe_as_of = await connection.scalar(
+                select(universe.c.as_of_date)
+                .where(universe.c.ticker == ticker)
+                .order_by(universe.c.as_of_date.desc())
+                .limit(1)
+            )
+            if universe_as_of is None:
+                return False
+            _ = await connection.execute(
+                insert(picks)
+                .values(
+                    trade_date=trade_date,
+                    ticker=ticker,
+                    universe_as_of=universe_as_of,
+                    bucket="backfill",
+                    # 순위는 스크리닝이 매기는 값이다. 보유는 순위로 들어온 게
+                    # 아니므로 최하위를 써서 상위 후보와 섞이지 않게 한다.
+                    rank=50,
+                    sector="held",
+                    score=0,
+                )
+                .on_conflict_do_nothing(index_elements=["trade_date", "ticker"])
+            )
+            return True
+
+    async def reserve_close_order(self, request: CloseOrderReservation) -> int | None:
+        """Insert one close order, or None when this entry is already being closed.
+
+        멱등의 축이 둘이다:
+
+        - ``idempotency_key`` — 같은 청산의 재시도. 같은 키가 이미 있으면 그
+          주문 id를 그대로 돌려줘 재시도가 이어서 진행되게 한다.
+        - ``closes_order_id`` — **다른** 키로 같은 매수를 닫으려는 시도. 이게
+          더 위험하다: 키가 다르면 위 검사를 통과해 같은 포지션을 두 번 팔게
+          되고, 갖고 있지도 않은 주식을 판 상태가 된다. 그래서 별도로 막는다.
+
+        주문 규모 한도(``reserve_daily_order``)를 태우지 않는 이유: 청산은 자본을
+        쓰는 행동이 아니라 되돌려받는 행동이다. 한도로 청산을 막으면 리스크를
+        줄이려는 시도가 한도 때문에 실패한다.
+        """
+        orders = self._table("tb_order")
+        async with self._engine.begin() as connection:
+            existing = await connection.scalar(
+                select(orders.c.id).where(
+                    orders.c.idempotency_key == request.idempotency_key
+                )
+            )
+            if existing is not None:
+                return int(existing)
+            already_closing = await connection.scalar(
+                select(orders.c.id).where(
+                    orders.c.closes_order_id == request.closes_order_id,
+                    orders.c.status.in_(("planned", "submitted", "filled")),
+                )
+            )
+            if already_closing is not None:
+                return None
+            return await connection.scalar(
+                insert(orders)
+                .values(
+                    signal_id=request.signal_id,
+                    account_id=request.account_id,
+                    ticker=request.ticker,
+                    quantity=request.quantity,
+                    entry_price=request.reference_price,
+                    status="planned",
+                    idempotency_key=request.idempotency_key,
+                    order_type="close",
+                    closes_order_id=request.closes_order_id,
+                )
+                .returning(orders.c.id)
+            )
 
     async def account_risk_state(self, account_id: int) -> AccountRiskState | None:
         """Read the capital and book size the portfolio limits are applied to.

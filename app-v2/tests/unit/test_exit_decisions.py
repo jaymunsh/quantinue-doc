@@ -11,6 +11,7 @@ from quantinue.roles.exits import (
     DailyObservation,
     ExitReason,
     OpenPosition,
+    business_days_held,
     decide_exit,
 )
 
@@ -165,3 +166,16 @@ def test_a_triggered_leg_fills_at_its_own_price_not_the_last_trade(
     assert decision is not None
     assert decision.reason is reason
     assert decision.reference_price == Decimal(expected)
+
+
+def test_a_date_beyond_the_calendar_never_forces_a_time_exit() -> None:
+    """거래소 캘린더는 유한하다 — 셀 수 없는 보유 기간으로 팔면 안 된다.
+
+    XNYS 캘린더는 현재 2027년까지만 안다. 그 밖의 날짜에서 예외가 나면 청산
+    잡 전체가 죽고, 반대로 큰 값을 돌려주면 전 포지션이 한꺼번에 잘린다.
+    """
+    # Given/When
+    held = business_days_held(date(2044, 3, 7), date(2044, 3, 20), calendar=NyseCalendar())
+
+    # Then
+    assert held == 0
