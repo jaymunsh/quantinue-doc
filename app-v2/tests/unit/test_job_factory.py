@@ -582,3 +582,4 @@ def test_one_analysis_job_is_registered_per_persona() -> None:
     names = [job.name for job in runner.jobs]
     assert names[-3:] == ["analysis:aggressive", "analysis:conservative", "exits"]
     assert names.index("screening") < names.index("analysis:aggressive")
+

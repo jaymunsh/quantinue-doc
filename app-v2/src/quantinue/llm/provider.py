@@ -68,8 +68,16 @@ class ModelOutput(BaseModel):
 class LlmAnalyzer(Protocol):
     """Narrow analysis capability used by LLM-backed roles."""
 
-    async def analyze(self, task: AnalysisTask, prompt: str) -> AnalysisResult:
-        """Return a schema-validated analysis with lineage metadata."""
+    async def analyze(
+        self, task: AnalysisTask, prompt: str, *, profile: str | None = None
+    ) -> AnalysisResult:
+        """Return a schema-validated analysis with lineage metadata.
+
+        ``profile``은 판단을 내리는 성향이다. 기본값이 None인 이유는 성향이
+        없는 태스크(공시 요약·뉴스 채점)가 대부분이기 때문이고, 성향별 프롬프트가
+        없는 태스크에서는 무시된다 — 어느 파일이 실제로 쓰였는지는
+        ``SystemPrompt.variant``가 기록한다.
+        """
         ...
 
 
@@ -92,9 +100,11 @@ class DeterministicAnalyzer:
         """Configure the model identifier recorded in result lineage."""
         self._model_name = model_name
 
-    async def analyze(self, task: AnalysisTask, prompt: str) -> AnalysisResult:
+    async def analyze(
+        self, task: AnalysisTask, prompt: str, *, profile: str | None = None
+    ) -> AnalysisResult:
         """Map each task to a deterministic, fully traced result."""
-        system_prompt = load_system_prompt(task.value)
+        system_prompt = load_system_prompt(task.value, profile=profile)
         metadata = _metadata(self._model_name, ModelProvider.MOCK, system_prompt, prompt)
         match task:
             case AnalysisTask.DISCLOSURE:
@@ -141,9 +151,11 @@ class PydanticAiAnalyzer:
         self._retries = retries
         self._provider = provider
 
-    async def analyze(self, task: AnalysisTask, prompt: str) -> AnalysisResult:
+    async def analyze(
+        self, task: AnalysisTask, prompt: str, *, profile: str | None = None
+    ) -> AnalysisResult:
         """Run one schema-constrained call with external text isolated as data."""
-        system_prompt = load_system_prompt(task.value)
+        system_prompt = load_system_prompt(task.value, profile=profile)
         agent = Agent(
             self._model,
             output_type=ModelOutput,

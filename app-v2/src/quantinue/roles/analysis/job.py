@@ -122,7 +122,12 @@ class AnalysisJob:
         cycle_ts = datetime.combine(as_of, time(), tzinfo=UTC)
         run_id = f"analysis:{as_of.isoformat()}:{self.profile_name}"
         evidence = await self.analyzer.analyze(
-            AnalysisTask.STRATEGY, analysis_prompt(subject, holding, filings)
+            AnalysisTask.STRATEGY,
+            analysis_prompt(subject, holding, filings),
+            # 성향이 여기서 끊기면 두 페르소나가 같은 시스템 프롬프트로 돌고,
+            # 원장에는 inv_type만 다른 **같은 확신도**가 두 줄 남는다.
+            # 실제로 그랬다 — 문턱만 다르고 판단은 하나였다.
+            profile=self.profile_name,
         )
         strategy_input = StrategyInput(
             run_id=run_id,
@@ -256,6 +261,10 @@ class AnalysisJob:
             # pass 판정은 confidence < critic_approval 이어야 한다는 계약이 있다
             # (require_pass_gate_proof) — 승인은 확신이 아니라 통과의 기록이다.
             confidence=0.0 if passed else float(review.score),
-            decided_layer="gate" if passed else "model",
+            # "model"이 아니라 "llm"이다 — 계약의 Literal에 없는 값이라
+            # 크리틱이 반박에 **성공한** 첫 종목에서 그날 분석 전체가 죽었다.
+            # mock 크리틱이 고정 0.82로 늘 통과해서 이 갈래는 실 LLM을 붙이기
+            # 전까지 한 번도 실행되지 않았다. 이름은 role_08/service.py:137을 따른다.
+            decided_layer="gate" if passed else "llm",
             evidence_ids=decision.evidence_ids,
         )

@@ -27,9 +27,13 @@ class _Analyzer:
     def __init__(self, strategy: float, critic: float = 0.9) -> None:
         self._scores = {AnalysisTask.STRATEGY: strategy, AnalysisTask.CRITIC: critic}
         self.prompts: list[tuple[AnalysisTask, str]] = []
+        self.profiles: list[tuple[AnalysisTask, str | None]] = []
 
-    async def analyze(self, task: AnalysisTask, prompt: str) -> AnalysisResult:
+    async def analyze(
+        self, task: AnalysisTask, prompt: str, *, profile: str | None = None
+    ) -> AnalysisResult:
         self.prompts.append((task, prompt))
+        self.profiles.append((task, profile))
         return AnalysisResult(
             score=self._scores[task],
             label="ok",
@@ -216,3 +220,37 @@ async def test_the_model_sees_the_holding_context_not_just_three_floats() -> Non
     assert "held_quantity=10" in prompt
     assert "entry_price=120.00" in prompt
     assert "unrealized_pct=-16.67" in prompt
+
+
+@pytest.mark.anyio
+async def test_the_judgement_call_carries_the_persona_it_is_made_under() -> None:
+    """성향이 분석기까지 안 가면 두 페르소나가 같은 프롬프트로 돈다 — 실행에서 그랬다."""
+    # Given
+    domain = _Domain((_subject("AAA"),))
+    analyzer = _Analyzer(strategy=0.9)
+
+    # When
+    _ = await _job(domain, analyzer).run(as_of=_AS_OF, session=_SESSION)
+
+    # Then
+    assert (AnalysisTask.STRATEGY, "aggressive") in analyzer.profiles
+
+
+@pytest.mark.anyio
+async def test_a_rejected_proposal_still_produces_a_valid_verdict() -> None:
+    """크리틱이 반박에 성공한 첫 종목에서 그날 분석 전체가 죽던 것.
+
+    mock 분석기는 크리틱에 고정 0.82를 내서 항상 통과했다 — reject 갈래는
+    실 LLM을 붙이기 전까지 한 번도 실행된 적이 없다.
+    """
+    # Given: 크리틱이 승인 문턱을 못 넘는 점수를 낸다
+    domain = _Domain((_subject("AAA"), _subject("BBB")))
+    analyzer = _Analyzer(strategy=0.9, critic=0.1)
+
+    # When
+    outcomes = await _job(domain, analyzer).run(as_of=_AS_OF, session=_SESSION)
+
+    # Then: 예외 없이 두 종목 모두 판정을 받는다
+    assert len(outcomes) == 2
+    assert [outcome.approved for outcome in outcomes] == [False, False]
+    assert [verdict.decided_layer for verdict in domain.verdicts] == ["llm", "llm"]
