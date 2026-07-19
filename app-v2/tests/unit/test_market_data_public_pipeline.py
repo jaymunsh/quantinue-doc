@@ -15,7 +15,7 @@ from quantinue.orchestration.factory import build_market_data, build_roles
 from quantinue.orchestration.pipeline import PipelineOrchestrator
 
 
-def _public_response(request: httpx2.Request) -> httpx2.Response:
+def _public_response(request: httpx2.Request) -> httpx2.Response:  # noqa: PLR0911
     host = request.url.host
     if host == "api.nasdaq.com":
         if request.url.path.endswith("/historical"):
@@ -57,6 +57,9 @@ def _public_response(request: httpx2.Request) -> httpx2.Response:
         return httpx2.Response(200, json=payload, request=request)
     if host == "fred.stlouisfed.org":
         return httpx2.Response(200, text="DATE,DFF\n2026-07-10,4.25\n", request=request)
+    if host == "www.sec.gov" and request.url.path.endswith("company_tickers.json"):
+        payload = {"0": {"cik_str": 1045810, "ticker": "NVDA", "title": "NVIDIA CORP"}}
+        return httpx2.Response(200, json=payload, request=request)
     if host == "data.sec.gov":
         recent = {
             "accessionNumber": ["0001"],

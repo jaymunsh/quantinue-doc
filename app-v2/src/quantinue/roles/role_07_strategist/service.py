@@ -32,9 +32,8 @@ class Strategist:
         technical = require_value(
             context.technical_score, component=self.component, field_name="technical_score"
         )
-        disclosure = require_value(
-            context.disclosure_score, component=self.component, field_name="disclosure_score"
-        )
+        # 공시는 없을 수 있다 — 부재는 기권이지 악재가 아니다(role_05 미해결 CIK·무공시).
+        disclosure = context.disclosure_score
         news = require_value(context.news_score, component=self.component, field_name="news_score")
         strategy_input = StrategyInput(
             run_id=str(context.run_id),

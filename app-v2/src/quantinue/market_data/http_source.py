@@ -14,9 +14,10 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 from xml.etree import ElementTree as ET
 
+import anyio
 import httpx2
 from anyio.to_thread import run_sync
-from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError, field_validator
 
 from quantinue.core.errors import HttpFailureError, TransientFailureError, ValidationFailureError
 from quantinue.market_data.models import (
@@ -40,6 +41,7 @@ class MarketDataEndpoints:
     sec_url: str
     rss_url: str
     ticker_news_url: str = "https://news.google.com/rss/search"
+    sec_ticker_map_url: str = "https://www.sec.gov/files/company_tickers.json"
 
     @classmethod
     def defaults(cls) -> "MarketDataEndpoints":
@@ -253,6 +255,14 @@ class _SecResponse(_Boundary):
     filings: _SecFilings
 
 
+class _SecTickerRow(_Boundary):
+    cik_str: int
+    ticker: str
+
+
+_SecTickerMap = TypeAdapter(dict[str, _SecTickerRow])
+
+
 class HttpMarketData:
     """Fetch and parse optional public feeds using one owned HTTP client."""
 
@@ -268,6 +278,8 @@ class HttpMarketData:
         self._fred_fetcher = fred_fetcher
         self._endpoints = endpoints
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._cik_map: dict[str, str] | None = None
+        self._cik_map_lock = anyio.Lock()
 
     async def aclose(self) -> None:
         """Close the owned HTTP client at application shutdown."""
@@ -360,6 +372,22 @@ class HttpMarketData:
             )
             for row in rows
         )
+
+    async def sec_cik_for_ticker(self, ticker: str, execution_id: str) -> str | None:
+        """Resolve a ticker to its zero-padded CIK, or None when unlisted.
+
+        The map covers every SEC filer, so it is fetched once per process and
+        reused across the deep-analysis fan-out.
+        """
+        del execution_id
+        async with self._cik_map_lock:
+            if self._cik_map is None:
+                response = await self._get(self._endpoints.sec_ticker_map_url)
+                rows = _SecTickerMap.validate_python(response.json())
+                self._cik_map = {
+                    row.ticker.upper(): str(row.cik_str).zfill(10) for row in rows.values()
+                }
+        return self._cik_map.get(ticker.upper())
 
     async def sec_submissions(self, cik: str, execution_id: str) -> tuple[SecSubmission, ...]:
         """Fetch recent SEC submissions for one CIK."""

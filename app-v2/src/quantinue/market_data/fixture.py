@@ -69,6 +69,11 @@ class FixtureMarketData:
             ),
         )
 
+    async def sec_cik_for_ticker(self, ticker: str, execution_id: str) -> str | None:
+        """Resolve any fixture ticker to a stable deterministic CIK."""
+        del execution_id
+        return None if not ticker else "0001045810"
+
     async def sec_submissions(self, cik: str, execution_id: str) -> tuple[SecSubmission, ...]:
         """Return one stable SEC submission."""
         return (

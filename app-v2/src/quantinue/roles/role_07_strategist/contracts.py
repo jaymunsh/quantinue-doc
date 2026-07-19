@@ -30,7 +30,7 @@ class StrategyInput(BaseModel):
     ticker: str = Field(min_length=1, max_length=12)
     cycle_ts: datetime
     technical_score: float = Field(ge=0, le=1)
-    disclosure_score: float = Field(ge=0, le=1)
+    disclosure_score: float | None = Field(ge=0, le=1)
     news_score: float = Field(ge=0, le=1)
     is_daily_pick: bool
     source_trust: float = Field(default=1.0, ge=0, le=1)
@@ -97,7 +97,11 @@ class StrategyInput(BaseModel):
             blockers.append("stale_disclosure_snapshot")
         if cycle - self.news_snapshot_at.astimezone(UTC) > SnapshotMaxAge:
             blockers.append("stale_news_snapshot")
-        if gates is not None and self.disclosure_score <= gates.hard_negative_max:
+        if (
+            gates is not None
+            and self.disclosure_score is not None
+            and self.disclosure_score <= gates.hard_negative_max
+        ):
             # 강한 악재는 아무리 확신도가 높아도 매수를 막는다.
             blockers.append("hard_negative_sentiment")
         return tuple(blockers)
@@ -133,9 +137,13 @@ class StrategyOutput(BaseModel):
 
         A news score sourced below the trust floor loses its vote entirely
         rather than being down-weighted, so an unreliable outlet cannot lift a
-        decision at all.
+        decision at all. An absent disclosure abstains for the same reason in
+        reverse: silence is not bad news, and scoring it zero would both dilute
+        conviction and trip the hard-negative gate.
         """
-        votes = [source.technical_score, source.disclosure_score]
+        votes = [source.technical_score]
+        if source.disclosure_score is not None:
+            votes.append(source.disclosure_score)
         if source.source_trust >= gates.source_trust_min:
             votes.append(source.news_score)
         if model_score is not None:

@@ -120,6 +120,15 @@ class TickerNewsMarketData(Protocol):
         ...
 
 
+@runtime_checkable
+class SecCikMarketData(Protocol):
+    """Ticker-to-CIK resolution implemented by SEC-aware market data."""
+
+    async def sec_cik_for_ticker(self, ticker: str, execution_id: str) -> str | None:
+        """Return the zero-padded CIK for a ticker, or None when unlisted."""
+        ...
+
+
 class MarketData(Protocol):
     """Common contract implemented by fixture and public sources."""
 
