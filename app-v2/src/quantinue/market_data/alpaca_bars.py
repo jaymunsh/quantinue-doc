@@ -16,11 +16,18 @@
 
 **분당 호출 한도는 공식 문서에서 확인하지 못했다.** 추정해서 박아두지 않고
 요청 크기만 설정값으로 열어둔다 — 실측 후 조이는 편이 안전하다.
+
+**실측으로 확인한 것** (2026-07-19, 실 API 호출):
+- 한 요청에 400종목까지 200 OK. 배치 크기는 병목이 아니었다.
+- 주식 클래스 구분자는 **점**이다: ``BRK.B``는 200, ``BRK/B``는 400. 상장
+  피드(NASDAQ)는 슬래시로 주므로 요청 시 변환이 필요하다.
+- **알 수 없는 심볼 하나가 배치 전체를 400으로 죽인다**(``invalid symbol: X``).
+  피드에는 실제로 쓰레기 행이 섞여 들어온다.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Final
@@ -35,6 +42,34 @@ _SOURCE: Final = "alpaca-iex"
 # 200개면 쿼리스트링이 ~1.2KB로, 흔한 8KB 서버 상한에 한참 못 미친다.
 _DEFAULT_SYMBOLS_PER_REQUEST: Final = 200
 _MAX_POINTS_PER_PAGE: Final = 10_000
+# 상장 피드는 주식 클래스를 BRK/B로, Alpaca는 BRK.B로 쓴다. 원장 키는 우리
+# 표기를 유지해야 tb_universe·tb_order와의 조인이 깨지지 않으므로, 변환은
+# 요청 직전에만 하고 응답에서 되돌린다.
+_CLASS_SEPARATOR: Final = "/"
+_VENUE_CLASS_SEPARATOR: Final = "."
+_INVALID_SYMBOL_PREFIX: Final = "invalid symbol: "
+
+
+def _to_venue_symbol(ticker: str) -> str:
+    """Translate our ledger spelling into the one the venue accepts."""
+    return ticker.replace(_CLASS_SEPARATOR, _VENUE_CLASS_SEPARATOR)
+
+
+def _invalid_symbol(response: httpx2.Response) -> str | None:
+    """Return the symbol the venue rejected, when that is why it said 400.
+
+    모든 400을 삼키면 진짜 고장(잘못된 날짜 범위 등)이 "봉이 없네"로 위장된다.
+    거부된 심볼 이름이 본문에 있을 때만 회복을 시도한다.
+    """
+    if response.status_code != httpx2.codes.BAD_REQUEST:
+        return None
+    try:
+        message = str(response.json().get("message", ""))
+    except ValueError:
+        return None
+    if not message.startswith(_INVALID_SYMBOL_PREFIX):
+        return None
+    return message[len(_INVALID_SYMBOL_PREFIX) :].strip() or None
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,28 +119,50 @@ class AlpacaBarSource:
         trade_date: date,
         chunk: tuple[str, ...],
     ) -> list[DailyBarWrite]:
-        """Follow pagination until the venue stops handing back a token."""
+        """Follow pagination, dropping symbols the venue refuses to recognise.
+
+        거부된 심볼을 빼고 다시 부르는 이유: 상장 피드에 쓰레기 행이 하나
+        섞이면 그 배치 전체가 400이 되고, 하루치 봉을 통째로 잃는다. 청산은
+        관측이 없으면 아무것도 하지 않으므로 그 손실이 조용히 지나간다.
+        루프는 심볼이 하나씩 줄어들 때만 돌므로 반드시 끝난다.
+        """
         day = trade_date.isoformat()
-        params: dict[str, str | int] = {
-            "symbols": ",".join(chunk),
-            "timeframe": "1Day",
-            "start": day,
-            "end": day,
-            "feed": "iex",
-            "limit": _MAX_POINTS_PER_PAGE,
-        }
+        # 우리 표기 → 거래소 표기. 응답을 되돌리려면 역매핑이 필요하다.
+        venue_to_ours = {_to_venue_symbol(ticker): ticker for ticker in chunk}
         bars: list[DailyBarWrite] = []
-        page_token: str | None = None
-        while True:
-            if page_token is not None:
-                params["page_token"] = page_token
-            response = await client.get(_BARS_URL, params=params)
-            _ = response.raise_for_status()
-            payload = response.json()
-            bars.extend(_parse_page(payload, trade_date))
-            page_token = payload.get("next_page_token")
-            if not page_token:
-                return bars
+        while venue_to_ours:
+            params: dict[str, str | int] = {
+                "symbols": ",".join(venue_to_ours),
+                "timeframe": "1Day",
+                "start": day,
+                "end": day,
+                "feed": "iex",
+                "limit": _MAX_POINTS_PER_PAGE,
+            }
+            page_token: str | None = None
+            rejected: str | None = None
+            while True:
+                if page_token is not None:
+                    params["page_token"] = page_token
+                response = await client.get(_BARS_URL, params=params)
+                rejected = _invalid_symbol(response)
+                if rejected is not None:
+                    break
+                _ = response.raise_for_status()
+                payload = response.json()
+                bars.extend(_parse_page(payload, trade_date))
+                page_token = payload.get("next_page_token")
+                if not page_token:
+                    return [
+                        replace(bar, ticker=venue_to_ours.get(bar.ticker, bar.ticker))
+                        for bar in bars
+                    ]
+            if venue_to_ours.pop(rejected, None) is None:
+                # 우리가 보낸 적 없는 심볼을 거부했다 — 재시도해도 같으므로
+                # 조용히 도는 대신 그대로 터뜨린다.
+                _ = response.raise_for_status()
+            bars.clear()
+        return bars
 
 
 def _parse_page(payload: dict[str, Any], trade_date: date) -> list[DailyBarWrite]:

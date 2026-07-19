@@ -192,3 +192,87 @@ async def test_symbols_are_chunked_to_keep_the_url_bounded() -> None:
     # Then
     assert len(calls) == 3
     assert len(bars) == 250
+
+
+@pytest.mark.anyio
+async def test_share_class_symbols_are_sent_in_the_venue_spelling() -> None:
+    """상장 피드는 BRK/B로 주고 Alpaca는 BRK.B만 받는다 — 실측 확인."""
+    # Given
+    seen: list[httpx2.Request] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        seen.append(request)
+        return httpx2.Response(200, json=_page({"BRK.B": [_bar()]}))
+
+    source = AlpacaBarSource(
+        key_id="k", secret_key="s", transport=httpx2.MockTransport(handler)
+    )
+
+    # When
+    bars = await source.daily_bars(_DAY, ("BRK/B",))
+
+    # Then: 요청은 점, 원장은 우리 표기(슬래시) — 조인이 깨지면 안 된다
+    assert seen[0].url.params["symbols"] == "BRK.B"
+    assert [bar.ticker for bar in bars] == ["BRK/B"]
+
+
+@pytest.mark.anyio
+async def test_one_bad_symbol_does_not_lose_the_whole_batch() -> None:
+    """쓰레기 심볼 하나에 2000종목 수집이 통째로 죽으면 하루를 잃는다."""
+    # Given
+    attempts: list[str] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        symbols = str(request.url.params["symbols"])
+        attempts.append(symbols)
+        if "E90F6115D" in symbols:
+            return httpx2.Response(400, json={"message": "invalid symbol: E90F6115D"})
+        return httpx2.Response(200, json=_page({"AAA": [_bar()], "BBB": [_bar()]}))
+
+    source = AlpacaBarSource(
+        key_id="k", secret_key="s", transport=httpx2.MockTransport(handler)
+    )
+
+    # When
+    bars = await source.daily_bars(_DAY, ("AAA", "E90F6115D", "BBB"))
+
+    # Then: 나쁜 심볼만 떨어지고 나머지는 살아 돌아온다
+    assert sorted(bar.ticker for bar in bars) == ["AAA", "BBB"]
+    assert attempts[-1] == "AAA,BBB"
+
+
+@pytest.mark.anyio
+async def test_several_bad_symbols_are_dropped_one_by_one() -> None:
+    # Given
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        symbols = str(request.url.params["symbols"])
+        for bad in ("BAD1", "BAD2"):
+            if bad in symbols:
+                return httpx2.Response(400, json={"message": f"invalid symbol: {bad}"})
+        return httpx2.Response(200, json=_page({"AAA": [_bar()]}))
+
+    source = AlpacaBarSource(
+        key_id="k", secret_key="s", transport=httpx2.MockTransport(handler)
+    )
+
+    # When
+    bars = await source.daily_bars(_DAY, ("BAD1", "AAA", "BAD2"))
+
+    # Then
+    assert [bar.ticker for bar in bars] == ["AAA"]
+
+
+@pytest.mark.anyio
+async def test_a_400_that_is_not_about_a_symbol_still_fails_loudly() -> None:
+    """모든 400을 삼키면 진짜 고장이 '봉이 없네'로 위장된다."""
+    # Given
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(400, json={"message": "end must be after start"})
+
+    source = AlpacaBarSource(
+        key_id="k", secret_key="s", transport=httpx2.MockTransport(handler)
+    )
+
+    # When / Then
+    with pytest.raises(httpx2.HTTPStatusError):
+        _ = await source.daily_bars(_DAY, ("AAA",))
