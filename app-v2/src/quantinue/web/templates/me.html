@@ -1,9 +1,18 @@
 {% extends "base.html" %}
 {% block description %}내 계좌{% endblock %}
 {% block title %}내 계좌 · Quantinue{% endblock %}
+{% block eyebrow %}ACCOUNT OVERVIEW{% endblock %}
 {% block heading %}내 계좌{% endblock %}
+{% block subheading %}<p>운용 중인 계좌의 현황입니다.</p>{% endblock %}
+{% block breadcrumb %}<strong>내 운용</strong><i>/</i><span>계좌 개요</span>{% endblock %}
+{% block nav %}
+<nav class="nav-group" aria-label="섹션">
+  <p class="nav-label">내 운용</p>
+  <a class="nav-link" href="#account" aria-current="page">계좌 개요</a>
+</nav>
+{% endblock %}
 {% block main %}
-<section class="panel account-panel" aria-labelledby="account-title">
+<section class="panel account-panel" id="account" aria-labelledby="account-title">
   <p class="eyebrow">Account</p>
   <h2 id="account-title" class="account-id">{{ account.broker_account_id }}</h2>
   <ul class="account-facts">
