@@ -7,12 +7,12 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from quantinue.api.my_account import my_account_view
 from quantinue.db.control_room_reads import AccountEquityPoint
-from quantinue.db.domain_records import AccountHoldingRecord
+from quantinue.db.domain_records import AccountHoldingRecord, TradeTimelineRecord
 from quantinue.db.users import UserAccount
 
 _ACCOUNT = UserAccount(
@@ -100,3 +100,50 @@ def test_a_single_day_of_history_yields_no_return() -> None:
 
     # Then
     assert view.return_pct is None
+
+
+def _trade(ticker: str, *, side: str, summary: str | None) -> TradeTimelineRecord:
+    return TradeTimelineRecord(
+        fill_id=f"fill-{ticker}",
+        ticker=ticker,
+        side=side,
+        quantity=10,
+        price=Decimal("120.00"),
+        filled_at=datetime(2026, 7, 20, 14, tzinfo=UTC),
+        order_type="bracket" if side == "buy" else "close",
+        inv_type="aggressive" if summary else None,
+        conviction=Decimal("0.82") if summary else None,
+        summary=summary,
+        bull_case="상대강도 상위" if summary else None,
+        key_risk="국면 반전" if summary else None,
+        verdict_decision="approve" if summary else None,
+        objection=None,
+    )
+
+
+def test_a_trade_carries_the_judgement_that_caused_it() -> None:
+    """체결만 보여주면 "무엇을 샀나"에는 답하고 "왜 샀나"에는 못 답한다."""
+    # Given
+    trades = (_trade("NVDA", side="buy", summary="추세 초입"),)
+
+    # When
+    entry = my_account_view(_ACCOUNT, (), (), trades).timeline[0]
+
+    # Then
+    assert entry.summary == "추세 초입"
+    assert entry.bull_case == "상대강도 상위"
+    assert entry.verdict_decision == "approve"
+    assert entry.is_mechanical is False
+
+
+def test_a_mechanical_exit_is_marked_as_one() -> None:
+    """브래킷·시간 청산은 모델 판단 없이 체결된다 — 그 사실을 숨기지 않는다."""
+    # Given
+    trades = (_trade("NVDA", side="sell", summary=None),)
+
+    # When
+    entry = my_account_view(_ACCOUNT, (), (), trades).timeline[0]
+
+    # Then
+    assert entry.is_mechanical is True
+    assert entry.summary is None

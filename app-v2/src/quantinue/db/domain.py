@@ -2,6 +2,7 @@
 
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
+from textwrap import dedent
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict
@@ -43,6 +44,7 @@ from quantinue.db.domain_records import (
     RawDisclosureWrite,
     RawNewsWrite,
     StrategistSignalWrite,
+    TradeTimelineRecord,
 )
 from quantinue.db.domain_sources import save_source_records
 from quantinue.db.postgres_accounting import initialize_account, record_completed_fill
@@ -1582,6 +1584,59 @@ class PostgresDomainRepository:
                 entry_price=Decimal(str(row.entry_price)),
                 mark_price=None if row.mark_price is None else Decimal(str(row.mark_price)),
                 mark_as_of=row.mark_as_of,
+            )
+            for row in rows
+        )
+
+    async def account_timeline(
+        self, account_id: int, *, limit: int
+    ) -> tuple[TradeTimelineRecord, ...]:
+        """List one account's fills with the judgement behind each, newest first.
+
+        조인이 계보 그대로다: 체결 → 주문 → 판단 → 반박. 이 화면의 존재
+        이유가 그 사슬이라, 끊어진 고리를 숨기지 않고 LEFT JOIN으로 남긴다 —
+        기계적 청산(브래킷 발동·시간 청산)은 모델 판단 없이 체결되고, 그
+        사실 자체가 "이건 사람도 모델도 아니고 규칙이 팔았다"는 정보다.
+        """
+        statement = text(
+            dedent(
+                """
+                SELECT f.broker_fill_id AS fill_id, f.side, f.quantity, f.price,
+                       f.filled_at, o.ticker, o.order_type,
+                       s.inv_type, s.conviction, s.summary, s.bull_case, s.key_risk,
+                       v.decision AS verdict_decision, v.objection
+                FROM tb_fill AS f
+                JOIN tb_order AS o ON o.id = f.order_id
+                LEFT JOIN tb_strategist_signals AS s ON s.id = o.signal_id
+                LEFT JOIN tb_critic_verdict AS v ON v.signal_id = s.id
+                WHERE o.account_id = :account_id
+                ORDER BY f.filled_at DESC, f.id DESC
+                LIMIT :limit
+                """
+            )
+        )
+        async with self._engine.begin() as connection:
+            rows = (
+                await connection.execute(
+                    statement, {"account_id": account_id, "limit": limit}
+                )
+            ).all()
+        return tuple(
+            TradeTimelineRecord(
+                fill_id=row.fill_id,
+                ticker=row.ticker,
+                side=row.side,
+                quantity=int(row.quantity),
+                price=Decimal(str(row.price)),
+                filled_at=row.filled_at,
+                order_type=row.order_type,
+                inv_type=row.inv_type,
+                conviction=None if row.conviction is None else Decimal(str(row.conviction)),
+                summary=row.summary,
+                bull_case=row.bull_case,
+                key_risk=row.key_risk,
+                verdict_decision=row.verdict_decision,
+                objection=row.objection,
             )
             for row in rows
         )

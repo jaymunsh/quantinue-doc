@@ -351,3 +351,31 @@ class AccountHoldingRecord:
     entry_price: Decimal
     mark_price: Decimal | None
     mark_as_of: date | None
+
+
+@dataclass(frozen=True, slots=True)
+class TradeTimelineRecord:
+    """One fill together with the judgement that caused it.
+
+    계보 FK가 이 레코드의 존재 이유다. 체결만 보여주면 "무엇을 샀나"에는
+    답하지만 "왜 샀나"에는 못 답한다. 판단과 반박이 붙어야 원장이 자기
+    결정을 설명한다.
+
+    판단 쪽이 전부 ``None``일 수 있다. 기계적 청산(브래킷 발동·시간 청산)은
+    모델 판단 없이 체결되고, 그것도 사실이므로 숨기지 않는다.
+    """
+
+    fill_id: str
+    ticker: str
+    side: str
+    quantity: int
+    price: Decimal
+    filled_at: datetime
+    order_type: str
+    inv_type: str | None
+    conviction: Decimal | None
+    summary: str | None
+    bull_case: str | None
+    key_risk: str | None
+    verdict_decision: str | None
+    objection: str | None

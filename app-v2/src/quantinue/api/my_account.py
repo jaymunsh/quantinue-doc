@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from datetime import date  # noqa: TC003 - pydantic이 런타임에 해석한다
+from datetime import date, datetime  # noqa: TC003 - pydantic이 런타임에 해석한다
 from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING
 
@@ -25,7 +25,7 @@ from pydantic import BaseModel, ConfigDict
 
 if TYPE_CHECKING:
     from quantinue.db.control_room_reads import AccountEquityPoint
-    from quantinue.db.domain_records import AccountHoldingRecord
+    from quantinue.db.domain_records import AccountHoldingRecord, TradeTimelineRecord
     from quantinue.db.users import UserAccount
 
 _PERCENT = Decimal(100)
@@ -56,6 +56,29 @@ class CurvePointView(BaseModel):
     equity: Decimal
 
 
+class TimelineEntryView(BaseModel):
+    """One fill with the judgement that caused it, as the owner reads it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    fill_id: str
+    ticker: str
+    side: str
+    quantity: int
+    price: Decimal
+    filled_at: datetime
+    # 기계적 청산인가 모델 판단인가. 판단 없는 체결도 사실이므로 숨기지 않고
+    # "규칙이 팔았다"로 읽히게 한다.
+    is_mechanical: bool
+    inv_type: str | None
+    conviction: str | None
+    summary: str | None
+    bull_case: str | None
+    key_risk: str | None
+    verdict_decision: str | None
+    objection: str | None
+
+
 class MyAccountView(BaseModel):
     """Everything the account page reports about one account."""
 
@@ -70,6 +93,7 @@ class MyAccountView(BaseModel):
     baseline_date: date | None = None
     holdings: tuple[HoldingView, ...] = ()
     curve: tuple[CurvePointView, ...] = ()
+    timeline: tuple[TimelineEntryView, ...] = ()
 
 
 def _holding_view(record: AccountHoldingRecord) -> HoldingView:
@@ -86,10 +110,30 @@ def _holding_view(record: AccountHoldingRecord) -> HoldingView:
     )
 
 
+def _timeline_view(record: TradeTimelineRecord) -> TimelineEntryView:
+    return TimelineEntryView(
+        fill_id=record.fill_id,
+        ticker=record.ticker,
+        side=record.side,
+        quantity=record.quantity,
+        price=record.price,
+        filled_at=record.filled_at,
+        is_mechanical=record.summary is None,
+        inv_type=record.inv_type,
+        conviction=None if record.conviction is None else str(record.conviction),
+        summary=record.summary,
+        bull_case=record.bull_case,
+        key_risk=record.key_risk,
+        verdict_decision=record.verdict_decision,
+        objection=record.objection,
+    )
+
+
 def my_account_view(
     account: UserAccount,
     holdings: tuple[AccountHoldingRecord, ...],
     curve: tuple[AccountEquityPoint, ...],
+    timeline: tuple[TradeTimelineRecord, ...] = (),
 ) -> MyAccountView:
     """Project one account's ledger rows into the page the owner reads."""
     ordered = tuple(sorted(curve, key=lambda point: point.trade_date))
@@ -105,6 +149,7 @@ def my_account_view(
         curve=tuple(
             CurvePointView(trade_date=point.trade_date, equity=point.equity) for point in ordered
         ),
+        timeline=tuple(_timeline_view(record) for record in timeline),
     )
 
 

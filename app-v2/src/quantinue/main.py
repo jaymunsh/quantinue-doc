@@ -47,6 +47,10 @@ if TYPE_CHECKING:
     from quantinue.db.users import UserAccount
     from quantinue.orchestration.job_runner import JobRunner
 
+# 타임라인에 몇 건을 보여줄지. 판단 문턱이 아니라 표시용 창이라 config가
+# 아니라 여기 산다 — 어떤 매매 결정에도 들어가지 않는다.
+DEFAULT_TIMELINE_ENTRIES = 50
+
 PACKAGE_DIR = Path(__file__).parent
 DASHBOARD_CSS = (PACKAGE_DIR / "web" / "static" / "dashboard.css").read_text(encoding="utf-8")
 
@@ -114,13 +118,19 @@ async def _my_account(reads: object | None, account: UserAccount) -> MyAccountVi
     """
     holdings_reader = getattr(reads, "account_holdings", None)
     curve_reader = getattr(reads, "account_curve", None)
+    timeline_reader = getattr(reads, "account_timeline", None)
     holdings = () if holdings_reader is None else await holdings_reader(account.account_id)
     curve = (
         ()
         if curve_reader is None
         else await curve_reader(account.account_id, days=DEFAULT_CURVE_DAYS)
     )
-    return my_account_view(account, holdings, curve)
+    timeline = (
+        ()
+        if timeline_reader is None
+        else await timeline_reader(account.account_id, limit=DEFAULT_TIMELINE_ENTRIES)
+    )
+    return my_account_view(account, holdings, curve, timeline)
 
 
 def create_app(settings: Settings | None = None, *, store: RunStore | None = None) -> FastAPI:

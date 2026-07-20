@@ -10,6 +10,7 @@
   <p class="nav-label">내 운용</p>
   <a class="nav-link" href="#account" aria-current="page">계좌 개요</a>
   <a class="nav-link" href="#holdings"><b>{{ view.holdings | length }}</b>보유 종목</a>
+  <a class="nav-link" href="#timeline"><b>{{ view.timeline | length }}</b>거래 내역</a>
 </nav>
 {% endblock %}
 {% block main %}
@@ -89,5 +90,34 @@
     </table>
   </div>
   {% else %}<div class="portfolio-empty"><strong>보유 중인 종목이 없습니다</strong><p>매수가 체결되면 종목과 평가손익이 여기 표시됩니다.</p></div>{% endif %}
+</section>
+
+<section class="panel" id="timeline" style="margin-top:18px" aria-labelledby="timeline-title">
+  <div class="panel__head">
+    <div>
+      <h2 id="timeline-title">거래 내역</h2>
+      <p>각 체결에 그 매매를 만든 판단과, 검증이 남긴 반박을 함께 붙였습니다.</p>
+    </div>
+  </div>
+  {% if view.timeline %}
+  <ol class="ledger-list">{% for trade in view.timeline %}
+    <li>
+      <div>
+        <strong>{{ trade.ticker }} {{ trade.quantity }}주 {% if trade.side == 'buy' %}매수{% else %}매도{% endif %}</strong>
+        <span>${{ '{:,.2f}'.format(trade.price) }}</span>
+      </div>
+      <p><time datetime="{{ trade.filled_at.isoformat() }}">{{ trade.filled_at.strftime('%Y-%m-%d %H:%M UTC') }}</time>{% if trade.conviction %} · 확신도 {{ trade.conviction }}{% endif %}</p>
+      {# 판단 없는 체결도 사실이다. 빈 자리를 그럴듯한 문장으로 채우지 않는다. #}
+      {% if trade.is_mechanical %}
+      <p class="ledger-empty">규칙에 따른 청산입니다 — 모델 판단 없이 손절·익절·기간 조건으로 체결됐습니다.</p>
+      {% else %}
+      <p>{{ trade.summary }}</p>
+      {% if trade.bull_case %}<p>근거: {{ trade.bull_case }}</p>{% endif %}
+      {% if trade.key_risk %}<p>리스크: {{ trade.key_risk }}</p>{% endif %}
+      {% if trade.objection %}<p>반박: {{ trade.objection }}</p>{% endif %}
+      {% endif %}
+    </li>
+  {% endfor %}</ol>
+  {% else %}<div class="portfolio-empty"><strong>아직 거래가 없습니다</strong><p>매수나 매도가 체결되면 그 판단과 함께 여기 쌓입니다.</p></div>{% endif %}
 </section>
 {% endblock %}
