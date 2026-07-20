@@ -31,6 +31,7 @@ class Catalog:
     submission_columns: set[tuple[str, str]]
     order_columns: set[str]
     provenance_columns: dict[str, set[tuple[str, str]]]
+    user_columns: set[tuple[str, str]]
 
 
 def _run(docker: str, arguments: list[str]) -> subprocess.CompletedProcess[str]:
@@ -42,15 +43,26 @@ def _run(docker: str, arguments: list[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _provenance_column_catalog(docker: str, name: str) -> dict[str, set[tuple[str, str]]]:
-    """Load explicit provenance-column nullability from the disposable catalog."""
+PROVENANCE_TABLES = (
+    "tb_disclosure",
+    "tb_disclosure_signal",
+    "tb_news",
+    "tb_news_signal",
+    "tb_review_price_snapshots",
+)
+
+
+def _column_nullability_catalog(
+    docker: str, name: str, tables: tuple[str, ...]
+) -> dict[str, set[tuple[str, str]]]:
+    """Load column nullability for the named tables from the disposable catalog."""
+    # 테이블 이름을 SQL에 끼워 넣지 않고 전체를 받아 파이썬에서 거른다.
+    # public 스키마 전체라야 수백 행이라 싸고, 질의문이 상수로 남는다.
     query = (
         "SELECT table_name,column_name,is_nullable "
-        "FROM information_schema.columns "
-        "WHERE table_schema='public' AND table_name IN "
-        "('tb_disclosure','tb_disclosure_signal','tb_news','tb_news_signal',"
-        "'tb_review_price_snapshots')"
+        "FROM information_schema.columns WHERE table_schema='public'"
     )
+    wanted = set(tables)
     rows = _run(
         docker,
         [
@@ -71,7 +83,8 @@ def _provenance_column_catalog(docker: str, name: str) -> dict[str, set[tuple[st
     columns: defaultdict[str, set[tuple[str, str]]] = defaultdict(set)
     for row in rows:
         table, column, nullable = row.split("|", maxsplit=2)
-        columns[table].add((column, nullable))
+        if table in wanted:
+            columns[table].add((column, nullable))
     return dict(columns)
 
 
@@ -228,7 +241,10 @@ def postgres_catalog() -> Iterator[Catalog]:
                 ],
             ).stdout.splitlines()
         )
-        provenance_columns = _provenance_column_catalog(docker, name)
+        provenance_columns = _column_nullability_catalog(docker, name, PROVENANCE_TABLES)
+        user_columns = _column_nullability_catalog(docker, name, ("tb_user",)).get(
+            "tb_user", set()
+        )
         yield Catalog(
             tables,
             pk,
@@ -238,6 +254,7 @@ def postgres_catalog() -> Iterator[Catalog]:
             submission_columns,
             order_columns,
             provenance_columns,
+            user_columns,
         )
     finally:
         _ = subprocess.run(  # noqa: S603 - cleanup only the UUID task container

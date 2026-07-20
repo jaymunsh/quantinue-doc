@@ -124,7 +124,13 @@ CREATE TABLE IF NOT EXISTS tb_critic_verdict (
 );
 CREATE TABLE IF NOT EXISTS tb_user (
   user_id BIGSERIAL PRIMARY KEY, login_id TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('admin','user')), otp_secret TEXT,
+  role TEXT NOT NULL CHECK (role IN ('admin','user')),
+  -- 해시만 담는다. 평문은 어디에도 남기지 않는다.
+  -- nullable인 이유: 관리자가 계정을 먼저 만들고 비밀번호를 나중에 정할 수 있어야
+  -- 한다. 해시가 없는 행은 "로그인할 수 없는 계정"이지 "아무 비밀번호나 통하는
+  -- 계정"이 아니다 — 검증 경로가 그것을 강제한다.
+  password_hash TEXT,
+  otp_secret TEXT,
   is_active BOOLEAN NOT NULL DEFAULT true, created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

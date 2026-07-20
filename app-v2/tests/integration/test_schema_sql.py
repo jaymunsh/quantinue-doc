@@ -9,6 +9,7 @@ from .schema_sql_expectations import (
     PROVENANCE_COLUMNS,
     TABLES,
     UNIQUE,
+    USER_CREDENTIAL_COLUMNS,
 )
 
 
@@ -67,6 +68,15 @@ def test_order_catalog_represents_parent_and_child_bracket_ids(
     postgres_catalog: Catalog,
 ) -> None:
     assert postgres_catalog.order_columns >= ORDER_LEG_COLUMNS
+
+
+def test_user_catalog_stores_a_password_credential(postgres_catalog: Catalog) -> None:
+    """Password login needs a place to keep the hash; otp_secret cannot serve that."""
+    # Given / When
+    actual = postgres_catalog.user_columns
+
+    # Then
+    assert actual >= USER_CREDENTIAL_COLUMNS
 
 
 def test_catalog_requires_auditable_provenance_columns(postgres_catalog: Catalog) -> None:

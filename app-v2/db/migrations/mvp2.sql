@@ -261,3 +261,12 @@ CREATE TABLE IF NOT EXISTS tb_account_equity_daily (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (account_id, trade_date)
 );
+
+-- 웹 W1: 비밀번호 로그인. tb_user는 스키마만 있고 소비자가 0이던 테이블이라
+-- 자격증명 필드가 otp_secret(2단계 TOTP용) 하나뿐이었다 — 비밀번호를 담을
+-- 자리가 없었다. 해시만 담고 평문은 어디에도 남기지 않는다.
+-- nullable인 이유: 관리자가 계정을 먼저 만들고 비밀번호를 나중에 정할 수
+-- 있어야 한다. 해시가 없는 행은 "로그인할 수 없는 계정"이지 "아무 비밀번호나
+-- 통하는 계정"이 아니다 — 검증 경로가 그것을 강제한다.
+ALTER TABLE tb_user
+  ADD COLUMN IF NOT EXISTS password_hash TEXT;

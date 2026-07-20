@@ -1279,7 +1279,7 @@ erDiagram
         <tr><td>equity</td><td class="mono">NUMERIC NOT NULL CHECK (equity &gt;= 0)</td><td>평가액</td></tr>
         <tr><td>buying_power</td><td class="mono">NUMERIC NOT NULL CHECK (buying_power &gt;= 0)</td><td>주문 가능 금액</td></tr>
         <tr><td>is_paper</td><td class="mono">BOOLEAN NOT NULL DEFAULT true</td><td>페이퍼 여부 (2차는 전부 true)</td></tr>
-        <tr><td>user_id</td><td class="mono">BIGINT REFERENCES tb_user(user_id)</td><td>1유저=1계좌</td></tr>
+        <tr><td>user_id</td><td class="mono">BIGINT REFERENCES tb_user(user_id)</td><td>1유저=1계좌 — <code>UNIQUE INDEX ... WHERE user_id IS NOT NULL</code>이 DB로 강제한다. NULL은 소유자 없는 테스트 계좌</td></tr>
         <tr><td>inv_type</td><td class="mono">TEXT CHECK (inv_type IN ('aggressive','conservative'))</td><td>계좌 성향</td></tr>
         <tr><td>status</td><td class="mono">TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','paused','closed'))</td><td>계좌 상태</td></tr>
         <tr><td>created_at</td><td class="mono">TIMESTAMPTZ NOT NULL DEFAULT now()</td><td>생성 시각</td></tr>
@@ -1445,14 +1445,15 @@ erDiagram
         </tbody></table></div>
     </details>
     <details class="schema">
-      <summary><code>tb_user</code> <span class="b b-new">2차 신규</span> <span class="sd">사용자 (소비자 0)</span><span class="cnt">7 컬럼</span></summary>
+      <summary><code>tb_user</code> <span class="b b-new">2차 신규</span> <span class="sd">사용자 (아직 소비자 0 — 웹 W1에서 배선 중)</span><span class="cnt">8 컬럼</span></summary>
       <div class="twrap"><table>
         <thead><tr><th>컬럼</th><th>정의 (DDL 원문)</th><th>설명</th></tr></thead><tbody>
         <tr><td>user_id</td><td class="mono">BIGSERIAL PRIMARY KEY</td><td>대리키</td></tr>
         <tr><td>login_id</td><td class="mono">TEXT NOT NULL UNIQUE</td><td>로그인 id</td></tr>
         <tr><td>display_name</td><td class="mono">TEXT NOT NULL</td><td>표시 이름</td></tr>
         <tr><td>role</td><td class="mono">TEXT NOT NULL CHECK (role IN ('admin','user'))</td><td>권한</td></tr>
-        <tr><td>otp_secret</td><td class="mono">TEXT</td><td>OTP(TOTP) 시크릿</td></tr>
+        <tr><td>password_hash</td><td class="mono">TEXT</td><td>비밀번호 해시(argon2). 평문은 어디에도 없다. nullable — 해시가 없는 행은 "로그인할 수 없는 계정"이다</td></tr>
+        <tr><td>otp_secret</td><td class="mono">TEXT</td><td>OTP(TOTP) 시크릿 — 인증 2단계(W-D1, R1 전 게이트)</td></tr>
         <tr><td>is_active</td><td class="mono">BOOLEAN NOT NULL DEFAULT true</td><td>활성 여부</td></tr>
         <tr><td>created_at</td><td class="mono">TIMESTAMPTZ NOT NULL DEFAULT now()</td><td>생성 시각 — 계정은 관리자만 생성</td></tr>
         </tbody></table></div>
