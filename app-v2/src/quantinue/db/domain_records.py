@@ -232,6 +232,27 @@ class RawDisclosureWrite:
 
 
 @dataclass(frozen=True, slots=True)
+class DisclosureSignalWrite:
+    """One ticker's scored filings — the row role_07 votes on.
+
+    ``cycle_ts``가 분석 잡의 자정과 같아야 하는 이유는 조인이 아니라 **계보**다:
+    ``tb_strategist_signals.src_disclosure_at``이 ``(ticker, cycle_ts)``로 이 표를
+    가리키는 FK라, 어긋나면 판단이 자기 근거를 못 가리킨다.
+
+    점수가 ``sentiment_score``에 앉는 이유: 이 표에서 "얼마나 호재인가"를 담는
+    칸이 그것이다(``importance``는 사건의 크기, ``risk_score``는 하방). 우리는
+    폼 종류만 보고 채점하므로 정직하게 답할 수 있는 것이 방향 하나뿐이다.
+    """
+
+    ticker: str
+    cycle_ts: datetime
+    trade_date: date
+    has_signal: bool
+    sentiment_score: float
+    disclosure_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class RawNewsWrite:
     """One article, recorded once per ticker it names.
 
