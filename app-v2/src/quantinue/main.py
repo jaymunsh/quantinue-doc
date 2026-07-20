@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import anyio
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -23,6 +23,7 @@ from quantinue.api.pipeline_presentation import PipelineDayView, sparkline_point
 from quantinue.api.portfolio_view import simulated_portfolio_view
 from quantinue.api.review_runtime import ReviewRuntime
 from quantinue.api.reviews import build_review_router
+from quantinue.api.route_guard import RoleZoneGuard
 from quantinue.api.schemas import HealthResponse, SimulatedPortfolioView
 from quantinue.api.sessions import resolve_session_secret
 from quantinue.core.config import DatabaseMode, Settings
@@ -134,7 +135,22 @@ def create_app(settings: Settings | None = None, *, store: RunStore | None = Non
             job_runner=job_runner if mvp2_config.jobs.enabled else None,
         ),
     )
+    # 잡 원장은 RunStore 프로토콜 밖에 산다(도메인 저장소 소유). 메모리
+    # 스토어에는 아예 없으므로, 없으면 빈 관제실을 보여준다 — 잡을 아직 안
+    # 켠 설치도 정상 상태이고 그때 화면이 500으로 죽으면 안 된다.
+    # 같은 저장소가 유저 원장도 들고 있다(tb_user). 없으면 로그인할 계정이
+    # 없다는 뜻이고, 그건 부트스트랩 상태다(W-D2).
+    control_room_reads = getattr(selected_store, "domain", None)
+
+    # ⚠️ 미들웨어는 **나중에 더한 것이 바깥**이다. 세션이 가드보다 바깥에 있어야
+    # 가드가 request.session을 읽을 수 있으므로 가드를 먼저 더한다. 순서를
+    # 뒤집으면 가드가 늘 "로그인 안 됨"으로 보고 전부 막힌다.
     app.add_middleware(GZipMiddleware, minimum_size=500, compresslevel=6)
+    app.add_middleware(
+        RoleZoneGuard,
+        users=control_room_reads,
+        control_token=selected_settings.control_room_token.get_secret_value(),
+    )
     # 세션 쿠키는 서명만 되고 암호화되지 않는다(auth.SESSION_KEY 주석). https_only는
     # 켜지 않는다 — 로컬 http로 띄우는 것이 이 단계의 정상 운용이고, 켜면 쿠키가
     # 조용히 사라져 "로그인이 안 된다"로 보인다. R1(페이퍼 전환) 때 재검토.
@@ -148,14 +164,22 @@ def create_app(settings: Settings | None = None, *, store: RunStore | None = Non
     app.mount("/static", StaticFiles(directory=PACKAGE_DIR / "web" / "static"), name="static")
     if review_runtime is not None:
         app.include_router(build_review_router(review_runtime.processor, access=access))
-
-    # 잡 원장은 RunStore 프로토콜 밖에 산다(도메인 저장소 소유). 메모리
-    # 스토어에는 아예 없으므로, 없으면 빈 관제실을 보여준다 — 잡을 아직 안
-    # 켠 설치도 정상 상태이고 그때 화면이 500으로 죽으면 안 된다.
-    # 같은 저장소가 유저 원장도 들고 있다(tb_user). 없으면 로그인할 계정이
-    # 없다는 뜻이고, 그건 부트스트랩 상태다(W-D2).
-    control_room_reads = getattr(selected_store, "domain", None)
     app.include_router(build_auth_router(control_room_reads, templates))
+
+    @app.get("/me", response_class=HTMLResponse)
+    async def my_account(request: Request) -> HTMLResponse:
+        current = session_user(request)
+        reader = getattr(control_room_reads, "account_for_user", None)
+        account = None if current is None or reader is None else await reader(current.user_id)
+        if account is None:
+            # 계좌 없는 로그인(관리자·부트스트랩)에 빈 계좌를 그리지 않는다.
+            # 없는 것을 0으로 그리면 화면이 원장에 없는 사실을 지어낸다.
+            raise HTTPException(status.HTTP_404_NOT_FOUND)
+        return templates.TemplateResponse(
+            request=request,
+            name="me.html",
+            context={"account": account, "current_user": current},
+        )
 
     async def pipeline_day(slot: date | None = None) -> PipelineDayView:
         if control_room_reads is None:

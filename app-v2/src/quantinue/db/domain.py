@@ -44,7 +44,13 @@ from quantinue.db.domain_records import (
 )
 from quantinue.db.domain_sources import save_source_records
 from quantinue.db.postgres_accounting import initialize_account, record_completed_fill
-from quantinue.db.users import UserRecord, count_users, find_user_by_login
+from quantinue.db.users import (
+    UserAccount,
+    UserRecord,
+    account_for_user,
+    count_users,
+    find_user_by_login,
+)
 from quantinue.roles.analysis import AnalysisSubject
 from quantinue.roles.exits import DailyObservation, OpenPosition
 from quantinue.roles.role_01_universe_screener.contracts import UniverseScreenerOutput
@@ -1523,6 +1529,10 @@ class PostgresDomainRepository:
     async def find_user_by_login(self, login_id: str) -> UserRecord | None:
         """Delegate the sign-in lookup to the user read module."""
         return await find_user_by_login(self._engine, login_id)
+
+    async def account_for_user(self, user_id: int) -> UserAccount | None:
+        """Delegate the ownership-scoped account read to the user read module."""
+        return await account_for_user(self._engine, user_id)
 
     async def save_source_records(
         self,

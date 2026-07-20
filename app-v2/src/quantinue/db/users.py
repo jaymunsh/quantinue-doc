@@ -30,6 +30,16 @@ class UserRecord:
     is_active: bool
 
 
+@dataclass(frozen=True, slots=True)
+class UserAccount:
+    """The one account a signed-in user owns, if they own one."""
+
+    account_id: int
+    broker_account_id: str
+    inv_type: str | None
+    status: str
+
+
 async def count_users(engine: AsyncEngine) -> int:
     """Count rows so an installation with no accounts can still open its console.
 
@@ -73,4 +83,37 @@ async def find_user_by_login(engine: AsyncEngine, login_id: str) -> UserRecord |
         role=row.role,
         password_hash=row.password_hash,
         is_active=row.is_active,
+    )
+
+
+async def account_for_user(engine: AsyncEngine, user_id: int) -> UserAccount | None:
+    """Return the account this user owns, scoping ownership in the query itself.
+
+    화면이 전부 읽고 나서 거르는 방식을 쓰지 않는다 — 그 방식은 필터를
+    빠뜨린 화면 하나가 남의 계좌를 보여주는 구조다. 소유는 WHERE 절이
+    가진다. 1유저=1계좌는 부분 유니크 인덱스가 이미 DB로 강제하므로
+    여기서 여러 행을 다룰 경우를 만들지 않는다.
+    """
+    async with engine.begin() as connection:
+        row = (
+            await connection.execute(
+                text(
+                    dedent(
+                        """
+                        SELECT id, broker_account_id, inv_type, status
+                        FROM tb_account
+                        WHERE user_id = :user_id
+                        """
+                    )
+                ),
+                {"user_id": user_id},
+            )
+        ).first()
+    if row is None:
+        return None
+    return UserAccount(
+        account_id=row.id,
+        broker_account_id=row.broker_account_id,
+        inv_type=row.inv_type,
+        status=row.status,
     )

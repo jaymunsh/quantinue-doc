@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block description %}내 계좌{% endblock %}
+{% block title %}Quantinue 내 계좌{% endblock %}
+{% block heading %}내 계좌{% endblock %}
+{% block main %}
+<section class="account-panel" aria-labelledby="account-title">
+  <div class="section-heading compact-heading">
+    <div>
+      <p class="section-label">계좌</p>
+      <h2 id="account-title">{{ account.broker_account_id }}</h2>
+    </div>
+    <p>
+      성향 {% if account.inv_type == 'aggressive' %}공격형{% elif account.inv_type == 'conservative' %}안전형{% else %}미지정{% endif %}
+      · 상태 {{ account.status }}
+    </p>
+  </div>
+  {# 자산·수익률·곡선·보유는 W2-1이 붙인다. 지금 자리만 잡아두고 숫자를
+     비워두는 대신, 아직 없다는 것을 화면이 말하게 한다 — 빈 0원은 "돈이
+     없다"로 읽히고 그건 거짓이다. #}
+  <p class="empty-state">자산·수익률·보유 종목은 다음 단계에서 표시됩니다.</p>
+</section>
+{% endblock %}

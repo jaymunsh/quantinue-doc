@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Protocol
 if TYPE_CHECKING:
     from starlette.requests import Request
 
-    from quantinue.db.users import UserRecord
+    from quantinue.db.users import UserAccount, UserRecord
 
 # 세션 딕셔너리 안의 키. 쿠키는 **서명만 되고 암호화되지는 않는다** —
 # user_id·role이 base64로 들여다보인다(변조는 불가). 그래서 여기에는 조회에
@@ -48,6 +48,10 @@ class UserReads(Protocol):
 
     async def find_user_by_login(self, login_id: str) -> UserRecord | None:
         """Return one sign-in candidate, active or not, or None."""
+        ...
+
+    async def account_for_user(self, user_id: int) -> UserAccount | None:
+        """Return the account this user owns, scoped by the query itself."""
         ...
 
 
