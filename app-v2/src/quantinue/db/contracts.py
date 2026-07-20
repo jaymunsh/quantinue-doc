@@ -13,7 +13,6 @@ if TYPE_CHECKING:
     from datetime import date, datetime
 
     from quantinue.db.domain_records import CompletedFillWrite
-    from quantinue.db.simulated_portfolio import SimulatedPortfolioSnapshot
 
 _CENT: Final = Decimal("0.01")
 _MAX_APP_ORDER_MONEY_DIGITS: Final = 12
@@ -177,10 +176,6 @@ class RunStore(Protocol):
 
     async def close(self) -> None:
         """Release storage resources."""
-        ...
-
-    async def simulated_portfolio(self, opening_cash: Decimal) -> SimulatedPortfolioSnapshot:
-        """Return the derived local account read model."""
         ...
 
     async def record_completed_fill(self, value: CompletedFillWrite) -> int:

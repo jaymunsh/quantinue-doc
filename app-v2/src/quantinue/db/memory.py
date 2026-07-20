@@ -32,9 +32,7 @@ from quantinue.db.memory_exposure import (
 from quantinue.db.simulated_portfolio import (
     SimulatedFill,
     SimulatedOrder,
-    SimulatedPortfolioSnapshot,
     ensure_fill_is_affordable,
-    project_portfolio,
 )
 
 _DEFAULT_OPENING_CASH: Final = Decimal("1000000.00")
@@ -55,18 +53,6 @@ class InMemoryRunStore(MemoryCompletedFillMixin):
 
     async def close(self) -> None:
         """No external resources are owned."""
-
-    async def simulated_portfolio(self, opening_cash: Decimal) -> SimulatedPortfolioSnapshot:
-        """Return the process-local simulated portfolio.
-
-        mark는 없다 — 시세 mark의 출처였던 "완료된 런"이 러너와 함께 죽었다.
-        메모리 모드에는 잡 러너도 없으므로(빌드가 None을 돌려준다) 이 스토어의
-        포트폴리오는 체결 원가 기준으로만 평가된다.
-        """
-        async with self._lock:
-            orders = tuple(self._simulated_orders.values())
-            fills = tuple(self._simulated_fills.values())
-        return project_portfolio(opening_cash, orders, fills, ())
 
     @override
     async def record_simulated_order(

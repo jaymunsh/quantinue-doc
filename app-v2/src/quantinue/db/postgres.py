@@ -17,9 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from quantinue.db import postgres_query
 from quantinue.db.domain import PostgresDomainRepository
-from quantinue.db.domain_records import AccountWrite
 from quantinue.db.order_reservations import PostgresOrderReservations
-from quantinue.db.postgres_portfolio import LOCAL_SIMULATED_ACCOUNT_ID, read_simulated_portfolio
 
 if TYPE_CHECKING:
     from sqlalchemy import Table
@@ -31,7 +29,6 @@ if TYPE_CHECKING:
         DailyOrderReservation,
     )
     from quantinue.db.domain_records import CompletedFillWrite
-    from quantinue.db.simulated_portfolio import SimulatedPortfolioSnapshot
 
 _METADATA = MetaData()
 _DEFAULT_OPENING_CASH: Final = Decimal("1000000.00")
@@ -54,8 +51,6 @@ class PostgresRunStore:
     def __init__(
         self,
         database_url: str,
-        opening_cash: Decimal = _DEFAULT_OPENING_CASH,
-        account_identity: str = LOCAL_SIMULATED_ACCOUNT_ID,
     ) -> None:
         """Create a tuned async engine without opening a connection."""
         self._engine: AsyncEngine = create_async_engine(
@@ -66,10 +61,6 @@ class PostgresRunStore:
         )
         self.order_reservations = PostgresOrderReservations(database_url)
         self.domain = PostgresDomainRepository(database_url)
-        self._account_identity = account_identity
-        # 로컬 모의 계좌의 부트스트랩 행. initialize()가 멱등 저장한다 — 이
-        # 행이 없으면 첫 체결이 착지할 계좌가 없다.
-        self._account = AccountWrite(account_identity, opening_cash, opening_cash, opening_cash)
 
     async def initialize(self) -> None:
         """Reflect canonical tables created by schema bootstrap."""
@@ -77,7 +68,6 @@ class PostgresRunStore:
             await connection.run_sync(_METADATA.reflect, only=_TABLES)
         await self.order_reservations.initialize()
         await self.domain.initialize()
-        _ = await self.domain.save_account(self._account)
 
     async def close(self) -> None:
         """Dispose every connection pool this store owns."""
@@ -90,23 +80,9 @@ class PostgresRunStore:
         """Return the engine used by safe read-boundary operations."""
         return self._engine
 
-    @property
-    def account_identity(self) -> str:
-        """Return the isolated app-owned account selected at composition time."""
-        return self._account_identity
-
     async def record_completed_fill(self, value: CompletedFillWrite) -> int:
         """Apply the shared completed-fill contract through atomic accounting."""
         return await self.domain.record_completed_fill(value)
-
-    async def simulated_portfolio(self, opening_cash: Decimal) -> SimulatedPortfolioSnapshot:
-        """Return the durable simulated portfolio read model."""
-        return await read_simulated_portfolio(
-            self._engine,
-            _METADATA,
-            opening_cash,
-            self._account_identity,
-        )
 
     async def reserve_daily_new_order(
         self, request: DailyOrderReservation

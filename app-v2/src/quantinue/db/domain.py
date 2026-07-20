@@ -1673,13 +1673,6 @@ class PostgresDomainRepository:
         """Initialize one local account once without resetting durable balances."""
         return await initialize_account(self._engine, self._table("tb_account"), value)
 
-    async def initialize_local_account(self, opening_cash: Decimal) -> int:
-        """Initialize the fixed app-owned local account identity once."""
-        account = AccountWrite(
-            "quantinue-local-simulated", opening_cash, opening_cash, opening_cash
-        )
-        return await self.save_account(account)
-
     async def record_completed_fill(self, value: CompletedFillWrite) -> int:
         """Insert one unique local buy fill and debit its account atomically."""
         return await record_completed_fill(

@@ -22,7 +22,7 @@ def build_run_store(settings: Settings) -> RunStore:
             return InMemoryRunStore(settings.simulated_account_opening_cash_usd)
         case DatabaseMode.POSTGRES:
             return PostgresRunStore(
-                str(settings.database_url), settings.simulated_account_opening_cash_usd
+                str(settings.database_url)
             )
         case unreachable:
             assert_never(unreachable)
