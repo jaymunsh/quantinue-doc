@@ -508,7 +508,7 @@
         <tr><td class="mono">broker/</td><td>브로커 경계</td><td><code>mock.py</code>(현행 — 네트워크 0) · <code>alpaca.py</code>(휴면, R1 대비) · <code>bracket_trigger.py</code>(손절 우선 D5) · <code>reservations.py</code>(중복 주문 방지)</td></tr>
         <tr><td class="mono">market_data/</td><td>공개 시장 피드</td><td><code>alpaca_bars.py</code>(배치 일봉) · <code>alpaca_news.py</code> · <code>wire_news.py</code>(RSS) · <code>sec_daily_index.py</code>(공시) · <code>sec_ownership.py</code>(Form 4) · <code>fixture.py</code>(오프라인 기본)</td></tr>
         <tr><td class="mono">llm/</td><td>LLM 어댑터</td><td><code>provider.py</code>(openai·local·mock 3단) · <code>prompts.py</code> + <code>prompts/</code>(버전 관리 시스템 프롬프트)</td></tr>
-        <tr><td class="mono">api/ · web/</td><td>HTTP·관제실</td><td><code>pipeline_day.py</code>(잡 원장 → 하루 뷰) · <code>portfolio_view.py</code> · <code>review_runtime.py</code>(T+5 처리) · Jinja2 템플릿</td></tr>
+        <tr><td class="mono">api/ · web/</td><td>HTTP·관제실</td><td><code>pipeline_day.py</code>(잡 원장 → 하루 뷰) · <code>account_roster.py</code>(계좌 총람) · <code>my_account.py</code>(유저 계좌) · <code>admin_accounts.py</code>(계좌 CRUD·슬롯 해제 — <b>유일한 쓰기</b>) · <code>route_guard.py</code>(3구역 기본 거부) · <code>review_runtime.py</code>(T+5 처리) · Jinja2 템플릿</td></tr>
       </tbody>
     </table></div>
 

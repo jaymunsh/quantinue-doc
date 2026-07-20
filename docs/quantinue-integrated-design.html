@@ -344,7 +344,7 @@
       Quantinue는 <b>미국 주식 모의 운용을 무인으로 돌리는 시스템</b>이다. 매일 뉴욕 세션일에
       한 번, 시가총액 상위 2,000종목의 세계를 원장(PostgreSQL)에 담고 → 그 원장만 보고
       오늘 깊이 볼 종목 20여 개를 고르고 → LLM이 성향별로 판단하고 크리틱이 반박하고 →
-      살아남은 판단만 모의 계좌에서 사고판다. 결과는 관제실 화면 하나(<code>GET /</code>)로 지켜본다.
+      살아남은 판단만 모의 계좌에서 사고판다. 결과는 화면 넷으로 지켜본다 — 관제실(<code>GET /admin</code>) · 계좌 관리(<code>/admin/accounts</code>) · 내 계좌(<code>/me</code>) · 로그인(<code>/login</code>). <code>GET /</code>는 역할별 갈림길이다.
     </p>
 
     <div class="mermaid">
@@ -1620,7 +1620,7 @@ erDiagram
         <div class="d">성향별 승인 수, 종목별 side·확신도·요약과 크리틱의 반박문.</div></div>
     </div>
     <p class="small muted">
-      JSON 관측 API: <code>GET /api/pipeline/today</code> · <code>GET /api/portfolio</code> ·
+      JSON 관측 API: <code>GET /api/pipeline/today</code> · <code>GET /api/accounts</code>(구 <code>/api/portfolio</code> 대체 — 유령 계좌 하나가 아니라 계좌 전부) ·
       <code>GET /health</code>. 리뷰 처리는 별도 라우터(<code>POST /api/reviews/{signal_id}/process</code>).
       출처: <code>src/quantinue/main.py</code>.
     </p>
