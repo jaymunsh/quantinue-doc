@@ -26,6 +26,7 @@ from quantinue.market_data.alpaca_news import AlpacaNewsSource
 from quantinue.market_data.sec_daily_index import SecDailyIndexSource
 from quantinue.market_data.sec_ownership import SecOwnershipSource
 from quantinue.market_data.wire_news import WireRssSource, default_wire_feeds
+from quantinue.notify.telegram import build_failure_notifier
 from quantinue.orchestration.job_runner import JobDefinition, JobRunner
 from quantinue.roles.allocation.job import AllocationJob
 from quantinue.roles.analysis.job import AnalysisJob
@@ -849,7 +850,12 @@ def build_job_runner(
         )
     )
     return JobRunner(
-        config=config.jobs, ledger=domain, jobs=tuple(jobs), calendar=calendar
+        config=config.jobs,
+        ledger=domain,
+        jobs=tuple(jobs),
+        calendar=calendar,
+        # 키가 없으면 None이고, 그때 러너는 알림을 아예 시도하지 않는다.
+        notifier=build_failure_notifier(settings),
     )
 
 

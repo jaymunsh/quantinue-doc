@@ -78,12 +78,15 @@ class JobRunner:
         ledger: JobRunLedger,
         jobs: tuple[JobDefinition, ...],
         calendar: NyseCalendar | None = None,
+        notifier: Callable[[str], Awaitable[None]] | None = None,
     ) -> None:
         """Bind collaborators; each job owns its own side effects."""
         self._config = config
         self._ledger = ledger
         self._jobs = jobs
         self._calendar = calendar or NyseCalendar()
+        # 알림이 없는 설치가 기본이다. None이면 아무 일도 안 일어난다.
+        self._notifier = notifier
         self._logger: structlog.stdlib.BoundLogger = structlog.get_logger("jobs")
 
     @property
@@ -123,11 +126,20 @@ class JobRunner:
                 job.name, as_of, succeeded=False, detail=str(error)
             )
             await self._logger.aexception("jobs.failed", job=job.name)
+            # 원장에 적은 **뒤에** 알린다. 알림이 먼저면 전송이 걸려 있는 동안
+            # 실패 사실이 원장에 없고, 그 사이 재시도 판정이 옛 상태를 본다.
+            await self._announce(f"❌ {job.name} 실패 · 슬롯 {as_of}\n{error}")
             return JobOutcome(job.name, "failed", str(error))
         await self._ledger.finish_job_run(
             job.name, as_of, succeeded=True, detail=detail
         )
         return JobOutcome(job.name, "ran", detail)
+
+    async def _announce(self, message: str) -> None:
+        """Tell a human, and never let that attempt break the run."""
+        if self._notifier is None:
+            return
+        await self._notifier(message)
 
     async def run_forever(self) -> None:
         """Tick forever; a failing tick is logged and never kills the loop."""

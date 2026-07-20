@@ -110,6 +110,10 @@ class Settings(BaseSettings):
     # 두지 않는다 — 없으면 기동 시 무작위로 만들고 경고를 남긴다(그 대가는
     # 재시작 때 세션이 전부 만료되는 것뿐이다). resolve_session_secret 참조.
     session_secret: SecretStr | None = None
+    # 실패 알림. 둘 중 하나라도 비면 알림 경로가 아예 안 만들어진다 —
+    # 빈 토큰으로 매번 401을 받는 것은 유령이다.
+    telegram_bot_token: SecretStr | None = None
+    telegram_chat_id: str | None = None
     simulated_account_opening_cash_usd: SimulatedAccountOpeningCashUsd = Decimal("1000000.00")
 
     @field_validator("alpaca_base_url")
