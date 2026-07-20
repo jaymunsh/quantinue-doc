@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from pydantic import SecretStr
+from pydantic_settings import SettingsConfigDict
 
 from quantinue.core.config import Settings
 from quantinue.core.market_calendar import NyseCalendar
@@ -241,7 +242,15 @@ class _HoldingDomain(_Domain):
 
 
 def _settings(*, key: str = "", secret: str = "") -> Settings:
-    return Settings(alpaca_api_key=SecretStr(key), alpaca_secret_key=SecretStr(secret))
+    # 개발자의 실제 .env를 안 읽는다. 순서 계약을 고정하는 테스트가 그 파일에
+    # 달리면, 텔레그램 키를 넣은 사람에게만 요약 잡이 끼어들어 실패한다.
+    return _Isolated(alpaca_api_key=SecretStr(key), alpaca_secret_key=SecretStr(secret))
+
+
+class _Isolated(Settings):
+    """등록 순서만 보는 테스트용 — .env를 읽지 않는다."""
+
+    model_config = SettingsConfigDict(env_file=None, env_prefix="QUANTINUE_", extra="ignore")
 
 
 def test_a_store_without_a_ledger_gets_no_runner() -> None:
@@ -838,3 +847,32 @@ async def test_a_day_without_macro_observations_saves_nothing() -> None:
     # Then
     assert domain.saved == []
     assert "no observations" in detail
+
+
+def test_the_daily_note_is_registered_last_when_telegram_is_configured() -> None:
+    """요약할 것이 있으려면 앞의 잡들이 먼저 끝나야 한다 — 순서가 곧 실행 순서다."""
+    # Given
+    store = _Store(_HoldingDomain(("AAA",)))
+    settings = _Isolated(
+        telegram_bot_token=SecretStr("token"), telegram_chat_id="chat"
+    )
+
+    # When
+    runner = build_job_runner(settings, Mvp2Config(), store=store)
+
+    # Then
+    assert runner is not None
+    assert runner.jobs[-1].name == "daily_summary"
+
+
+def test_an_installation_without_telegram_has_no_daily_note() -> None:
+    """보낼 곳 없는 잡이 매일 원장에 행을 남기는 것은 유령이다."""
+    # Given
+    store = _Store(_HoldingDomain(("AAA",)))
+
+    # When
+    runner = build_job_runner(_Isolated(), Mvp2Config(), store=store)
+
+    # Then
+    assert runner is not None
+    assert "daily_summary" not in [job.name for job in runner.jobs]

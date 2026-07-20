@@ -849,14 +849,57 @@ def build_job_runner(
             ),
         )
     )
+    notifier = build_failure_notifier(settings)
+    # 알림을 안 쓰는 설치에는 이 잡을 **등록하지 않는다.** 보낼 곳 없는 잡이
+    # 매일 원장에 행 하나를 남기는 것은 유령이다.
+    if notifier is not None:
+        jobs.append(build_daily_summary_job(domain=domain, notify=notifier))
     return JobRunner(
         config=config.jobs,
         ledger=domain,
         jobs=tuple(jobs),
         calendar=calendar,
         # 키가 없으면 None이고, 그때 러너는 알림을 아예 시도하지 않는다.
-        notifier=build_failure_notifier(settings),
+        notifier=notifier,
     )
+
+
+def build_daily_summary_job(
+    *,
+    domain: object,
+    notify: Callable[[str], Awaitable[None]],
+    name: str = "daily_summary",
+) -> JobDefinition:
+    """Say once a day that the chain ran, so silence becomes the signal.
+
+    실패 알림은 앱이 살아 있을 때만 온다. 앱이 아예 안 떴거나 맥이 꺼져
+    있었으면 아무 소리도 안 나고, 그 침묵은 "문제 없음"과 구별되지 않는다.
+    매일 한 통을 보내면 **안 오는 것 자체가 신호**가 된다.
+
+    잡으로 등록한 이유는 기능이 아니라 멱등이다. 하루 한 번 보장을
+    ``tb_job_run``의 PK가 이미 DB로 강제하므로, 앱을 껐다 켜도 그날 이미
+    보냈으면 다시 안 보낸다 — 앱 메모리에 기억하면 재시작마다 또 온다.
+
+    **등록은 맨 끝이다.** 순서가 곧 실행 순서라, 앞의 잡들이 끝난 뒤라야
+    요약할 것이 있다. 자기 자신은 세지 않는다 — 지금 도는 중이라 결과가 없다.
+    """
+
+    async def run(as_of: date) -> str:
+        runs = [item for item in await domain.job_runs(as_of) if item.job_name != name]  # type: ignore[attr-defined]
+        succeeded = sum(1 for item in runs if item.status == "succeeded")
+        broken = [item.job_name for item in runs if item.status == "failed"]
+        plans = await domain.order_plans(as_of)  # type: ignore[attr-defined]
+        bought = sum(1 for plan in plans if plan.decision == "planned")
+        headline = "✅" if not broken and succeeded == len(runs) else "⚠️"
+        lines = [
+            f"{headline} {as_of} 슬롯 · 잡 {succeeded}/{len(runs)} 성공 · 신규 매수 {bought}건"
+        ]
+        if broken:
+            lines.append(f"실패: {', '.join(broken)}")
+        await notify("\n".join(lines))
+        return f"summary sent: {succeeded}/{len(runs)} succeeded, {bought} bought"
+
+    return JobDefinition(name=name, run=run)
 
 
 def _allocation_runner(job: AllocationJob) -> Callable[[date], Awaitable[str]]:

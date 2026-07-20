@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from types import SimpleNamespace
 
 import pytest
 from pydantic import SecretStr
@@ -10,6 +11,7 @@ from pydantic_settings import SettingsConfigDict
 
 from quantinue.core.config import Settings
 from quantinue.notify.telegram import build_failure_notifier
+from quantinue.orchestration.job_factory import build_daily_summary_job
 from quantinue.orchestration.job_runner import JobDefinition, JobRunner
 from quantinue.orchestration.policy import JobCadenceConfig, JobsConfig
 
@@ -112,3 +114,84 @@ async def test_a_broken_notifier_does_not_break_the_run() -> None:
         _ = await runner.tick(datetime(2026, 7, 20, 14, tzinfo=UTC))
     # 원장에는 실패가 이미 적혔다 — 알림보다 먼저 기록하기 때문이다
     assert ledger.finished == [("boom", False)]
+
+
+class _SummaryReads:
+    """오늘 슬롯의 잡 결과와 배분 판단만 답하는 최소 원장."""
+
+    def __init__(self, runs: tuple[tuple[str, str], ...], planned: int) -> None:
+        self._runs = runs
+        self._planned = planned
+
+    async def job_runs(self, slot_date: date) -> tuple[object, ...]:
+        assert slot_date == _DAY
+        return tuple(
+            SimpleNamespace(job_name=name, status=status) for name, status in self._runs
+        )
+
+    async def order_plans(self, trade_date: date) -> tuple[object, ...]:
+        assert trade_date == _DAY
+        return tuple(SimpleNamespace(decision="planned") for _ in range(self._planned))
+
+
+@pytest.mark.anyio
+async def test_the_daily_note_reports_a_clean_chain() -> None:
+    """안 오는 것이 신호가 되려면, 정상인 날에도 한 통은 와야 한다."""
+    # Given
+    sent: list[str] = []
+
+    async def notify(message: str) -> None:
+        sent.append(message)
+
+    reads = _SummaryReads((("universe", "succeeded"), ("daily_bars", "succeeded")), 3)
+    job = build_daily_summary_job(domain=reads, notify=notify)
+
+    # When
+    detail = await job.run(_DAY)
+
+    # Then
+    assert "✅" in sent[0]
+    assert "2/2" in sent[0]
+    assert "3건" in sent[0]
+    assert "2/2" in detail
+
+
+@pytest.mark.anyio
+async def test_the_daily_note_names_what_broke() -> None:
+    # Given
+    sent: list[str] = []
+
+    async def notify(message: str) -> None:
+        sent.append(message)
+
+    reads = _SummaryReads((("universe", "succeeded"), ("news", "failed")), 0)
+    job = build_daily_summary_job(domain=reads, notify=notify)
+
+    # When
+    _ = await job.run(_DAY)
+
+    # Then
+    assert "⚠️" in sent[0]
+    assert "실패: news" in sent[0]
+
+
+@pytest.mark.anyio
+async def test_the_daily_note_does_not_count_itself() -> None:
+    """자기 자신은 지금 도는 중이라 결과가 없다 — 세면 늘 1개 실패로 보인다."""
+    # Given
+    sent: list[str] = []
+
+    async def notify(message: str) -> None:
+        sent.append(message)
+
+    reads = _SummaryReads(
+        (("universe", "succeeded"), ("daily_summary", "running")), 0
+    )
+    job = build_daily_summary_job(domain=reads, notify=notify)
+
+    # When
+    _ = await job.run(_DAY)
+
+    # Then
+    assert "1/1" in sent[0]
+    assert "✅" in sent[0]
