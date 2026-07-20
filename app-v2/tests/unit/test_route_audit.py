@@ -22,6 +22,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from fastapi.testclient import TestClient
@@ -75,6 +76,8 @@ class _StubDomain:
             broker_account_id="DEMO-AGGRESSIVE-01",
             inv_type="aggressive",
             status="active",
+            cash=Decimal("30734.62"),
+            equity=Decimal("150000.00"),
         )
 
 

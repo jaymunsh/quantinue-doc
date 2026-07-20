@@ -335,3 +335,19 @@ class KnownListing:
 
     company_name: str
     market_cap: int
+
+
+@dataclass(frozen=True, slots=True)
+class AccountHoldingRecord:
+    """One open position of one account, with the close that marks it.
+
+    ``mark_price``가 ``None``일 수 있다. 봉이 없는 종목(거래정지·상장폐지)이
+    실제로 보유에 남고, 그때 마지막 종가를 지어내면 화면이 원장보다 많이
+    안다고 말하게 된다. 없는 것은 없다고 그린다.
+    """
+
+    ticker: str
+    quantity: int
+    entry_price: Decimal
+    mark_price: Decimal | None
+    mark_as_of: date | None

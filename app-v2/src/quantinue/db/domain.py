@@ -26,6 +26,7 @@ from quantinue.db.control_room_reads import (
     recent_job_slots,
 )
 from quantinue.db.domain_records import (
+    AccountHoldingRecord,
     AccountRiskState,
     AccountWrite,
     BuyCandidate,
@@ -1535,6 +1536,77 @@ class PostgresDomainRepository:
     async def judgements(self, trade_date: date) -> tuple[JudgementRecord, ...]:
         """Delegate the judgement-and-rebuttal read to its focused module."""
         return await judgements(self._engine, trade_date)
+
+    async def account_holdings(self, account_id: int) -> tuple[AccountHoldingRecord, ...]:
+        """List one account's open positions with the close that marks them.
+
+        보유 판정은 ``_is_open_position`` 하나를 쓴다 — 총람·게이트·청산과
+        같은 술어다. 화면이 자기만의 정의를 갖는 순간 "내 계좌는 3종목인데
+        관제실은 4종목"이 된다.
+
+        mark는 그 종목의 **가장 최근 봉 종가**다(D8과 같은 출처라 계좌 곡선과
+        보유 카드가 다른 값을 말하지 않는다). 봉이 아예 없는 종목은 조인이
+        비어 ``None``으로 남는다 — 거래정지·상장폐지 보유가 실제로 그렇고,
+        그때 마지막 가격을 지어내면 화면이 원장보다 많이 안다.
+        """
+        orders = self._table("tb_order")
+        bars = self._table("tb_daily_bar")
+        latest_bar = (
+            select(
+                bars.c.ticker,
+                bars.c.close.label("mark_price"),
+                bars.c.trade_date.label("mark_as_of"),
+            )
+            .distinct(bars.c.ticker)
+            .order_by(bars.c.ticker, bars.c.trade_date.desc())
+            .subquery()
+        )
+        statement = (
+            select(
+                orders.c.ticker,
+                orders.c.quantity,
+                orders.c.entry_price,
+                latest_bar.c.mark_price,
+                latest_bar.c.mark_as_of,
+            )
+            .select_from(orders.outerjoin(latest_bar, latest_bar.c.ticker == orders.c.ticker))
+            .where(_is_open_position(orders), orders.c.account_id == account_id)
+            .order_by(orders.c.ticker, orders.c.id)
+        )
+        async with self._engine.begin() as connection:
+            rows = (await connection.execute(statement)).all()
+        return tuple(
+            AccountHoldingRecord(
+                ticker=row.ticker,
+                quantity=int(row.quantity),
+                entry_price=Decimal(str(row.entry_price)),
+                mark_price=None if row.mark_price is None else Decimal(str(row.mark_price)),
+                mark_as_of=row.mark_as_of,
+            )
+            for row in rows
+        )
+
+    async def account_curve(
+        self, account_id: int, *, days: int
+    ) -> tuple[AccountEquityPoint, ...]:
+        """Return one account's equity curve, scoped in the query itself."""
+        equity = self._table("tb_account_equity_daily")
+        statement = (
+            select(equity.c.account_id, equity.c.trade_date, equity.c.equity)
+            .where(equity.c.account_id == account_id)
+            .order_by(equity.c.trade_date.desc())
+            .limit(days)
+        )
+        async with self._engine.begin() as connection:
+            rows = (await connection.execute(statement)).all()
+        return tuple(
+            AccountEquityPoint(
+                account_id=int(row.account_id),
+                trade_date=row.trade_date,
+                equity=Decimal(str(row.equity)),
+            )
+            for row in rows
+        )
 
     async def account_overviews(self) -> tuple[AccountOverviewRecord, ...]:
         """List every account with the counts that say whether it actually moved.

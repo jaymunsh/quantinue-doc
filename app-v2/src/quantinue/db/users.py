@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 from textwrap import dedent
 from typing import TYPE_CHECKING
 
@@ -38,6 +39,11 @@ class UserAccount:
     broker_account_id: str
     inv_type: str | None
     status: str
+    # 돈을 소유권 질의와 **같은 행**에서 읽는다. 따로 읽으면 계좌를 한 번 더
+    # 찾아야 하고, 그 두 번째 조회에 WHERE user_id를 빠뜨리는 순간 남의 잔고가
+    # 자기 화면에 뜬다. 소유는 한 곳에서만 판정한다.
+    cash: Decimal
+    equity: Decimal
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,7 +174,7 @@ async def account_for_user(engine: AsyncEngine, user_id: int) -> UserAccount | N
                 text(
                     dedent(
                         """
-                        SELECT id, broker_account_id, inv_type, status
+                        SELECT id, broker_account_id, inv_type, status, cash, equity
                         FROM tb_account
                         WHERE user_id = :user_id
                         """
@@ -184,4 +190,6 @@ async def account_for_user(engine: AsyncEngine, user_id: int) -> UserAccount | N
         broker_account_id=row.broker_account_id,
         inv_type=row.inv_type,
         status=row.status,
+        cash=Decimal(str(row.cash)),
+        equity=Decimal(str(row.equity)),
     )

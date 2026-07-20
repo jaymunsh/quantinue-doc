@@ -19,7 +19,12 @@ from quantinue.api.access import ControlRoomAccess
 from quantinue.api.account_roster import AccountRosterView, account_roster_view
 from quantinue.api.auth import session_user
 from quantinue.api.login_routes import build_auth_router
-from quantinue.api.pipeline_day import build_pipeline_day, empty_pipeline_day
+from quantinue.api.my_account import MyAccountView, my_account_view
+from quantinue.api.pipeline_day import (
+    DEFAULT_CURVE_DAYS,
+    build_pipeline_day,
+    empty_pipeline_day,
+)
 from quantinue.api.pipeline_presentation import PipelineDayView, sparkline_points
 from quantinue.api.review_runtime import ReviewRuntime
 from quantinue.api.reviews import build_review_router
@@ -39,6 +44,7 @@ if TYPE_CHECKING:
     from contextlib import AbstractAsyncContextManager
 
     from quantinue.db.contracts import RunStore
+    from quantinue.db.users import UserAccount
     from quantinue.orchestration.job_runner import JobRunner
 
 PACKAGE_DIR = Path(__file__).parent
@@ -96,6 +102,25 @@ async def _account_roster(reads: object | None) -> AccountRosterView:
     if reader is None:
         return AccountRosterView()
     return account_roster_view(await reader())
+
+
+async def _my_account(reads: object | None, account: UserAccount) -> MyAccountView:
+    """Assemble the owner's page from reads already scoped to their account.
+
+    ``account``은 소유권 질의(``account_for_user``)가 돌려준 것이다. 뒤따르는
+    두 읽기가 그 ``account_id``만 보므로 소유 판정은 여전히 한 곳에 있다.
+    잡 원장이 없는 스토어(메모리)에서는 보유·곡선이 비고, 그건 "아직 거래가
+    없다"로 정직하게 읽힌다.
+    """
+    holdings_reader = getattr(reads, "account_holdings", None)
+    curve_reader = getattr(reads, "account_curve", None)
+    holdings = () if holdings_reader is None else await holdings_reader(account.account_id)
+    curve = (
+        ()
+        if curve_reader is None
+        else await curve_reader(account.account_id, days=DEFAULT_CURVE_DAYS)
+    )
+    return my_account_view(account, holdings, curve)
 
 
 def create_app(settings: Settings | None = None, *, store: RunStore | None = None) -> FastAPI:
@@ -190,7 +215,10 @@ def create_app(settings: Settings | None = None, *, store: RunStore | None = Non
         return templates.TemplateResponse(
             request=request,
             name="me.html",
-            context={"account": account, "current_user": current},
+            context={
+                "view": await _my_account(control_room_reads, account),
+                "current_user": current,
+            },
         )
 
     async def pipeline_day(slot: date | None = None) -> PipelineDayView:

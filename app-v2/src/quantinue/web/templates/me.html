@@ -9,32 +9,85 @@
 <nav class="nav-group" aria-label="섹션">
   <p class="nav-label">내 운용</p>
   <a class="nav-link" href="#account" aria-current="page">계좌 개요</a>
+  <a class="nav-link" href="#holdings"><b>{{ view.holdings | length }}</b>보유 종목</a>
 </nav>
 {% endblock %}
 {% block main %}
 <section class="panel account-panel" id="account" aria-labelledby="account-title">
   <p class="eyebrow">Account</p>
-  <h2 id="account-title" class="account-id">{{ account.broker_account_id }}</h2>
+  <h2 id="account-title" class="account-id">{{ view.broker_account_id }}</h2>
   <ul class="account-facts">
     {# 성향과 상태를 색으로만 말하지 않고 글자로도 적는다 — 색만으로 뜻을
        전하면 못 읽는 사람이 생기고, 그건 화면이 정보를 감춘 것이다. #}
-    {% if account.inv_type == 'aggressive' %}
+    {% if view.inv_type == 'aggressive' %}
     <li class="badge badge--warning">공격형</li>
-    {% elif account.inv_type == 'conservative' %}
+    {% elif view.inv_type == 'conservative' %}
     <li class="badge badge--info">안전형</li>
     {% else %}
     <li class="badge">성향 미지정</li>
     {% endif %}
-    {% if account.status == 'active' %}
+    {% if view.status == 'active' %}
     <li class="badge badge--success">운용 중</li>
-    {% elif account.status == 'paused' %}
+    {% elif view.status == 'paused' %}
     <li class="badge badge--warning">일시 정지</li>
     {% else %}
     <li class="badge badge--danger">종료</li>
     {% endif %}
   </ul>
-  {# 자산·수익률·곡선·보유는 W2-1이 붙인다. 숫자 자리에 0을 그려두지 않는
-     이유는 "돈이 없다"로 읽히기 때문이다 — 아직 없는 것은 없다고 적는다. #}
-  <p class="account-pending">총자산·수익률·계좌 곡선·보유 종목은 다음 단계에서 표시됩니다.</p>
+  <div class="metric-grid">
+    <article class="metric metric--primary">
+      <div class="metric__top"><span>총자산</span></div>
+      <strong class="metric__value">${{ '{:,.2f}'.format(view.equity) }}</strong>
+      {# 수익률은 기준일이 있을 때만 적는다. 없을 때 0%를 그리면 "안 움직였다"로
+         읽히는데, 사실은 아직 비교할 날이 없다는 뜻이다. #}
+      {% if view.return_pct is not none %}
+      <span class="metric__delta {% if view.return_pct.startswith('-') %}metric__delta--bad{% else %}metric__delta--good{% endif %}">{{ view.return_pct }}% · {{ view.baseline_date }} 기준</span>
+      {% else %}
+      <span class="metric__delta">비교할 기준일이 아직 없습니다</span>
+      {% endif %}
+    </article>
+    <article class="metric">
+      <div class="metric__top"><span>현금</span></div>
+      <strong class="metric__value">${{ '{:,.2f}'.format(view.cash) }}</strong>
+    </article>
+    <article class="metric">
+      <div class="metric__top"><span>보유 종목</span></div>
+      <strong class="metric__value">{{ view.holdings | length }}</strong>
+    </article>
+    <article class="metric">
+      <div class="metric__top"><span>기록된 날</span></div>
+      <strong class="metric__value">{{ view.curve | length }}</strong>
+    </article>
+  </div>
+</section>
+
+<section class="panel" id="holdings" style="margin-top:18px" aria-labelledby="holdings-title">
+  <div class="panel__head">
+    <div>
+      <h2 id="holdings-title">보유 종목</h2>
+      <p>평가액은 가장 최근 일봉 종가 기준입니다.</p>
+    </div>
+  </div>
+  {% if view.holdings %}
+  <div class="table-wrap portfolio-table-wrap" role="region" aria-label="보유 종목 표" tabindex="0">
+    <table class="portfolio-table">
+      <caption>이 계좌가 지금 들고 있는 종목</caption>
+      <thead><tr><th scope="col">종목</th><th scope="col">수량</th><th scope="col">매입가</th><th scope="col">종가</th><th scope="col">평가액</th><th scope="col">평가손익</th></tr></thead>
+      <tbody>{% for holding in view.holdings %}<tr>
+        <td data-label="종목" class="asset-cell"><strong>{{ holding.ticker }}</strong>{% if holding.mark_as_of %}<small>{{ holding.mark_as_of }} 종가</small>{% endif %}</td>
+        <td data-label="수량" class="mono">{{ holding.quantity }}주</td>
+        <td data-label="매입가" class="mono">${{ '{:,.2f}'.format(holding.entry_price) }}</td>
+        {# 봉이 없는 보유(거래정지·상장폐지)는 값을 지어내지 않고 없다고 적는다. #}
+        {% if holding.mark_price is none %}
+        <td data-label="종가" colspan="3" class="ledger-empty">종가 없음 — 이 종목은 최근 일봉이 없습니다</td>
+        {% else %}
+        <td data-label="종가" class="mono">${{ '{:,.2f}'.format(holding.mark_price) }}</td>
+        <td data-label="평가액" class="mono">${{ '{:,.2f}'.format(holding.market_value) }}</td>
+        <td data-label="평가손익" class="{% if holding.unrealized_pnl > 0 %}value-positive{% elif holding.unrealized_pnl < 0 %}value-negative{% else %}mono{% endif %}">${{ '{:,.2f}'.format(holding.unrealized_pnl) }}</td>
+        {% endif %}
+      </tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  {% else %}<div class="portfolio-empty"><strong>보유 중인 종목이 없습니다</strong><p>매수가 체결되면 종목과 평가손익이 여기 표시됩니다.</p></div>{% endif %}
 </section>
 {% endblock %}

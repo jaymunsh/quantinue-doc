@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from fastapi.testclient import TestClient
@@ -145,7 +146,12 @@ def test_user_cannot_learn_that_the_admin_zone_exists() -> None:
 def test_user_sees_their_own_account() -> None:
     # Given
     account = UserAccount(
-        account_id=7, broker_account_id="DEMO-AGGRESSIVE-01", inv_type="aggressive", status="active"
+        account_id=7,
+        broker_account_id="DEMO-AGGRESSIVE-01",
+        inv_type="aggressive",
+        status="active",
+        cash=Decimal("30734.62"),
+        equity=Decimal("150000.00"),
     )
     domain = _StubDomain(users=(_user("user1", user_id=1),), accounts={1: account})
     with _client(domain) as client:
