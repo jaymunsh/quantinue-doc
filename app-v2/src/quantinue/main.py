@@ -13,14 +13,18 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 
 from quantinue.api.access import ControlRoomAccess
+from quantinue.api.auth import session_user
+from quantinue.api.login_routes import build_auth_router
 from quantinue.api.pipeline_day import build_pipeline_day, empty_pipeline_day
 from quantinue.api.pipeline_presentation import PipelineDayView, sparkline_points
 from quantinue.api.portfolio_view import simulated_portfolio_view
 from quantinue.api.review_runtime import ReviewRuntime
 from quantinue.api.reviews import build_review_router
 from quantinue.api.schemas import HealthResponse, SimulatedPortfolioView
+from quantinue.api.sessions import resolve_session_secret
 from quantinue.core.config import DatabaseMode, Settings
 from quantinue.core.logging import configure_logging
 from quantinue.db.store import build_run_store
@@ -88,6 +92,9 @@ def create_app(settings: Settings | None = None, *, store: RunStore | None = Non
     mvp2_config = load_mvp2_config(PACKAGE_DIR.parent.parent / "config" / "pipeline.yaml")
     selected_store = store if store is not None else build_run_store(selected_settings)
     templates = Jinja2Templates(directory=PACKAGE_DIR / "web" / "templates")
+    # 공통 셸(base.html)이 인라인하는 값이라 화면마다 컨텍스트로 나르지 않는다.
+    # 빠뜨린 화면 하나가 스타일 없이 렌더되는 것을 막는다.
+    templates.env.globals["dashboard_css"] = DASHBOARD_CSS
     # 화면은 읽기 전용이 됐지만 리뷰 처리(POST)는 여전히 상태를 바꾼다 —
     # 토큰 게이트가 지킬 대상은 이제 그쪽이다.
     access = (
@@ -128,6 +135,16 @@ def create_app(settings: Settings | None = None, *, store: RunStore | None = Non
         ),
     )
     app.add_middleware(GZipMiddleware, minimum_size=500, compresslevel=6)
+    # 세션 쿠키는 서명만 되고 암호화되지 않는다(auth.SESSION_KEY 주석). https_only는
+    # 켜지 않는다 — 로컬 http로 띄우는 것이 이 단계의 정상 운용이고, 켜면 쿠키가
+    # 조용히 사라져 "로그인이 안 된다"로 보인다. R1(페이퍼 전환) 때 재검토.
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=resolve_session_secret(selected_settings),
+        session_cookie="quantinue_session",
+        same_site="lax",
+        https_only=False,
+    )
     app.mount("/static", StaticFiles(directory=PACKAGE_DIR / "web" / "static"), name="static")
     if review_runtime is not None:
         app.include_router(build_review_router(review_runtime.processor, access=access))
@@ -135,7 +152,10 @@ def create_app(settings: Settings | None = None, *, store: RunStore | None = Non
     # 잡 원장은 RunStore 프로토콜 밖에 산다(도메인 저장소 소유). 메모리
     # 스토어에는 아예 없으므로, 없으면 빈 관제실을 보여준다 — 잡을 아직 안
     # 켠 설치도 정상 상태이고 그때 화면이 500으로 죽으면 안 된다.
+    # 같은 저장소가 유저 원장도 들고 있다(tb_user). 없으면 로그인할 계정이
+    # 없다는 뜻이고, 그건 부트스트랩 상태다(W-D2).
     control_room_reads = getattr(selected_store, "domain", None)
+    app.include_router(build_auth_router(control_room_reads, templates))
 
     async def pipeline_day(slot: date | None = None) -> PipelineDayView:
         if control_room_reads is None:
@@ -157,8 +177,8 @@ def create_app(settings: Settings | None = None, *, store: RunStore | None = Non
                 "day": day,
                 "portfolio": portfolio,
                 "sparkline": sparkline_points,
-                "dashboard_css": DASHBOARD_CSS,
                 "settings": selected_settings,
+                "current_user": session_user(request),
             },
         )
 

@@ -406,3 +406,22 @@ th { color: var(--sub); background: var(--bg); font-size: 13px; }
 .slot-current { color: var(--ink); border-color: currentColor; font-weight: 700; }
 .judgement-bull { margin: 4px 0 0; font-size: 13px; color: var(--ok, #2f7d5b); overflow-wrap: anywhere; }
 .judgement-risk { margin: 2px 0 0; font-size: 13px; color: var(--danger, #b4232a); overflow-wrap: anywhere; }
+
+/* 공통 셸의 오른쪽 어깨 — 운영 모드 칩과 현재 접속자가 함께 앉는다. */
+.topbar-right { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 12px; }
+.session-chip { display: flex; align-items: center; gap: 8px; }
+.session-chip > span { color: var(--sub); font-size: 13px; font-weight: 600; }
+.session-chip form { margin: 0; }
+.session-chip button { padding: 4px 10px; color: var(--sub); background: var(--card); border-color: var(--line); font-size: 13px; }
+.session-chip button:hover { color: var(--white); background: var(--sub); }
+
+/* 로그인 — 단독 화면이라 관제실 폭을 쓰지 않고 가운데 한 장으로 좁힌다. */
+.login-panel { width: 100%; max-width: 380px; margin: 24px auto 0; padding: 24px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-card); }
+.login-form { display: grid; gap: 14px; }
+.login-form input { width: 100%; }
+/* 티커 입력용 전역 규칙(input { text-transform: uppercase })이 아이디까지
+   대문자로 보이게 만든다. 값은 안 바뀌지만 입력한 것과 다르게 보인다. */
+.login-form input { text-transform: none; }
+.login-form button { width: 100%; }
+.login-error { padding: 10px 12px; color: var(--red); background: var(--red-bg); border: 1px solid var(--red); border-radius: var(--radius-control); font-size: 14px; font-weight: 600; }
+.login-note { margin: 16px 0 0; color: var(--sub); font-size: 13px; text-align: center; }

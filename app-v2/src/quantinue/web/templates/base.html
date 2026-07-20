@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="{% block description %}Quantinue{% endblock %}">
+  <title>{% block title %}Quantinue{% endblock %}</title>
+  <link rel="icon" href="data:,">
+  <style>{{ dashboard_css | safe }}</style>
+</head>
+<body>
+  <a class="skip-link" href="#main">본문으로 건너뛰기</a>
+  <header class="topbar">
+    <div>
+      <p class="product-label">QUANTINUE</p>
+      <h1>{% block heading %}Quantinue{% endblock %}</h1>
+    </div>
+    {# 오른쪽 어깨는 두 가지를 겹쳐 쓴다: 운영 모드 칩(관리자에게만 의미가
+       있다)과 현재 접속자. 유저 화면에는 모드 칩을 내보내지 않는다 —
+       LLM·브로커 상태는 운영 정보이지 계좌 주인의 관심사가 아니다. #}
+    <div class="topbar-right">
+      {% block modes %}{% endblock %}
+      {% if current_user %}
+      <div class="session-chip">
+        <span>{{ current_user.display_name }}</span>
+        <form method="post" action="/logout"><button type="submit">로그아웃</button></form>
+      </div>
+      {% endif %}
+    </div>
+  </header>
+
+  <main id="main" class="layout">
+    {% block main %}{% endblock %}
+  </main>
+</body>
+</html>

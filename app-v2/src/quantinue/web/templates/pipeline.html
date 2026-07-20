@@ -1,28 +1,15 @@
-<!doctype html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Quantinue 잡 파이프라인이 오늘 무엇을 했는가">
-  <title>Quantinue 파이프라인 관제실</title>
-  <link rel="icon" href="data:,">
-  <style>{{ dashboard_css | safe }}</style>
-</head>
-<body>
-  <a class="skip-link" href="#main">본문으로 건너뛰기</a>
-  <header class="topbar">
-    <div>
-      <p class="product-label">QUANTINUE</p>
-      <h1>파이프라인 관제실</h1>
-    </div>
+{% extends "base.html" %}
+{% block description %}Quantinue 잡 파이프라인이 오늘 무엇을 했는가{% endblock %}
+{% block title %}Quantinue 파이프라인 관제실{% endblock %}
+{% block heading %}파이프라인 관제실{% endblock %}
+{% block modes %}
     <div class="mode-list" aria-label="현재 안전 모드">
       <span>LLM {{ settings.llm_mode.value }}</span>
       <span>Broker {{ settings.broker_mode.value }}</span>
       <span>Trading {% if settings.trading_enabled %}enabled{% else %}locked{% endif %}</span>
     </div>
-  </header>
-
-  <main id="main" class="layout">
+{% endblock %}
+{% block main %}
     <section class="runtime-contract" aria-label="현재 실행 계약">
       <strong>{{ settings.database_mode.value | upper }} + 로컬 모의 계좌</strong>
       <span>체결 로컬 시뮬</span>
@@ -255,6 +242,4 @@
       {% endif %}
     </section>
     {% endif %}
-  </main>
-</body>
-</html>
+{% endblock %}

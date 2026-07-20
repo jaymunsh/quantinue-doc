@@ -23,8 +23,8 @@ def test_missing_secret_is_generated_rather_than_defaulted() -> None:
     기본값을 상수로 두면 그 상수가 그대로 배포된다. 없으면 만들되, 만든 값은
     프로세스 밖으로 나가지 않으므로 재시작하면 세션이 전부 만료된다.
     """
-    # Given
-    settings = Settings()
+    # Given: explicitly unset, so a developer's .env cannot decide this test
+    settings = Settings(session_secret=None)
 
     # When
     first = resolve_session_secret(settings)

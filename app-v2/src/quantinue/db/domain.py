@@ -44,6 +44,7 @@ from quantinue.db.domain_records import (
 )
 from quantinue.db.domain_sources import save_source_records
 from quantinue.db.postgres_accounting import initialize_account, record_completed_fill
+from quantinue.db.users import UserRecord, count_users, find_user_by_login
 from quantinue.roles.analysis import AnalysisSubject
 from quantinue.roles.exits import DailyObservation, OpenPosition
 from quantinue.roles.role_01_universe_screener.contracts import UniverseScreenerOutput
@@ -1514,6 +1515,14 @@ class PostgresDomainRepository:
     async def judgements(self, trade_date: date) -> tuple[JudgementRecord, ...]:
         """Delegate the judgement-and-rebuttal read to its focused module."""
         return await judgements(self._engine, trade_date)
+
+    async def count_users(self) -> int:
+        """Delegate the bootstrap-exception count to the user read module."""
+        return await count_users(self._engine)
+
+    async def find_user_by_login(self, login_id: str) -> UserRecord | None:
+        """Delegate the sign-in lookup to the user read module."""
+        return await find_user_by_login(self._engine, login_id)
 
     async def save_source_records(
         self,
