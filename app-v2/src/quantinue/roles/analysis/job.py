@@ -107,6 +107,9 @@ class AnalysisJob:
         # 모델이 자기 방법론의 입력을 못 보고 있었다 — 다시 묻는 3.8초가
         # 승인율을 좌우한다.
         indicators = await self._indicators(domain, as_of, session)
+        # 공시 채점 잡이 이 슬롯에 남긴 표. 종목마다 한 번만 읽는다 — 채점은
+        # 성향과 무관하므로 두 페르소나가 같은 값을 본다.
+        disclosure_scores = await domain.disclosure_scores(as_of)
         outcomes: list[AnalysisOutcome] = []
         failures = 0
         for subject in subjects:
@@ -120,6 +123,7 @@ class AnalysisJob:
                     macro,
                     indicators.get(subject.ticker),
                     as_of=as_of,
+                    disclosure_score=disclosure_scores.get(subject.ticker),
                 )
             except Exception:  # noqa: BLE001 - 종목 하나의 실패를 격리하는 자리다
                 # 종목 하나가 그날 판단 전체를 지우지 않게 한다. 실측: 구조화
@@ -192,6 +196,7 @@ class AnalysisJob:
         indicators: RankedCandidate | None,
         *,
         as_of: date,
+        disclosure_score: float | None = None,
     ) -> AnalysisOutcome | None:
         """Run one ticker through evidence synthesis, the gates, and the critic."""
         cycle_ts = datetime.combine(as_of, time(), tzinfo=UTC)
@@ -211,9 +216,10 @@ class AnalysisJob:
             # 스크리닝 점수가 기술적 근거를 대신한다 — 같은 봉에서 나왔다.
             technical_score=min(1.0, max(0.0, subject.score)),
             # 공시가 없는 날은 기권이지 악재가 아니다(role_05의 원칙 승계).
-            # 있는 날에도 아직 채점하지 않는다 — 공시 채점은 role_05 통합의
-            # 몫이고, 여기서 임의의 숫자를 넣으면 그게 판단을 희석한다.
-            disclosure_score=None,
+            # 채점 잡이 이 슬롯에 표를 남겼으면 그 값이 투표한다 — 뉴스와 달리
+            # 공시는 vote_conviction에서 신뢰도 게이트를 타지 않는다(sec.gov는
+            # allow이고, 애초에 disclosure_score 갈래에 게이트 조건이 없다).
+            disclosure_score=disclosure_score,
             # 뉴스는 수집되지만 **투표하지 않는다**. 우리 뉴스 소스(Alpaca)는
             # 전 기사가 benzinga이고 news_trust_policy에서 gray(0.50)라
             # gates.source_trust_min(0.55)을 못 넘는다 — 점수를 실어 보내도
@@ -274,6 +280,13 @@ class AnalysisJob:
                 bull_case=evidence.bull_case,
                 key_risk=evidence.key_risk,
                 src_macro_at=None if macro is None else macro.as_of,
+                # 점수 자체는 여기 안 적는다 — tb_strategist_signals에는
+                # disclosure_score 컬럼이 없고(계약의 그 필드는 DB 집이 없는
+                # 기존 유령이다), 값은 tb_disclosure_signal.sentiment_score에
+                # 한 번만 산다. 판단은 그 행을 계보로 가리키기만 하면 된다.
+                # 채점이 없으면 계보도 없다. 부모 행이 없는데 시각을 적으면
+                # FK가 막고, 막지 않더라도 판단이 없는 근거를 가리키게 된다.
+                src_disclosure_at=None if disclosure_score is None else cycle_ts,
                 model_provider=evidence.metadata.provider
                 if isinstance(evidence.metadata.provider, str)
                 else evidence.metadata.provider.value,

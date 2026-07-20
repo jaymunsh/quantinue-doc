@@ -95,14 +95,16 @@ def _subject(ticker: str, rank: int = 1, score: float = 0.9) -> AnalysisSubject:
 
 
 class _Domain:
-    def __init__(
+    def __init__(  # noqa: PLR0913 - 증거 종류가 늘면 페이크의 씨앗도 는다
         self,
         subjects: tuple[AnalysisSubject, ...],
         positions: tuple[OpenPosition, ...] = (),
         headlines: dict[str, tuple[str, ...]] | None = None,
         macro: tuple[str, float] | None = None,
         indicators: dict[str, RankedCandidate] | None = None,
+        disclosure_scores: dict[str, float] | None = None,
     ) -> None:
+        self._disclosure_scores = disclosure_scores or {}
         self._macro = macro
         self._indicators = indicators or {}
         self._subjects = subjects
@@ -127,6 +129,10 @@ class _Domain:
     ) -> dict[str, tuple[str, ...]]:
         self.news_calls.append((session, tickers, limit))
         return self._headlines
+
+    async def disclosure_scores(self, as_of: date) -> dict[str, float]:
+        del as_of
+        return dict(self._disclosure_scores)
 
     async def pick_indicators(self, as_of: date, session: date) -> dict[str, RankedCandidate]:
         del as_of, session
@@ -716,3 +722,49 @@ async def test_model_lineage_is_recorded_with_the_judgement() -> None:
     assert saved.model_provider == "mock"
     assert saved.prompt_version == "v1"
     assert saved.input_hash == "0" * 64
+
+
+@pytest.mark.anyio
+async def test_the_scored_disclosure_votes_and_is_recorded_as_lineage() -> None:
+    """공시 채점이 07의 투표가 되는 지점. 뉴스와 달리 신뢰도 게이트를 타지 않는다."""
+    # Given
+    domain = _Domain((_subject("AAA", 1),), disclosure_scores={"AAA": 0.82})
+
+    # When
+    _ = await _job(domain, _Analyzer(strategy=0.9)).run(as_of=_AS_OF, session=_SESSION)
+
+    # Then
+    assert domain.signals[0].src_disclosure_at == datetime.combine(
+        _AS_OF, time(), tzinfo=UTC
+    )
+
+
+@pytest.mark.anyio
+async def test_the_disclosure_vote_actually_moves_the_conviction() -> None:
+    """계보만 남고 표가 평균에 안 들어가면 채점 잡 전체가 값비싼 유령이 된다."""
+    # Given: 기술 점수 0.9 · 모델 0.9. 약세 공시가 한 표로 들어오면 평균이 내려간다.
+    without = _Domain((_subject("AAA", 1),))
+    with_vote = _Domain((_subject("AAA", 1),), disclosure_scores={"AAA": 0.30})
+
+    # When
+    _ = await _job(without, _Analyzer(strategy=0.9)).run(as_of=_AS_OF, session=_SESSION)
+    _ = await _job(with_vote, _Analyzer(strategy=0.9)).run(
+        as_of=_AS_OF, session=_SESSION
+    )
+
+    # Then
+    assert without.signals[0].conviction == pytest.approx(Decimal("0.900"))
+    assert with_vote.signals[0].conviction == pytest.approx(Decimal("0.700"))
+
+
+@pytest.mark.anyio
+async def test_an_unscored_disclosure_abstains_instead_of_voting_neutral() -> None:
+    """채점이 없는 종목에 0.5를 지어 넣으면 그 가짜 표가 실제 판단을 희석한다."""
+    # Given
+    domain = _Domain((_subject("AAA", 1),), disclosure_scores={})
+
+    # When
+    _ = await _job(domain, _Analyzer(strategy=0.9)).run(as_of=_AS_OF, session=_SESSION)
+
+    # Then
+    assert domain.signals[0].src_disclosure_at is None

@@ -94,6 +94,10 @@ class DisclosureScoringJob:
                     has_signal=True,
                     sentiment_score=result.score,
                     disclosure_count=len(forms),
+                    model_provider=result.metadata.provider
+                    if isinstance(result.metadata.provider, str)
+                    else result.metadata.provider.value,
+                    model_name=result.metadata.model,
                 )
             )
             scores.append(

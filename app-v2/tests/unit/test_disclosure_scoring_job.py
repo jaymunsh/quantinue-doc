@@ -184,3 +184,16 @@ async def test_no_filings_at_all_is_a_quiet_success() -> None:
 
     assert run.scores == ()
     assert run.skipped == 0
+
+
+@pytest.mark.anyio
+async def test_the_scoring_model_is_recorded_with_the_vote() -> None:
+    """어느 모델이 이 표를 만들었는지는 재현의 전제다 — 스키마도 NOT NULL로 요구한다."""
+    domain = _Domain(subjects=("AAPL",), filings={"AAPL": ("8-K",)})
+    job = DisclosureScoringJob(store=domain, analyzer=_Analyzer())
+
+    await job.run(as_of=_AS_OF, session=_SESSION)
+
+    (saved,) = domain.saved
+    assert saved.model_provider == "mock"
+    assert saved.model_name == "test"

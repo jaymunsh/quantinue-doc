@@ -33,6 +33,7 @@ from quantinue.db.domain_records import (
     CriticVerdictWrite,
     DailyBarWrite,
     DailyPickWrite,
+    DisclosureSignalWrite,
     KnownListing,
     MacroSnapshot,
     OrderPlanWrite,
@@ -347,6 +348,60 @@ class PostgresDomainRepository:
         )
         async with self._engine.begin() as connection:
             _ = await connection.execute(statement)
+
+    async def save_disclosure_signal(self, value: DisclosureSignalWrite) -> None:
+        """Record one ticker's scored filings for this slot, first write winning.
+
+        ``on_conflict_do_nothing``인 이유는 멱등이 아니라 **역사**다. 한 슬롯 =
+        한 판단이고, 재실행이 이미 판단의 근거로 쓰인 표를 덮어쓰면 원장이
+        "무엇을 보고 그렇게 결정했나"에 답할 수 없게 된다(save_signal과 같은 규칙).
+
+        ``source``/``model_provider``를 우리가 아는 사실로만 채운다 — 본문을 읽지
+        않았으므로 filing_no는 비운다(tb_disclosure FK는 구 러너가 채우던 표를
+        가리키고, 새 경로는 그 표를 쓰지 않는다).
+        """
+        table = self._table("tb_disclosure_signal")
+        fields = {
+            "ticker": value.ticker,
+            "cycle_ts": value.cycle_ts,
+            "trade_date": value.trade_date,
+            "has_signal": value.has_signal,
+            "sentiment_score": value.sentiment_score,
+            "disclosure_count": value.disclosure_count,
+            "source": "sec-edgar",
+            "source_ref": f"sec://daily-index/{value.trade_date.isoformat()}",
+            "captured_at": value.cycle_ts,
+            "evidence_id": f"disclosure:{value.trade_date.isoformat()}:{value.ticker}",
+            "model_provider": value.model_provider,
+            "model_name": value.model_name,
+        }
+        statement = (
+            insert(table)
+            .values(**fields)
+            .on_conflict_do_nothing(index_elements=["ticker", "cycle_ts"])
+        )
+        async with self._engine.begin() as connection:
+            _ = await connection.execute(statement)
+
+    async def disclosure_scores(self, as_of: date) -> dict[str, float]:
+        """Return this slot's disclosure votes per ticker, for the analysis job.
+
+        ``cycle_ts``가 자정인 행만 읽는다 — 분석 잡이 쓰는 계약이고, 다른 시각의
+        행(구 러너의 장중 슬롯)이 섞이면 판단이 자기 슬롯 밖의 표를 센다.
+        """
+        table = self._table("tb_disclosure_signal")
+        cycle_ts = datetime.combine(as_of, time(), tzinfo=UTC)
+        async with self._engine.begin() as connection:
+            rows = (
+                await connection.execute(
+                    select(table.c.ticker, table.c.sentiment_score).where(
+                        table.c.cycle_ts == cycle_ts,
+                        table.c.has_signal.is_(True),
+                        table.c.sentiment_score.is_not(None),
+                    )
+                )
+            ).all()
+        return {row.ticker: float(row.sentiment_score) for row in rows}
 
     async def save_daily_bars(self, bars: tuple[DailyBarWrite, ...]) -> None:
         """Upsert one session's bars, letting a later collection correct an earlier one.
@@ -1373,6 +1428,7 @@ class PostgresDomainRepository:
                 bull_case=value.bull_case,
                 key_risk=value.key_risk,
                 src_macro_at=value.src_macro_at,
+                src_disclosure_at=value.src_disclosure_at,
                 model_provider=value.model_provider,
                 model_name=value.model_name,
                 prompt_version=value.prompt_version,

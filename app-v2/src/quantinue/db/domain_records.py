@@ -36,6 +36,9 @@ class StrategistSignalWrite:
     key_risk: str | None = None
     # 판단이 읽은 국면 관측의 시각(tb_macro FK). 안 읽었으면 계보도 없다.
     src_macro_at: datetime | None = None
+    # 판단이 투표에 쓴 공시 채점 행의 시각(tb_disclosure_signal FK). 채점이
+    # 없는 종목은 기권이므로 계보도 없다 — 없는 부모를 가리키면 FK가 막는다.
+    src_disclosure_at: datetime | None = None
     # 어느 모델·프롬프트가 판단했는가 — 재현과 사후 감사의 전제.
     model_provider: str | None = None
     model_name: str | None = None
@@ -250,6 +253,11 @@ class DisclosureSignalWrite:
     has_signal: bool
     sentiment_score: float
     disclosure_count: int
+    # 어느 모델이 이 표를 만들었는가. 스키마가 model_provider를 NOT NULL로
+    # 요구하기도 하지만, 근본적으로 채점은 판단의 입력이라 출처 없이 남으면
+    # 나중에 "이 표를 믿어도 되나"에 답할 수 없다.
+    model_provider: str = "unknown"
+    model_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
