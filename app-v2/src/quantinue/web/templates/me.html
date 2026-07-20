@@ -11,6 +11,7 @@
   <a class="nav-link" href="#account" aria-current="page">계좌 개요</a>
   <a class="nav-link" href="#holdings"><b>{{ view.holdings | length }}</b>보유 종목</a>
   <a class="nav-link" href="#timeline"><b>{{ view.timeline | length }}</b>거래 내역</a>
+  <a class="nav-link" href="#risk">리스크 상태</a>
 </nav>
 {% endblock %}
 {% block main %}
@@ -66,25 +67,28 @@
   <div class="panel__head">
     <div>
       <h2 id="holdings-title">보유 종목</h2>
-      <p>평가액은 가장 최근 일봉 종가 기준입니다.</p>
+      <p>평가액은 가장 최근 일봉 종가 기준입니다. 자동 청산은 매수 시점에 걸린 손절·익절 조건이며, 장중이 아니라 일봉 고저로 판정합니다.</p>
     </div>
   </div>
   {% if view.holdings %}
   <div class="table-wrap portfolio-table-wrap" role="region" aria-label="보유 종목 표" tabindex="0">
     <table class="portfolio-table">
       <caption>이 계좌가 지금 들고 있는 종목</caption>
-      <thead><tr><th scope="col">종목</th><th scope="col">수량</th><th scope="col">매입가</th><th scope="col">종가</th><th scope="col">평가액</th><th scope="col">평가손익</th></tr></thead>
+      <thead><tr><th scope="col">종목</th><th scope="col">수량</th><th scope="col">매입가</th><th scope="col">종가</th><th scope="col">평가액</th><th scope="col">평가손익</th><th scope="col">자동 청산</th></tr></thead>
       <tbody>{% for holding in view.holdings %}<tr>
         <td data-label="종목" class="asset-cell"><strong>{{ holding.ticker }}</strong>{% if holding.mark_as_of %}<small>{{ holding.mark_as_of }} 종가</small>{% endif %}</td>
         <td data-label="수량" class="mono">{{ holding.quantity }}주</td>
         <td data-label="매입가" class="mono">${{ '{:,.2f}'.format(holding.entry_price) }}</td>
         {# 봉이 없는 보유(거래정지·상장폐지)는 값을 지어내지 않고 없다고 적는다. #}
         {% if holding.mark_price is none %}
-        <td data-label="종가" colspan="3" class="ledger-empty">종가 없음 — 이 종목은 최근 일봉이 없습니다</td>
+        <td data-label="종가" colspan="4" class="ledger-empty">종가 없음 — 이 종목은 최근 일봉이 없습니다</td>
         {% else %}
         <td data-label="종가" class="mono">${{ '{:,.2f}'.format(holding.mark_price) }}</td>
         <td data-label="평가액" class="mono">${{ '{:,.2f}'.format(holding.market_value) }}</td>
         <td data-label="평가손익" class="{% if holding.unrealized_pnl > 0 %}value-positive{% elif holding.unrealized_pnl < 0 %}value-negative{% else %}mono{% endif %}">${{ '{:,.2f}'.format(holding.unrealized_pnl) }}</td>
+        {# 브래킷은 이미 걸려 있는 조건이다. 안 보여주면 유저는 자기 종목이
+           언제 팔릴지 모른 채 들고 있게 된다. #}
+        <td data-label="자동 청산" class="mono">{% if holding.stop_price %}손절 ${{ '{:,.2f}'.format(holding.stop_price) }}{% endif %}{% if holding.take_profit_price %}<br>익절 ${{ '{:,.2f}'.format(holding.take_profit_price) }}{% endif %}{% if not holding.stop_price and not holding.take_profit_price %}<span class="ledger-empty">없음</span>{% endif %}</td>
         {% endif %}
       </tr>{% endfor %}</tbody>
     </table>
@@ -119,5 +123,36 @@
     </li>
   {% endfor %}</ol>
   {% else %}<div class="portfolio-empty"><strong>아직 거래가 없습니다</strong><p>매수나 매도가 체결되면 그 판단과 함께 여기 쌓입니다.</p></div>{% endif %}
+</section>
+
+<section class="panel" id="risk" style="margin-top:18px" aria-labelledby="risk-title">
+  <div class="panel__head">
+    <div>
+      <h2 id="risk-title">리스크 상태</h2>
+      <p>이 계좌의 매매를 자동으로 제한하는 조건입니다.</p>
+    </div>
+  </div>
+  {# 국면을 숨기면 "정보가 없다"와 "수집이 멈췄다"가 구별되지 않는다.
+     관측 시각을 함께 적어 얼마나 묵었는지 읽는 사람이 판단하게 한다. #}
+  {% if view.regime %}
+  <div class="metric-grid">
+    <article class="metric">
+      <div class="metric__top"><span>시장 국면</span></div>
+      <strong class="metric__value">{% if view.regime.regime == 'risk_off' %}위험 회피{% elif view.regime.regime == 'risk_on' %}위험 선호{% else %}중립{% endif %}</strong>
+      <span class="metric__delta">위험 점수 {{ view.regime.risk_score }} · <time datetime="{{ view.regime.observed_at.isoformat() }}">{{ view.regime.observed_at.strftime('%Y-%m-%d %H:%M UTC') }}</time> 관측</span>
+    </article>
+    <article class="metric">
+      <div class="metric__top"><span>투자 성향</span></div>
+      <strong class="metric__value">{% if view.inv_type == 'aggressive' %}공격형{% elif view.inv_type == 'conservative' %}안전형{% else %}미지정{% endif %}</strong>
+      <span class="metric__delta">성향이 매수 문턱과 종목당 비중을 정합니다</span>
+    </article>
+  </div>
+  {% if view.regime.regime == 'risk_off' %}
+  <p>위험 회피 국면에서는 신규 매수가 제한될 수 있습니다. 보유 종목의 자동 청산 조건은 그대로 작동합니다.</p>
+  {% endif %}
+  {% else %}
+  <div class="portfolio-empty"><strong>국면 기록이 없습니다</strong><p>매크로 수집이 아직 한 번도 성공하지 않았습니다.</p></div>
+  {% endif %}
+  <p class="ledger-empty">이 화면은 읽기 전용입니다. 계좌 개설·성향 변경·정지는 관리자가 수행합니다.</p>
 </section>
 {% endblock %}

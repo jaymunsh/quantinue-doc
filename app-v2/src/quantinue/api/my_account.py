@@ -25,7 +25,11 @@ from pydantic import BaseModel, ConfigDict
 
 if TYPE_CHECKING:
     from quantinue.db.control_room_reads import AccountEquityPoint
-    from quantinue.db.domain_records import AccountHoldingRecord, TradeTimelineRecord
+    from quantinue.db.domain_records import (
+        AccountHoldingRecord,
+        MacroSnapshot,
+        TradeTimelineRecord,
+    )
     from quantinue.db.users import UserAccount
 
 _PERCENT = Decimal(100)
@@ -45,6 +49,8 @@ class HoldingView(BaseModel):
     mark_as_of: date | None
     market_value: Decimal | None
     unrealized_pnl: Decimal | None
+    stop_price: Decimal | None
+    take_profit_price: Decimal | None
 
 
 class CurvePointView(BaseModel):
@@ -79,6 +85,16 @@ class TimelineEntryView(BaseModel):
     objection: str | None
 
 
+class RegimeView(BaseModel):
+    """The market regime the ledger last observed, with its age visible."""
+
+    model_config = ConfigDict(frozen=True)
+
+    regime: str
+    risk_score: str
+    observed_at: datetime
+
+
 class MyAccountView(BaseModel):
     """Everything the account page reports about one account."""
 
@@ -94,6 +110,7 @@ class MyAccountView(BaseModel):
     holdings: tuple[HoldingView, ...] = ()
     curve: tuple[CurvePointView, ...] = ()
     timeline: tuple[TimelineEntryView, ...] = ()
+    regime: RegimeView | None = None
 
 
 def _holding_view(record: AccountHoldingRecord) -> HoldingView:
@@ -107,6 +124,8 @@ def _holding_view(record: AccountHoldingRecord) -> HoldingView:
         mark_as_of=record.mark_as_of,
         market_value=value,
         unrealized_pnl=None if value is None else value - cost,
+        stop_price=record.stop_price,
+        take_profit_price=record.take_profit_price,
     )
 
 
@@ -134,6 +153,7 @@ def my_account_view(
     holdings: tuple[AccountHoldingRecord, ...],
     curve: tuple[AccountEquityPoint, ...],
     timeline: tuple[TradeTimelineRecord, ...] = (),
+    macro: MacroSnapshot | None = None,
 ) -> MyAccountView:
     """Project one account's ledger rows into the page the owner reads."""
     ordered = tuple(sorted(curve, key=lambda point: point.trade_date))
@@ -150,6 +170,15 @@ def my_account_view(
             CurvePointView(trade_date=point.trade_date, equity=point.equity) for point in ordered
         ),
         timeline=tuple(_timeline_view(record) for record in timeline),
+        regime=(
+            None
+            if macro is None
+            else RegimeView(
+                regime=macro.regime,
+                risk_score=str(Decimal(str(macro.risk_score)).quantize(_CENT)),
+                observed_at=macro.as_of,
+            )
+        ),
     )
 
 

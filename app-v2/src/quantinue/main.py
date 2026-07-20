@@ -130,7 +130,9 @@ async def _my_account(reads: object | None, account: UserAccount) -> MyAccountVi
         if timeline_reader is None
         else await timeline_reader(account.account_id, limit=DEFAULT_TIMELINE_ENTRIES)
     )
-    return my_account_view(account, holdings, curve, timeline)
+    macro_reader = getattr(reads, "latest_macro_observation", None)
+    macro = None if macro_reader is None else await macro_reader()
+    return my_account_view(account, holdings, curve, timeline, macro)
 
 
 def create_app(settings: Settings | None = None, *, store: RunStore | None = None) -> FastAPI:

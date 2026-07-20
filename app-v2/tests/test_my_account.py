@@ -32,6 +32,8 @@ def _holding(ticker: str, *, quantity: int, entry: str, mark: str | None) -> Acc
         entry_price=Decimal(entry),
         mark_price=None if mark is None else Decimal(mark),
         mark_as_of=None if mark is None else date(2026, 7, 20),
+        stop_price=Decimal("85.00"),
+        take_profit_price=Decimal("140.00"),
     )
 
 

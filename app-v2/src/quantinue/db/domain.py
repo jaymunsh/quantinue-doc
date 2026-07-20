@@ -1568,6 +1568,8 @@ class PostgresDomainRepository:
                 orders.c.ticker,
                 orders.c.quantity,
                 orders.c.entry_price,
+                orders.c.stop_price,
+                orders.c.take_profit_price,
                 latest_bar.c.mark_price,
                 latest_bar.c.mark_as_of,
             )
@@ -1584,8 +1586,37 @@ class PostgresDomainRepository:
                 entry_price=Decimal(str(row.entry_price)),
                 mark_price=None if row.mark_price is None else Decimal(str(row.mark_price)),
                 mark_as_of=row.mark_as_of,
+                stop_price=None if row.stop_price is None else Decimal(str(row.stop_price)),
+                take_profit_price=(
+                    None
+                    if row.take_profit_price is None
+                    else Decimal(str(row.take_profit_price))
+                ),
             )
             for row in rows
+        )
+
+    async def latest_macro_observation(self) -> MacroSnapshot | None:
+        """Return the newest recorded regime, however old it is.
+
+        ``latest_macro``와 일부러 가른다. 저쪽은 **판단**이 쓰는 읽기라
+        묵은 국면을 감추는 것이 옳지만(오래된 위험회피가 무기한 매수 금지로
+        굳는 것을 막는다), 화면은 반대다 — 국면을 숨기면 유저는 "국면 정보가
+        없다"와 "수집이 멈췄다"를 구별할 수 없다. 관측 시각을 함께 보여주고
+        얼마나 묵었는지는 읽는 사람이 판단하게 한다.
+        """
+        table = self._table("tb_macro")
+        statement = (
+            select(table.c.regime, table.c.risk_score, table.c.as_of)
+            .order_by(table.c.as_of.desc())
+            .limit(1)
+        )
+        async with self._engine.begin() as connection:
+            row = (await connection.execute(statement)).first()
+        if row is None:
+            return None
+        return MacroSnapshot(
+            regime=row.regime, risk_score=float(row.risk_score), as_of=row.as_of
         )
 
     async def account_timeline(

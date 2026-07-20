@@ -351,6 +351,10 @@ class AccountHoldingRecord:
     entry_price: Decimal
     mark_price: Decimal | None
     mark_as_of: date | None
+    # 브래킷은 이 포지션에 이미 걸려 있는 자동 청산 조건이다. 유저가 볼 수
+    # 있어야 "언제 팔리나"에 화면이 답할 수 있다.
+    stop_price: Decimal | None
+    take_profit_price: Decimal | None
 
 
 @dataclass(frozen=True, slots=True)
