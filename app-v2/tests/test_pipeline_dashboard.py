@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from quantinue.core.config import Settings
 from quantinue.db.control_room_reads import (
     AccountEquityPoint,
+    AccountOverviewRecord,
     JobRunRecord,
     JudgementRecord,
     OrderPlanRecord,
@@ -39,6 +40,7 @@ class _StubReads:
         equity: tuple[AccountEquityPoint, ...] = (),
         judged: tuple[JudgementRecord, ...] = (),
         older_slots: tuple[date, ...] = (),
+        accounts: tuple[AccountOverviewRecord, ...] = (),
     ) -> None:
         self._older_slots = older_slots
         self._slot_date = slot_date
@@ -46,6 +48,7 @@ class _StubReads:
         self._plans = plans
         self._equity = equity
         self._judged = judged
+        self._accounts = accounts
 
     async def latest_job_slot(self) -> date | None:
         return self._slot_date
@@ -66,6 +69,9 @@ class _StubReads:
 
     async def judgements(self, trade_date: date) -> tuple[JudgementRecord, ...]:
         return self._judged if trade_date == self._slot_date else ()
+
+    async def account_overviews(self) -> tuple[AccountOverviewRecord, ...]:
+        return self._accounts
 
 
 class _LedgerStore(InMemoryRunStore):
@@ -92,6 +98,25 @@ def _job(
         detail=detail,
         started_at=started,
         finished_at=started + timedelta(seconds=12) if finished else None,
+    )
+
+
+def _account(
+    broker_account_id: str,
+    *,
+    inv_type: str,
+    cash: str,
+    fills: int,
+) -> AccountOverviewRecord:
+    return AccountOverviewRecord(
+        broker_account_id=broker_account_id,
+        inv_type=inv_type,
+        status="active",
+        cash=Decimal(cash),
+        equity=Decimal(cash),
+        open_position_count=0,
+        order_count=fills,
+        fill_count=fills,
     )
 
 
@@ -319,6 +344,46 @@ def test_the_api_answers_with_the_same_day_the_page_draws() -> None:
     assert payload["chain"]["broke_at"] == "daily_bars"
     assert payload["chain"]["slot_date"] == "2026-07-20"
     assert payload["curves"][0]["change_pct"] == "10.00"
+
+
+def test_the_control_room_shows_every_account_not_one() -> None:
+    """관제실은 원장에 있는 계좌 전부를 센다.
+
+    §1-1: 이 패널이 구 러너 유물 계좌 하나(체결 0건)를 보는 동안, 실제로
+    움직인 돈 전부가 화면 밖에 있었다. 결함 15·16과 같은 계열이면서 방향이
+    반대다 — 많이 세는 게 아니라 원장에 있는 것을 안 셌다.
+    """
+    # Given
+    reads = _StubReads(
+        jobs=(_job("universe"),),
+        accounts=(
+            _account("DEMO-AGGRESSIVE-01", inv_type="aggressive", cash="30734.62", fills=4),
+            _account("DEMO-CONSERVATIVE-02", inv_type="conservative", cash="4486.75", fills=2),
+        ),
+    )
+
+    # When
+    with _client(reads) as client:
+        body = client.get("/").text
+
+    # Then
+    assert "DEMO-AGGRESSIVE-01" in body
+    assert "DEMO-CONSERVATIVE-02" in body
+    assert "30,734" in body
+    assert "4,486" in body
+
+
+def test_the_control_room_says_so_when_no_account_exists() -> None:
+    """계좌가 없는 원장에 빈 표를 그리면 "계좌가 0개"와 "못 읽었다"가 섞인다."""
+    # Given
+    reads = _StubReads(jobs=(_job("universe"),), accounts=())
+
+    # When
+    with _client(reads) as client:
+        body = client.get("/").text
+
+    # Then
+    assert "계좌가 없습니다" in body
 
 
 @pytest.mark.parametrize("status", ["running", "succeeded", "failed"])

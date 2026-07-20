@@ -14,6 +14,7 @@ from quantinue.core.contracts import DisclosureSourceRecord, NewsSourceRecord
 from quantinue.db.contracts import AppOrderExposureStatus
 from quantinue.db.control_room_reads import (
     AccountEquityPoint,
+    AccountOverviewRecord,
     JobRunRecord,
     JudgementRecord,
     OrderPlanRecord,
@@ -1534,6 +1535,76 @@ class PostgresDomainRepository:
     async def judgements(self, trade_date: date) -> tuple[JudgementRecord, ...]:
         """Delegate the judgement-and-rebuttal read to its focused module."""
         return await judgements(self._engine, trade_date)
+
+    async def account_overviews(self) -> tuple[AccountOverviewRecord, ...]:
+        """List every account with the counts that say whether it actually moved.
+
+        이 읽기는 ``control_room_reads``가 아니라 여기 산다. 보유의 정의가
+        ``_is_open_position`` 하나여야 하기 때문이다 — 화면이 따로 세면
+        "관제실은 3종목이라는데 게이트는 4종목으로 막는다"에 답할 수 없다.
+
+        상태로 계좌를 거르지 않는다. ``active``만 그리면 정지된 계좌에 남은
+        돈과 보유가 화면에서 사라진다 — 그게 §1-1이 일어난 방식이다.
+
+        주문·체결을 각각 따로 세는 이유는 팬아웃이다. 한 번에 조인하면 체결이
+        여럿인 주문이 그 수만큼 부풀어 세어진다.
+        """
+        accounts = self._table("tb_account")
+        orders = self._table("tb_order")
+        fills = self._table("tb_fill")
+        held = (
+            select(
+                orders.c.account_id,
+                func.count(func.distinct(orders.c.ticker)).label("held"),
+            )
+            .where(_is_open_position(orders))
+            .group_by(orders.c.account_id)
+            .subquery()
+        )
+        placed = (
+            select(orders.c.account_id, func.count().label("placed"))
+            .group_by(orders.c.account_id)
+            .subquery()
+        )
+        filled = (
+            select(orders.c.account_id, func.count().label("filled"))
+            .select_from(fills.join(orders, fills.c.order_id == orders.c.id))
+            .group_by(orders.c.account_id)
+            .subquery()
+        )
+        statement = (
+            select(
+                accounts.c.broker_account_id,
+                accounts.c.inv_type,
+                accounts.c.status,
+                accounts.c.cash,
+                accounts.c.equity,
+                func.coalesce(held.c.held, 0).label("open_position_count"),
+                func.coalesce(placed.c.placed, 0).label("order_count"),
+                func.coalesce(filled.c.filled, 0).label("fill_count"),
+            )
+            .select_from(
+                accounts.outerjoin(held, held.c.account_id == accounts.c.id)
+                .outerjoin(placed, placed.c.account_id == accounts.c.id)
+                .outerjoin(filled, filled.c.account_id == accounts.c.id)
+            )
+            .order_by(accounts.c.broker_account_id)
+        )
+        async with self._engine.begin() as connection:
+            rows = (await connection.execute(statement)).all()
+        return tuple(
+            AccountOverviewRecord(
+                broker_account_id=row.broker_account_id,
+                inv_type=row.inv_type,
+                status=row.status,
+                cash=Decimal(str(row.cash)),
+                equity=Decimal(str(row.equity)),
+                open_position_count=int(row.open_position_count),
+                order_count=int(row.order_count),
+                fill_count=int(row.fill_count),
+            )
+            for row in rows
+        )
 
     async def count_users(self) -> int:
         """Delegate the bootstrap-exception count to the user read module."""

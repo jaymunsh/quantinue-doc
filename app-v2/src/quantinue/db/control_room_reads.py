@@ -62,6 +62,26 @@ class AccountEquityPoint:
 
 
 @dataclass(frozen=True, slots=True)
+class AccountOverviewRecord:
+    """One account's standing, as the account roster reports it.
+
+    계좌를 **행 하나로** 세는 것이 이 레코드의 존재 이유다. 관제실이 오래
+    계좌 하나만 보고 있었고(구 러너 유물, 체결 0건), 그동안 실제로 움직인
+    돈 전부가 화면 밖에 있었다(§1-1). 총합만 그리면 같은 사고가 반복된다 —
+    어느 계좌가 멈췄는지는 합계가 답할 수 없는 질문이다.
+    """
+
+    broker_account_id: str
+    inv_type: str | None
+    status: str
+    cash: Decimal
+    equity: Decimal
+    open_position_count: int
+    order_count: int
+    fill_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class JudgementRecord:
     """One strategist judgement together with the critic's answer to it."""
 

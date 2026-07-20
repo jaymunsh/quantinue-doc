@@ -20,7 +20,7 @@
   <a class="nav-link" href="#allocation"><b>{{ day.allocation.bought }}</b>배분</a>
   <a class="nav-link" href="#judgements"><b>{{ day.profiles | sum(attribute='total') }}</b>판단과 반박</a>
   <a class="nav-link" href="#accounts"><b>{{ day.curves | length }}</b>계좌 곡선</a>
-  <a class="nav-link" href="#ledger"><b>{{ portfolio.positions | length }}</b>모의 원장</a>
+  <a class="nav-link" href="#ledger"><b>{{ roster.accounts | length }}</b>계좌 총람</a>
 </nav>
 {% endblock %}
 
@@ -246,56 +246,49 @@
 </div>
 {% endif %}
 
-<section class="panel" id="ledger" style="margin-top:18px" aria-labelledby="portfolio-title">
+<section class="panel" id="ledger" style="margin-top:18px" aria-labelledby="roster-title">
   <div class="panel__head">
     <div>
-      <h2 id="portfolio-title">모의 계좌 원장</h2>
+      <h2 id="roster-title">계좌 총람</h2>
       <p>실제 공개 가격을 mark로 쓰지만, 현금과 체결은 Quantinue 내부 모의 기록입니다.</p>
     </div>
+    <span class="badge">{{ roster.accounts | length }}개 계좌</span>
   </div>
   <div class="metric-grid">
     <article class="metric">
-      <div class="metric__top"><span>초기 자산</span></div>
-      <strong class="metric__value">${{ '{:,.0f}'.format(portfolio.account.opening_cash) }}</strong>
+      <div class="metric__top"><span>계좌</span></div>
+      <strong class="metric__value">{{ roster.accounts | length }}</strong>
     </article>
     <article class="metric">
-      <div class="metric__top"><span>현재 현금</span></div>
-      <strong class="metric__value">${{ '{:,.0f}'.format(portfolio.account.current_cash) }}</strong>
+      <div class="metric__top"><span>현금 합계</span></div>
+      <strong class="metric__value">${{ '{:,.0f}'.format(roster.total_cash) }}</strong>
     </article>
     <article class="metric metric--primary">
-      <div class="metric__top"><span>총 자산</span></div>
-      <strong class="metric__value">${{ '{:,.0f}'.format(portfolio.account.equity) }}</strong>
-      <span class="metric__delta">실현손익 {{ portfolio.realized_pnl_label }}</span>
+      <div class="metric__top"><span>평가액 합계</span></div>
+      <strong class="metric__value">${{ '{:,.0f}'.format(roster.total_equity) }}</strong>
     </article>
     <article class="metric">
-      <div class="metric__top"><span>매수 가능액</span></div>
-      <strong class="metric__value">${{ '{:,.0f}'.format(portfolio.account.buying_power) }}</strong>
+      <div class="metric__top"><span>체결</span></div>
+      <strong class="metric__value">{{ roster.total_fills }}</strong>
     </article>
   </div>
-  {% if portfolio.positions %}
-  <div class="table-wrap portfolio-table-wrap" role="region" aria-label="보유 종목 상세 표" tabindex="0">
+  {% if roster.accounts %}
+  <div class="table-wrap portfolio-table-wrap" role="region" aria-label="계좌 총람 표" tabindex="0">
     <table class="portfolio-table">
-      <caption>로컬 모의 계좌 보유 종목과 평가 현황</caption>
-      <thead><tr><th scope="col">종목</th><th scope="col">수량</th><th scope="col">평균 매입가</th><th scope="col">현재가</th><th scope="col">평가액</th><th scope="col">평가손익</th><th scope="col">비중</th></tr></thead>
-      <tbody>{% for position in portfolio.positions %}<tr>
-        <td data-label="종목" class="asset-cell"><strong>{{ position.ticker }}</strong><small>{{ position.mark_source }} · <time datetime="{{ position.mark_as_of.isoformat() }}">{{ position.mark_as_of.strftime('%Y-%m-%d %H:%M UTC') }}</time></small></td>
-        <td data-label="수량" class="mono">{{ position.quantity }}주</td>
-        <td data-label="평균 매입가" class="mono">${{ '{:,.2f}'.format(position.average_cost) }}</td>
-        <td data-label="현재가" class="mono">${{ '{:,.2f}'.format(position.mark_price) }}</td>
-        <td data-label="평가액" class="mono">${{ '{:,.2f}'.format(position.market_value) }}</td>
-        <td data-label="평가손익" class="{% if position.unrealized_pnl > 0 %}value-positive{% elif position.unrealized_pnl < 0 %}value-negative{% else %}mono{% endif %}">${{ '{:,.2f}'.format(position.unrealized_pnl) }}</td>
-        <td data-label="비중" class="mono">{{ '%.2f' | format(position.allocation * 100) }}%</td>
+      <caption>원장에 있는 계좌 전부와 각 계좌가 실제로 움직인 기록</caption>
+      <thead><tr><th scope="col">계좌</th><th scope="col">성향</th><th scope="col">상태</th><th scope="col">현금</th><th scope="col">평가액</th><th scope="col">보유</th><th scope="col">주문</th><th scope="col">체결</th></tr></thead>
+      <tbody>{% for account in roster.accounts %}<tr>
+        <td data-label="계좌" class="asset-cell"><strong>{{ account.broker_account_id }}</strong></td>
+        <td data-label="성향">{% if account.inv_type %}{{ account.inv_type }}{% else %}<span class="ledger-empty">미지정</span>{% endif %}</td>
+        <td data-label="상태">{{ account.status }}</td>
+        <td data-label="현금" class="mono">${{ '{:,.2f}'.format(account.cash) }}</td>
+        <td data-label="평가액" class="mono">${{ '{:,.2f}'.format(account.equity) }}</td>
+        <td data-label="보유" class="mono">{{ account.open_position_count }}</td>
+        <td data-label="주문" class="mono">{{ account.order_count }}</td>
+        <td data-label="체결" class="mono">{{ account.fill_count }}</td>
       </tr>{% endfor %}</tbody>
     </table>
   </div>
-  {% else %}<div class="portfolio-empty"><strong>아직 보유 종목이 없습니다</strong><p>mock 주문이 실제로 로컬 체결된 뒤 수량·평단·평가손익이 표시됩니다.</p></div>{% endif %}
-  <div class="ledger-grid">
-    <section aria-labelledby="local-orders-title"><div class="portfolio-section-heading"><h3 id="local-orders-title">주문 내역</h3><span>{{ portfolio.orders | length }}건</span></div>
-      {% if portfolio.orders %}<ol class="ledger-list">{% for order in portfolio.orders %}<li><div><strong>{{ order.ticker }} {{ order.quantity }}주</strong><span>{{ order.status }}</span></div><p>${{ '{:,.2f}'.format(order.reference_price) }} · <time datetime="{{ order.created_at.isoformat() }}">{{ order.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</time></p><code>{{ order.order_id }}</code></li>{% endfor %}</ol>{% else %}<p class="ledger-empty">로컬 주문 기록 없음</p>{% endif %}
-    </section>
-    <section aria-labelledby="local-fills-title"><div class="portfolio-section-heading"><h3 id="local-fills-title">체결 내역</h3><span>{{ portfolio.fills | length }}건</span></div>
-      {% if portfolio.fills %}<ol class="ledger-list">{% for fill in portfolio.fills %}<li><div><strong>{{ fill.ticker }} {{ fill.quantity }}주</strong><span>로컬 체결</span></div><p>${{ '{:,.2f}'.format(fill.price) }} · <time datetime="{{ fill.filled_at.isoformat() }}">{{ fill.filled_at.strftime('%Y-%m-%d %H:%M UTC') }}</time></p><code>{{ fill.fill_id }}</code></li>{% endfor %}</ol>{% else %}<p class="ledger-empty">로컬 체결 기록 없음</p>{% endif %}
-    </section>
-  </div>
+  {% else %}<div class="portfolio-empty"><strong>계좌가 없습니다</strong><p>관리자가 계좌를 개설하면 계좌별 현금·보유·체결이 여기 표시됩니다.</p></div>{% endif %}
 </section>
 {% endblock %}

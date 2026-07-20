@@ -16,15 +16,15 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from quantinue.api.access import ControlRoomAccess
+from quantinue.api.account_roster import AccountRosterView, account_roster_view
 from quantinue.api.auth import session_user
 from quantinue.api.login_routes import build_auth_router
 from quantinue.api.pipeline_day import build_pipeline_day, empty_pipeline_day
 from quantinue.api.pipeline_presentation import PipelineDayView, sparkline_points
-from quantinue.api.portfolio_view import simulated_portfolio_view
 from quantinue.api.review_runtime import ReviewRuntime
 from quantinue.api.reviews import build_review_router
 from quantinue.api.route_guard import RoleZoneGuard
-from quantinue.api.schemas import HealthResponse, SimulatedPortfolioView
+from quantinue.api.schemas import HealthResponse
 from quantinue.api.sessions import resolve_session_secret
 from quantinue.core.config import DatabaseMode, Settings
 from quantinue.core.logging import configure_logging
@@ -84,6 +84,18 @@ def _lifespan_factory(
         await store.close()
 
     return lifespan
+
+
+async def _account_roster(reads: object | None) -> AccountRosterView:
+    """Read every account, or report none when the store has no ledger.
+
+    메모리 스토어에는 계좌 원장이 없다. 그때 빈 총람은 "계좌가 없다"로
+    정직하게 읽힌다 — 없는 것 대신 유령 계좌 하나를 그리던 것이 §1-1이다.
+    """
+    reader = getattr(reads, "account_overviews", None)
+    if reader is None:
+        return AccountRosterView()
+    return account_roster_view(await reader())
 
 
 def create_app(settings: Settings | None = None, *, store: RunStore | None = None) -> FastAPI:
@@ -189,33 +201,25 @@ def create_app(settings: Settings | None = None, *, store: RunStore | None = Non
     @app.get("/", response_class=HTMLResponse)
     async def control_room(request: Request, slot: date | None = None) -> HTMLResponse:
         day = await pipeline_day(slot)
-        portfolio = simulated_portfolio_view(
-            await selected_store.simulated_portfolio(
-                selected_settings.simulated_account_opening_cash_usd
-            )
-        )
         return templates.TemplateResponse(
             request=request,
             name="pipeline.html",
             context={
                 "day": day,
-                "portfolio": portfolio,
+                "roster": await _account_roster(control_room_reads),
                 "sparkline": sparkline_points,
                 "settings": selected_settings,
                 "current_user": session_user(request),
             },
         )
 
+    @app.get("/api/accounts", response_model=AccountRosterView)
+    async def accounts_observability() -> AccountRosterView:
+        return await _account_roster(control_room_reads)
+
     @app.get("/api/pipeline/today", response_model=PipelineDayView)
     async def pipeline_today(slot: date | None = None) -> PipelineDayView:
         return await pipeline_day(slot)
-
-    @app.get("/api/portfolio", response_model=SimulatedPortfolioView)
-    async def portfolio_observability() -> SimulatedPortfolioView:
-        snapshot = await selected_store.simulated_portfolio(
-            selected_settings.simulated_account_opening_cash_usd
-        )
-        return simulated_portfolio_view(snapshot)
 
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:

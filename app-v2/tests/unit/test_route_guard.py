@@ -136,10 +136,10 @@ def test_user_cannot_learn_that_the_admin_zone_exists() -> None:
         # When
         page = client.get("/")
         api = client.get("/api/pipeline/today")
-        portfolio = client.get("/api/portfolio")
+        accounts = client.get("/api/accounts")
 
     # Then
-    assert {page.status_code, api.status_code, portfolio.status_code} == {404}
+    assert {page.status_code, api.status_code, accounts.status_code} == {404}
 
 
 def test_user_sees_their_own_account() -> None:

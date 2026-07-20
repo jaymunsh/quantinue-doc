@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 
     from quantinue.db.control_room_reads import (
         AccountEquityPoint,
+        AccountOverviewRecord,
         JobRunRecord,
         JudgementRecord,
         OrderPlanRecord,
@@ -66,6 +67,14 @@ class ControlRoomReads(Protocol):
 
     async def judgements(self, trade_date: date) -> tuple[JudgementRecord, ...]:
         """Return one day's judgements paired with their verdicts."""
+        ...
+
+    async def account_overviews(self) -> tuple[AccountOverviewRecord, ...]:
+        """Return every account with its standing — not scoped to a slot.
+
+        계좌는 잡이 안 돈 날에도 존재한다. 슬롯에 묶어 읽으면 잡이 하루
+        쉰 날 계좌가 화면에서 사라진다.
+        """
         ...
 
 
