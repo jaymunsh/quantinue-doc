@@ -28,6 +28,7 @@ from quantinue.market_data.wire_news import WireRssSource, default_wire_feeds
 from quantinue.orchestration.job_runner import JobDefinition, JobRunner
 from quantinue.roles.allocation.job import AllocationJob
 from quantinue.roles.analysis.job import AnalysisJob
+from quantinue.roles.disclosure.job import DisclosureScoringJob
 from quantinue.roles.exits.job import ExitJob
 from quantinue.roles.role_01_universe_screener.contracts import (
     UniverseMember,
@@ -511,6 +512,33 @@ def build_screening_job(
     return JobDefinition(name=name, run=run)
 
 
+def build_disclosure_scoring_job(
+    *,
+    store: object,
+    analyzer: LlmAnalyzer,
+    calendar: NyseCalendar,
+    name: str = "disclosure_scoring",
+) -> JobDefinition:
+    """Turn today's SEC filings into the vote role_07 counts.
+
+    성향 인자가 없는 것이 이 잡의 요점이다 — 채점은 "무엇이 사실인가"를 묻고
+    답이 성향과 무관해야 한다. 그래서 페르소나 수만큼 반복하지 않고 한 번만
+    돌며, 두 분석 잡이 같은 표를 읽는다.
+    """
+    job = DisclosureScoringJob(store=store, analyzer=analyzer)
+
+    async def run(as_of: date) -> str:
+        session = calendar.previous_trading_day(as_of)
+        result = await job.run(as_of=as_of, session=session)
+        detail = f"{len(result.scores)} scored"
+        if result.skipped:
+            # 조용한 절단은 "전부 봤다"로 읽힌다.
+            detail = f"{detail}, {result.skipped} skipped after model errors"
+        return detail
+
+    return JobDefinition(name=name, run=run)
+
+
 def build_analysis_job(  # noqa: PLR0913 - 각 인자가 교체 가능한 협력자 하나다
     *,
     store: object,
@@ -755,6 +783,13 @@ def build_job_runner(
         )
     )
     if selected.analyzer is not None:
+        # 채점은 스크리닝 **뒤**(픽이 있어야 tb_disclosure_signal의 FK가 선다)
+        # 이면서 분석 **앞**이다 — 한 슬롯 늦게 도착하는 증거는 증거가 아니다.
+        jobs.append(
+            build_disclosure_scoring_job(
+                store=store, analyzer=selected.analyzer, calendar=calendar
+            )
+        )
         # 성향마다 한 잡. 선언 순서가 곧 실행 순서이고, 두 페르소나는 서로의
         # 결과를 보지 않는다 — 원장에서 inv_type으로 갈린다.
         jobs.extend(
