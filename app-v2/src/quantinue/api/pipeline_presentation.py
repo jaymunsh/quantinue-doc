@@ -54,6 +54,20 @@ class JobRunView(BaseModel):
     attempts: int = Field(default=1, ge=1)
 
 
+class LlmSpendView(BaseModel):
+    """Today's estimated LLM spend against its config ceiling.
+
+    지출은 tb_llm_usage의 합(UTC 하루), 상한은 budget.daily_llm_usd다.
+    원장이 없는 스토어에서는 이 뷰 자체가 None이다 — 0달러를 지어내 그리면
+    "예산이 지켜지고 있다"는 거짓 신호가 된다.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    spent_usd: Decimal = Field(ge=0)
+    limit_usd: Decimal = Field(ge=0)
+
+
 class ChainView(BaseModel):
     """One day's job chain, in the order the runner executed it."""
 
@@ -162,6 +176,8 @@ class PipelineDayView(BaseModel):
     curves: tuple[AccountCurveView, ...] = ()
     profiles: tuple[ProfileJudgementsView, ...] = ()
     slots: tuple[date, ...] = ()
+    # 지출 원장이 있는 스토어에서만 채워진다 — 없으면 카드를 그리지 않는다.
+    llm: LlmSpendView | None = None
 
 
 def _duration_ms(record: JobRunRecord) -> int | None:

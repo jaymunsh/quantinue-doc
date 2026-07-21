@@ -150,6 +150,38 @@ def test_the_page_renders_the_chain_in_execution_order() -> None:
     assert chain.index("universe") < chain.index("daily_bars") < chain.index("allocation")
 
 
+def test_llm_spend_appears_with_its_ceiling_when_the_ledger_answers() -> None:
+    """예산이 지켜지는지는 화면이 말해야 한다 — 원장에 쌓이기만 하면 아무도 모른다."""
+    # Given — 지출 원장까지 답하는 스토어 (Postgres 모양)
+    class _SpendReads(_StubReads):
+        async def llm_spend_on(self, day: date) -> Decimal:
+            return Decimal("0.0621")
+
+    reads = _SpendReads(jobs=(_job("universe"),))
+
+    # When
+    with _client(reads) as client:
+        body = client.get("/").text
+
+    # Then
+    assert "LLM 지출" in body
+    assert "$0.06" in body
+    assert "$3.00" in body  # config의 daily_llm_usd 상한
+
+
+def test_a_store_without_a_spend_ledger_hides_the_llm_card() -> None:
+    """메모리 스토어에는 원장이 없다 — 0달러를 지어내 그리지 않는다."""
+    # Given
+    reads = _StubReads(jobs=(_job("universe"),))
+
+    # When
+    with _client(reads) as client:
+        body = client.get("/").text
+
+    # Then
+    assert "LLM 지출" not in body
+
+
 def test_a_retried_job_shows_its_attempt_count_in_the_chain() -> None:
     """재시도는 성공 뒤에 숨는다 — 시도 횟수가 화면에 없으면 "한 번에 됐다"로 읽힌다."""
     # Given

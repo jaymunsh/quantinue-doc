@@ -64,6 +64,14 @@
     <strong class="metric__value">{{ day.curves | length }}</strong>
     <span class="metric__delta">시가평가 기록 보유</span>
   </article>
+  {% if day.llm %}
+  {# 지출 원장이 있는 스토어에서만 그린다 — 없는데 $0을 그리면 거짓 안심이다. #}
+  <article class="metric">
+    <div class="metric__top"><span>LLM 지출</span></div>
+    <strong class="metric__value">${{ '%.2f' | format(day.llm.spent_usd) }}</strong>
+    <span class="metric__delta">상한 ${{ '%.2f' | format(day.llm.limit_usd) }} · 초과 시 판단 스킵</span>
+  </article>
+  {% endif %}
 </div>
 
 {% if day.chain.slot_date is none %}

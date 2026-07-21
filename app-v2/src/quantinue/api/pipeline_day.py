@@ -11,17 +11,33 @@ create_app이 이미 충분히 길기 때문이다.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import TYPE_CHECKING, Protocol
 
 from quantinue.api.pipeline_presentation import (
     AllocationView,
     ChainView,
+    LlmSpendView,
     PipelineDayView,
     allocation_view,
     chain_view,
     equity_curve_views,
     profile_judgement_views,
 )
+
+
+async def _llm_spend(
+    reads: object, slot: date, limit_usd: float
+) -> LlmSpendView | None:
+    """Read the slot day's spend, or None when this store keeps no ledger.
+
+    메모리 스토어에는 tb_llm_usage가 없다. 그때 0달러를 그리면 "예산이
+    지켜지고 있다"는 거짓 신호가 되므로 카드 자체를 만들지 않는다.
+    """
+    reader = getattr(reads, "llm_spend_on", None)
+    if reader is None:
+        return None
+    return LlmSpendView(spent_usd=await reader(slot), limit_usd=Decimal(str(limit_usd)))
 
 if TYPE_CHECKING:
     from datetime import date
@@ -96,6 +112,7 @@ async def build_pipeline_day(
     slot_date: date | None = None,
     curve_days: int = DEFAULT_CURVE_DAYS,
     slot_history: int = DEFAULT_SLOT_HISTORY,
+    llm_limit_usd: float = 0.0,
 ) -> PipelineDayView:
     """Project one job slot — the latest one unless the caller asks for another.
 
@@ -113,4 +130,5 @@ async def build_pipeline_day(
         curves=equity_curve_views(await reads.account_equity_series(days=curve_days)),
         profiles=profile_judgement_views(await reads.judgements(selected)),
         slots=slots,
+        llm=await _llm_spend(reads, selected, llm_limit_usd),
     )

@@ -290,7 +290,11 @@ def create_app(settings: Settings | None = None, *, store: RunStore | None = Non
     async def pipeline_day(slot: date | None = None) -> PipelineDayView:
         if control_room_reads is None:
             return empty_pipeline_day()
-        return await build_pipeline_day(control_room_reads, slot_date=slot)
+        return await build_pipeline_day(
+            control_room_reads,
+            slot_date=slot,
+            llm_limit_usd=mvp2_config.budget.daily_llm_usd,
+        )
 
     @app.get("/")
     async def role_landing(request: Request) -> RedirectResponse:
