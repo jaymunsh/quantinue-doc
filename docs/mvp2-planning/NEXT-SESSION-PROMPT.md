@@ -1,11 +1,13 @@
 Quantinue MVP-2 개발 이어서 진행. 나는 문성혁, app-v2/에서 2차 개발 중이다.
 
-먼저 이 넷을 읽어라:
+먼저 이 다섯을 읽어라:
 
 1. docs/operations-runbook.md              ← ★ 운영 정본. 켜고·보고·끄는 법
 2. docs/mvp2-planning/dev-handoff.md       ← ★ 현재 상태 (07-21 저녁 갱신이 최신)
-3. docs/mvp2-planning/completion-plan.md   ← 남은 것과 순서
-4. docs/mvp2-planning/open-items.md        ← 열린 항목 정본
+3. docs/mvp2-planning/intraday-realignment.md ← ★ 방향 재정렬(07-21 밤).
+   개발 방향은 이 문서가 정본 — "하루 1회" 전제보다 우선한다
+4. docs/mvp2-planning/completion-plan.md   ← 남은 것과 순서
+5. docs/mvp2-planning/open-items.md        ← 열린 항목 정본
 
 부수 정본: llm-usage-guide.md(LLM 사용처·실측) · aws-migration-review.md(보류
 중, 착수 체크리스트) · how-to-check-guide.md(완성 확인 루틴) ·
@@ -26,6 +28,9 @@ HEAD는 main. **미푸시 커밋 있음** — push는 지시할 때만.
 
 핵심 확정(되묻지 말 것): 이전 확정(D1~D8 · 1유저=1계좌 · 유저 쓰기 0 ·
 잡 12종+조건부 1)에 더해 —
+- ⚠️ **단, "하루 1회" 주기 전제는 재개봉됐다(07-21 밤 사용자 확정)** —
+  intraday-realignment.md의 헌장 C1~C3와 층별 주기가 우선한다.
+  R1(실브로커)은 폐기: 페이퍼(MockBroker)가 최종이다
 - LLM은 openai 전환 완료. 모델 요율은 config/pipeline.yaml의
   budget.model_pricing 소유 — **미선언 모델로는 기동이 거부된다**(의도)
 - 모든 LLM 콜은 BudgetedAnalyzer를 통과한다. 예산 초과 = 그 종목 skip
@@ -44,6 +49,7 @@ HEAD는 main. **미푸시 커밋 있음** — push는 지시할 때만.
 
 | | 항목 | 규모 |
 |---|---|---|
+| ★ 재정렬 | 장중 감시·재판단 층 — intraday-realignment.md §9 M1~M7 | 신규 러너 + 재판단 경로. **openai 검증 후 최우선** |
 | W3-4 잔여 | 방어선 발동 내역(청산 사유를 관제실에) | 읽기, 가벼움 |
 | ⑦ | W2-4 벤치마크(SPY) 잡 → /me에 SPY 대비 | 잡 1종 + 화면 |
 | ⑧ | risk_rebuttal·counter_scenarios·persona_notes 채우기 | 프롬프트 계약 |
@@ -94,4 +100,5 @@ TEST-DELISTED-01·TEST-SELLGAP은 체결 24건이 얽혀 있다 — 사용자에
 - .env를 .env.example로 덮어쓰지 말 것 (openai 키가 들어 있다).
 - **push는 사용자 지시가 있을 때만.** (공유 저장소)
 
-먼저 위 넷을 읽고, **openai 첫 슬롯이 정상이었는지부터 확인해서 짚어줘.**
+먼저 위 다섯을 읽고, **openai 첫 슬롯이 정상이었는지부터 확인해서 짚어줘.**
+그다음은 intraday-realignment.md §9 M1 착수다.
