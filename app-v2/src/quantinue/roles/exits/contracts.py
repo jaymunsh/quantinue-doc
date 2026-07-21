@@ -1,4 +1,4 @@
-"""Pure exit rules — the three-layer close described in the redesign §4.
+"""Pure exit rules for intraday brackets and daily judgement-based closes.
 
 한 포지션이 우리 손을 떠나는 경로는 셋뿐이다:
 
@@ -20,13 +20,12 @@ from typing import TYPE_CHECKING
 
 from exchange_calendars.errors import DateOutOfBounds
 
-from quantinue.broker.bracket_trigger import BracketLeg, evaluate_bracket
+from quantinue.broker.bracket_trigger import BracketLeg, DailyRange, evaluate_bracket
 
 if TYPE_CHECKING:
     from datetime import date
     from decimal import Decimal
 
-    from quantinue.broker.bracket_trigger import DailyRange
     from quantinue.core.market_calendar import NyseCalendar
 
 
@@ -78,7 +77,6 @@ class DailyObservation:
     의도다 — 수집이 실패한 날을 "값이 없다"로 정직하게 표현해야 한다.
     """
 
-    day_range: DailyRange | None = None
     last_price: Decimal | None = None
     has_hard_event: bool = False
     # 오늘 이 종목에 **승인된 매도 판단**을 낸 성향들. 종목이 아니라 성향별인
@@ -133,28 +131,14 @@ def decide_exit(
 ) -> ExitDecision | None:
     """Return the exit this position earned today, or None to keep holding.
 
-    **우선순위: 브래킷 > 하드 이벤트 > 판단(soft) > 시간.**
+    **우선순위: 하드 이벤트 > 판단(soft) > 시간.**
 
-    브래킷이 가장 앞인 이유는 시간 순서다 — 보호 주문은 거래소에 상주하며
-    장중에 발동하는데, 우리가 악재를 수집하는 건 그 뒤다. 실 브로커였다면 이미
-    체결됐을 일을 뒤늦게 알게 된 악재로 덮으면 시뮬과 실거래의 결과가 갈리고,
-    나중에 페이퍼로 전환할 때(로드맵 R1) 성과가 설명 없이 어긋난다.
+    브래킷은 ``decide_bracket``과 장중 감시 러너가 소유한다. 일일 잡에 남기면
+    장중에 이미 닿은 보호선을 다음 슬롯까지 늦게 집행한다.
 
     논지 붕괴가 시간보다 앞인 이유는 사유의 정보량이다. 둘 다 해당할 때
     "10일 지나서 팔았다"고 기록하면 T+5 학습이 실제 원인을 못 배운다.
     """
-    if observation.day_range is not None:
-        leg = _triggered_leg(position, observation.day_range)
-        if leg is not None:
-            return ExitDecision(
-                position=position,
-                reason=(
-                    ExitReason.STOP if leg is BracketLeg.STOP else ExitReason.TAKE_PROFIT
-                ),
-                # 대기 주문은 자기 가격에 체결된다. 종가로 찍으면 손익이 왜곡된다.
-                # (갭으로 그 가격을 건너뛴 경우의 슬리피지는 로드맵 R7.)
-                reference_price=_leg_price(position, leg),
-            )
     if observation.has_hard_event:
         # 악재는 시세 없이도 판단된다. 기준가가 없으면 진입가로 대체한다 —
         # 지어낸 시세보다 "판단 시점에 아는 마지막 진실"이 낫다.
@@ -185,6 +169,21 @@ def decide_exit(
             reference_price=observation.last_price,
         )
     return None
+
+
+def decide_bracket(position: OpenPosition, current_price: Decimal) -> ExitDecision | None:
+    """Return the protective leg reached by one current-price observation."""
+    leg = _triggered_leg(
+        position,
+        DailyRange(low=current_price, high=current_price),
+    )
+    if leg is None:
+        return None
+    return ExitDecision(
+        position=position,
+        reason=ExitReason.STOP if leg is BracketLeg.STOP else ExitReason.TAKE_PROFIT,
+        reference_price=_leg_price(position, leg),
+    )
 
 
 def _triggered_leg(position: OpenPosition, day_range: DailyRange) -> BracketLeg | None:

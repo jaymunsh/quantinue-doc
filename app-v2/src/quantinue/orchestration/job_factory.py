@@ -16,24 +16,28 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING, Final, Protocol, TypeAlias
+from typing import TYPE_CHECKING, Final, Protocol, TypeAlias, assert_never
 
 from quantinue.broker.mock import MockBroker
-from quantinue.core.config import LlmMode
+from quantinue.core.config import DataMode, LlmMode
 from quantinue.core.market_calendar import NyseCalendar
 from quantinue.db.domain_records import DailyPickWrite
 from quantinue.llm.budget import BudgetedAnalyzer, require_pricing_for
 from quantinue.llm.provider import build_llm_analyzer
 from quantinue.market_data.alpaca_bars import AlpacaBarSource
 from quantinue.market_data.alpaca_news import AlpacaNewsSource
+from quantinue.market_data.alpaca_quotes import AlpacaQuoteSource
+from quantinue.market_data.fixture import FixtureMarketData
 from quantinue.market_data.sec_daily_index import SecDailyIndexSource
 from quantinue.market_data.sec_ownership import SecOwnershipSource
 from quantinue.market_data.wire_news import WireRssSource, default_wire_feeds
 from quantinue.notify.telegram import build_failure_notifier
 from quantinue.orchestration.job_runner import JobDefinition, JobRunner
+from quantinue.orchestration.watch_runner import LatestTradeSource, WatchRunner
 from quantinue.roles.allocation.job import AllocationJob
 from quantinue.roles.analysis.job import AnalysisJob
 from quantinue.roles.disclosure.job import InsiderScoringJob
+from quantinue.roles.exits.alerts import format_exit_alert
 from quantinue.roles.exits.job import ExitJob
 from quantinue.roles.role_01_universe_screener.contracts import (
     UniverseMember,
@@ -621,17 +625,6 @@ def build_analysis_job(  # noqa: PLR0913 - 각 인자가 교체 가능한 협력
     return JobDefinition(name=name, run=run)
 
 
-# 발동 사유의 화면·알림 표기. 원장 값(ExitReason)은 영어로 남고, 사람이 읽는
-# 자리에서만 번역한다 — 원장까지 한국어면 role_11 채점과 조인이 문자열에 결박된다.
-EXIT_REASON_LABELS: Final[dict[str, str]] = {
-    "stop": "손절",
-    "take_profit": "익절",
-    "time": "시간 청산",
-    "thesis_break": "논지 붕괴(하드)",
-    "thesis_soft": "매도 판단",
-}
-
-
 def build_exit_job(  # noqa: PLR0913 - 알림이 늘며 협력자도 늘었다
     *,
     domain: _ObservationSource,
@@ -666,14 +659,7 @@ def build_exit_job(  # noqa: PLR0913 - 알림이 늘며 협력자도 늘었다
         # 방어선이 실제로 발동한 날만 알린다. 돈이 움직인 순간이라 일일 안내에
         # 묻히면 안 되고, 0건인 날을 매일 알리면 진짜 발동이 소음에 묻힌다.
         if closed and notify is not None:
-            lines = [f"🛡 {as_of} 방어선 발동 {len(closed)}건"]
-            lines.extend(
-                f"- {decision.position.ticker} {decision.position.quantity}주 · "
-                f"{EXIT_REASON_LABELS.get(decision.reason.value, decision.reason.value)}"
-                f" @ ${decision.reference_price}"
-                for decision in closed
-            )
-            await notify("\n".join(lines))
+            await notify(format_exit_alert(as_of, closed))
         return f"{len(closed)}/{len(held)} closed"
 
     return JobDefinition(name=name, run=run)
@@ -923,6 +909,48 @@ def build_job_runner(
         # 키가 없으면 None이고, 그때 러너는 알림을 아예 시도하지 않는다.
         notifier=notifier,
         ops_alerts=settings.ops_alerts,
+    )
+
+
+def build_watch_runner(
+    settings: Settings,
+    config: Mvp2Config,
+    *,
+    store: object,
+    quotes: LatestTradeSource | None = None,
+) -> WatchRunner | None:
+    """Assemble intraday bracket watching when a durable portfolio is available."""
+    domain = getattr(store, "domain", None)
+    if domain is None:
+        return None
+    source = quotes
+    if source is None:
+        match settings.data_mode:
+            case DataMode.FIXTURE:
+                source = FixtureMarketData()
+            case DataMode.PUBLIC:
+                key = settings.alpaca_api_key.get_secret_value().strip()
+                secret = settings.alpaca_secret_key.get_secret_value().strip()
+                if key and secret:
+                    source = AlpacaQuoteSource(
+                        key_id=key,
+                        secret_key=secret,
+                        symbols_per_request=config.market_data.symbols_per_request,
+                    )
+            case unreachable:
+                assert_never(unreachable)
+    if source is None:
+        return None
+    return WatchRunner(
+        config.watch,
+        domain=domain,
+        quotes=source,
+        exits=ExitJob(
+            store=store,
+            broker=MockBroker(),
+            time_exit_bdays=config.exits.time_exit_bdays,
+        ),
+        notifier=build_failure_notifier(settings),
     )
 
 

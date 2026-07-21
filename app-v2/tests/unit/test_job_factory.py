@@ -15,6 +15,7 @@ from quantinue.core.config import Settings
 from quantinue.core.market_calendar import NyseCalendar
 from quantinue.db.domain_records import DailyBarWrite, KnownListing, RawNewsWrite
 from quantinue.llm.provider import DeterministicAnalyzer
+from quantinue.market_data.fixture import FixtureMarketData
 from quantinue.market_data.models import MacroObservation, Provenance, SecuritySnapshot
 from quantinue.orchestration.job_factory import (
     JobSources,
@@ -25,6 +26,7 @@ from quantinue.orchestration.job_factory import (
     build_macro_job,
     build_news_job,
     build_universe_job,
+    build_watch_runner,
 )
 from quantinue.orchestration.policy import Mvp2Config, ScreeningConfig
 from quantinue.roles.exits import DailyObservation
@@ -256,6 +258,19 @@ class _Isolated(Settings):
 def test_a_store_without_a_ledger_gets_no_runner() -> None:
     """메모리 스토어에는 tb_job_run이 없다 — 잡을 돌릴 근거가 없다."""
     assert build_job_runner(_settings(), Mvp2Config(), store=object()) is None
+
+
+def test_watch_runner_is_built_with_an_injected_quote_source() -> None:
+    # Given
+    store = _Store(_HoldingDomain(()))
+
+    # When
+    runner = build_watch_runner(
+        _settings(), Mvp2Config(), store=store, quotes=FixtureMarketData()
+    )
+
+    # Then
+    assert runner is not None
 
 
 def test_without_alpaca_credentials_only_the_exit_job_is_registered() -> None:

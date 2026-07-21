@@ -10,9 +10,11 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from quantinue.broker.bracket_trigger import DailyRange
 from quantinue.broker.mock import MockBroker
 from quantinue.db.postgres import PostgresRunStore
+from quantinue.market_data.models import LatestTrade
+from quantinue.orchestration.policy import WatchConfig
+from quantinue.orchestration.watch_runner import WatchRunner
 from quantinue.roles.exits import DailyObservation, ExitReason
 from quantinue.roles.exits.job import ExitJob
 
@@ -145,14 +147,73 @@ async def _seed_sell_judgement(
     await engine.dispose()
 
 
-def _stopped_out(ticker: str) -> dict[str, DailyObservation]:
-    """A day whose low pierced the 85 stop."""
-    return {
-        ticker: DailyObservation(
-            day_range=DailyRange(low=Decimal("80.00"), high=Decimal("101.00")),
-            last_price=Decimal("82.00"),
+def _stopped_out(ticker: str) -> dict[str, Decimal]:
+    return {ticker: Decimal("82.00")}
+
+
+class _StopQuotes:
+    def __init__(self, ticker: str) -> None:
+        self._ticker = ticker
+
+    async def latest_trades(self, tickers: tuple[str, ...]) -> tuple[LatestTrade, ...]:
+        if self._ticker not in tickers:
+            return ()
+        return (
+            LatestTrade(
+                ticker=self._ticker,
+                price=Decimal("82.00"),
+                observed_at=datetime(2026, 7, 9, 14, tzinfo=UTC),
+                source="fixture",
+            ),
         )
-    }
+
+
+class _Notify:
+    def __init__(self) -> None:
+        self.messages: list[str] = []
+
+    async def __call__(self, message: str) -> None:
+        self.messages.append(message)
+
+
+@pytest.mark.anyio
+async def test_watch_tick_creates_one_sell_fill_and_is_idempotent() -> None:
+    # Given
+    assert DATABASE_URL is not None
+    account_id, ticker = await _seed_holding(DATABASE_URL, "watch")
+    store = PostgresRunStore(DATABASE_URL)
+    await store.initialize()
+    notify = _Notify()
+    runner = WatchRunner(
+        WatchConfig(enabled=True),
+        domain=store.domain,
+        quotes=_StopQuotes(ticker),
+        exits=ExitJob(store=store, broker=MockBroker(), time_exit_bdays=10),
+        notifier=notify,
+    )
+    now = datetime(2026, 7, 9, 14, tzinfo=UTC)
+
+    # When
+    first = await runner.tick(now)
+    second = await runner.tick(now)
+
+    # Then
+    assert first.closed == 1
+    assert second.closed == 0
+    assert len(notify.messages) == 1
+    engine = create_async_engine(DATABASE_URL)
+    async with engine.begin() as connection:
+        sell_fills = await connection.scalar(
+            text(
+                "SELECT count(*) FROM tb_fill f "
+                "JOIN tb_order o ON o.id = f.order_id "
+                "WHERE o.account_id = :account AND f.side = 'sell'"
+            ),
+            {"account": account_id},
+        )
+    await engine.dispose()
+    assert sell_fills == 1
+    await store.close()
 
 
 @pytest.mark.anyio
@@ -166,7 +227,7 @@ async def test_a_stopped_out_position_is_closed_and_recorded() -> None:
     job = ExitJob(store=store, broker=MockBroker(), time_exit_bdays=10)
 
     # When
-    closed = await job.run(as_of=date(2026, 7, 9), observations=_stopped_out(ticker))
+    closed = await job.run_brackets(as_of=date(2026, 7, 9), prices=_stopped_out(ticker))
 
     # Then
     assert len(closed) == 1
@@ -213,7 +274,7 @@ async def test_the_position_is_no_longer_open_after_the_job_runs() -> None:
     job = ExitJob(store=store, broker=MockBroker(), time_exit_bdays=10)
 
     # When
-    _ = await job.run(as_of=date(2026, 7, 9), observations=_stopped_out(ticker))
+    _ = await job.run_brackets(as_of=date(2026, 7, 9), prices=_stopped_out(ticker))
     state = await store.domain.account_risk_state(account_id)
 
     # Then
@@ -233,8 +294,8 @@ async def test_running_the_job_twice_does_not_sell_twice() -> None:
     job = ExitJob(store=store, broker=MockBroker(), time_exit_bdays=10)
 
     # When
-    first = await job.run(as_of=date(2026, 7, 9), observations=_stopped_out(ticker))
-    second = await job.run(as_of=date(2026, 7, 10), observations=_stopped_out(ticker))
+    first = await job.run_brackets(as_of=date(2026, 7, 9), prices=_stopped_out(ticker))
+    second = await job.run_brackets(as_of=date(2026, 7, 10), prices=_stopped_out(ticker))
 
     # Then
     assert len(first) == 1
@@ -267,10 +328,7 @@ async def test_a_quiet_day_closes_nothing() -> None:
     closed = await job.run(
         as_of=date(2026, 7, 9),
         observations={
-            ticker: DailyObservation(
-                day_range=DailyRange(low=Decimal("95.00"), high=Decimal("110.00")),
-                last_price=Decimal("105.00"),
-            )
+            ticker: DailyObservation(last_price=Decimal("105.00"))
         },
     )
 
@@ -359,7 +417,7 @@ async def test_two_open_positions_in_one_ticker_both_close() -> None:
     job = ExitJob(store=store, broker=MockBroker(), time_exit_bdays=10)
 
     # When
-    closed = await job.run(as_of=date(2026, 7, 9), observations=_stopped_out(ticker))
+    closed = await job.run_brackets(as_of=date(2026, 7, 9), prices=_stopped_out(ticker))
 
     # Then: 두 건 다 닫힌다
     assert len(closed) == 2
@@ -389,7 +447,7 @@ async def test_the_close_signal_inherits_the_persona_that_opened_the_position() 
     job = ExitJob(store=store, broker=MockBroker(), time_exit_bdays=10)
 
     # When
-    closed = await job.run(as_of=date(2026, 7, 9), observations=_stopped_out(ticker))
+    closed = await job.run_brackets(as_of=date(2026, 7, 9), prices=_stopped_out(ticker))
 
     # Then
     assert len(closed) == 1
@@ -430,7 +488,6 @@ async def test_an_approved_sell_judgement_closes_the_position() -> None:
         as_of=as_of,
         observations={
             ticker: DailyObservation(
-                day_range=DailyRange(low=Decimal("95.00"), high=Decimal("101.00")),
                 last_price=Decimal("96.00"),
                 sell_signal_profiles=judged.get(ticker, frozenset()),
             )

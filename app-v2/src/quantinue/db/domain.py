@@ -10,7 +10,6 @@ from sqlalchemy import ColumnElement, MetaData, Table, and_, func, literal, sele
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
-from quantinue.broker.bracket_trigger import DailyRange
 from quantinue.core.contracts import DisclosureSourceRecord, NewsSourceRecord
 from quantinue.db.contracts import AppOrderExposureStatus
 from quantinue.db.control_room_reads import (
@@ -808,8 +807,8 @@ class PostgresDomainRepository:
     ) -> dict[str, DailyObservation]:
         """Project stored bars and hard events into what the exit rules consume.
 
-        일봉이 청산의 두 입력을 준다: 고저는 브래킷 발동 판정에, 종가는 시간
-        청산의 기준가에. 하드 이벤트(상장폐지·등록말소)는 공시 원장에서 온다.
+        일봉 종가는 판단·시간 청산의 기준가를 준다. 브래킷은 장중 감시 러너가
+        현재가로 판정한다. 하드 이벤트(상장폐지·등록말소)는 공시 원장에서 온다.
 
         **관측 키를 봉 기준으로만 만들면 안 된다.** 거래가 정지되면 그날 봉이
         찍히지 않는데, 그게 정확히 상장폐지 케이스다 — 봉만 보면 팔아야 할 바로
@@ -820,11 +819,6 @@ class PostgresDomainRepository:
         observed = set(bars) | (hard_events & set(tickers))
         return {
             ticker: DailyObservation(
-                day_range=(
-                    DailyRange(low=bars[ticker].low, high=bars[ticker].high)
-                    if ticker in bars
-                    else None
-                ),
                 last_price=bars[ticker].close if ticker in bars else None,
                 has_hard_event=ticker in hard_events,
             )

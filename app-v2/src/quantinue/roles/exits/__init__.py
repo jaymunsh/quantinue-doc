@@ -6,6 +6,7 @@ from quantinue.roles.exits.contracts import (
     ExitReason,
     OpenPosition,
     business_days_held,
+    decide_bracket,
     decide_exit,
 )
 
@@ -15,5 +16,6 @@ __all__ = [
     "ExitReason",
     "OpenPosition",
     "business_days_held",
+    "decide_bracket",
     "decide_exit",
 ]

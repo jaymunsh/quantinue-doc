@@ -43,6 +43,7 @@ from quantinue.orchestration.job_factory import (
     JobSources,
     build_budgeted_analyzer,
     build_job_runner,
+    build_watch_runner,
 )
 from quantinue.orchestration.policy import load_mvp2_config
 from quantinue.web.timefmt import register_filters
@@ -54,6 +55,7 @@ if TYPE_CHECKING:
     from quantinue.db.contracts import RunStore
     from quantinue.db.users import UserAccount
     from quantinue.orchestration.job_runner import JobRunner
+    from quantinue.orchestration.watch_runner import WatchRunner
 
 # 타임라인에 몇 건을 보여줄지. 판단 문턱이 아니라 표시용 창이라 config가
 # 아니라 여기 산다 — 어떤 매매 결정에도 들어가지 않는다.
@@ -69,6 +71,7 @@ def _lifespan_factory(
     review_runtime: ReviewRuntime | None,
     market_data: object,
     job_runner: JobRunner | None,
+    watch_runner: WatchRunner | None,
 ) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
     """Own every application-lifetime resource, including the ones jobs collect through.
 
@@ -85,6 +88,8 @@ def _lifespan_factory(
                 await review_runtime.initialize()
             if job_runner is not None:
                 task_group.start_soon(job_runner.run_forever)
+            if watch_runner is not None:
+                task_group.start_soon(watch_runner.run_forever)
             try:
                 yield
             finally:
@@ -275,6 +280,11 @@ def create_app(settings: Settings | None = None, *, store: RunStore | None = Non
             ),
         ),
     )
+    watch_runner = build_watch_runner(
+        selected_settings,
+        mvp2_config,
+        store=selected_store,
+    )
 
     app = FastAPI(
         title=selected_settings.app_name,
@@ -283,6 +293,7 @@ def create_app(settings: Settings | None = None, *, store: RunStore | None = Non
             review_runtime=review_runtime,
             market_data=market_data,
             job_runner=job_runner if mvp2_config.jobs.enabled else None,
+            watch_runner=watch_runner if mvp2_config.watch.enabled else None,
         ),
     )
     # 잡 원장은 RunStore 프로토콜 밖에 산다(도메인 저장소 소유). 메모리

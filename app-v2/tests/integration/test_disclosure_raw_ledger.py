@@ -143,7 +143,6 @@ async def test_a_halted_ticker_with_no_bar_still_produces_an_observation() -> No
     # Then
     assert "RAWHALT" in observations
     assert observations["RAWHALT"].has_hard_event is True
-    assert observations["RAWHALT"].day_range is None
     assert observations["RAWHALT"].last_price is None
     await store.close()
 

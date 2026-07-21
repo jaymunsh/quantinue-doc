@@ -105,9 +105,6 @@ async def test_bars_become_exit_observations() -> None:
     observations = await store.domain.exit_observations(_DAY, ("BARE",))
 
     # Then: 고저는 브래킷 판정에, 종가는 시간 청산의 기준가에 쓰인다
-    assert observations["BARE"].day_range is not None
-    assert observations["BARE"].day_range.high == Decimal("110.00")
-    assert observations["BARE"].day_range.low == Decimal("95.00")
     assert observations["BARE"].last_price == Decimal("105.00")
     await store.close()
 

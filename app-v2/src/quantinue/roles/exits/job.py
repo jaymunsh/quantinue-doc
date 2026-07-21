@@ -26,7 +26,7 @@ from quantinue.db.domain_records import (
     CompletedFillWrite,
     StrategistSignalWrite,
 )
-from quantinue.roles.exits.contracts import DailyObservation, decide_exit
+from quantinue.roles.exits.contracts import DailyObservation, decide_bracket, decide_exit
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -72,6 +72,23 @@ class ExitJob:
             if decision is None:
                 continue
             if await self._execute(decision, as_of=as_of):
+                closed.append(decision)
+        return tuple(closed)
+
+    async def run_brackets(
+        self,
+        *,
+        as_of: date,
+        prices: Mapping[str, Decimal],
+    ) -> tuple[ExitDecision, ...]:
+        """Close positions whose resting stop or take-profit was reached now."""
+        closed: list[ExitDecision] = []
+        for position in await self._open_positions():
+            price = prices.get(position.ticker)
+            if price is None:
+                continue
+            decision = decide_bracket(position, price)
+            if decision is not None and await self._execute(decision, as_of=as_of):
                 closed.append(decision)
         return tuple(closed)
 
