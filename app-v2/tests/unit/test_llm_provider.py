@@ -305,7 +305,13 @@ async def test_local_mode_disables_reasoning_and_caps_structured_output() -> Non
 
 
 @pytest.mark.anyio
-async def test_openai_mode_keeps_provider_reasoning_and_output_defaults() -> None:
+async def test_openai_mode_caps_output_but_leaves_reasoning_to_the_provider() -> None:
+    """과금 경로에도 출력 상한은 건다 — 무한 출력은 곧 무한 비용이다.
+
+    다만 ``reasoning_effort``·``temperature``는 고정하지 않는다. 로컬에서는
+    Qwen의 사고 과정이 JSON을 깨서 껐지만, openai에서 추론 모델을 쓰면
+    그 파라미터가 곧 판단의 질이고, o-계열은 temperature 자체를 거부한다.
+    """
     observed_requests: list[WireModelSettingsRequest] = []
 
     async def respond(request: httpx.Request) -> httpx.Response:
@@ -362,9 +368,9 @@ async def test_openai_mode_keeps_provider_reasoning_and_output_defaults() -> Non
 
         _ = await analyzer.analyze(AnalysisTask.DISCLOSURE, "same contract input")
 
-    assert observed_requests[0].model_fields_set.isdisjoint(
-        {"reasoning_effort", "max_tokens", "max_completion_tokens"}
-    )
+    capped = observed_requests[0]
+    assert 512 in {capped.max_tokens, capped.max_completion_tokens}
+    assert capped.model_fields_set.isdisjoint({"reasoning_effort", "chat_template_kwargs"})
 
 
 @pytest.mark.anyio

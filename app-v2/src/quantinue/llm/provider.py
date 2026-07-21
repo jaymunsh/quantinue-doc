@@ -340,7 +340,20 @@ def build_llm_analyzer(settings: Settings, openai_client: AsyncOpenAI | None = N
         case unreachable:
             assert_never(unreachable)
     return PydanticAiAnalyzer(
-        OpenAIChatModel(model_name, provider=OpenAIProvider(openai_client=client)),
+        OpenAIChatModel(
+            model_name,
+            provider=OpenAIProvider(openai_client=client),
+            # 과금 경로의 유일한 고정값은 출력 상한이다 — 무한 출력은 곧 무한
+            # 비용이고, 예산 원장은 이미 쓴 돈만 막는다.
+            #
+            # ⚠️ 추론 모델(o-계열)로 바꾸면 이 상한을 올려야 한다. 추론 토큰이
+            # 이 예산에서 함께 빠져나가므로, 로컬에서 512로 겪은 것과 같은
+            # 구조화 출력 절단이 여기서 재현된다(``QUANTINUE_LLM_MAX_OUTPUT_TOKENS``).
+            #
+            # temperature·reasoning_effort는 일부러 안 건다: 추론 모델에서는
+            # 그 파라미터가 곧 판단의 질이고, o-계열은 temperature를 거부한다.
+            settings=OpenAIChatModelSettings(max_tokens=settings.llm_max_output_tokens),
+        ),
         model_name,
         settings.llm_max_retries,
         provider,
