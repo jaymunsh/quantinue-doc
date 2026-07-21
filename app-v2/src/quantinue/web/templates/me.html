@@ -9,8 +9,8 @@
 <nav class="nav-group" aria-label="섹션">
   <p class="nav-label">내 운용</p>
   <a class="nav-link" href="#account" aria-current="page">계좌 개요</a>
-  <a class="nav-link" href="#holdings"><b>{{ view.holdings | length }}</b>보유 종목</a>
-  <a class="nav-link" href="#timeline"><b>{{ view.timeline | length }}</b>거래 내역</a>
+  <a class="nav-link" href="#holdings">보유 종목</a>
+  <a class="nav-link" href="#timeline">거래 내역</a>
   <a class="nav-link" href="#risk">리스크 상태</a>
 </nav>
 {% endblock %}
@@ -56,19 +56,40 @@
       <div class="metric__top"><span>보유 종목</span></div>
       <strong class="metric__value">{{ view.holdings | length }}</strong>
     </article>
+    {# 평가손익은 보유 행의 합이다 — 마크가 없는 종목(수집 실패)은 빠지므로
+       그 사실을 아래에 적는다. "0"으로 채우면 손익이 없는 것처럼 읽힌다. #}
+    {% set marked = view.holdings | selectattr('unrealized_pnl') | list %}
+    {% set pnl = marked | sum(attribute='unrealized_pnl') %}
     <article class="metric">
-      <div class="metric__top"><span>기록된 날</span></div>
-      <strong class="metric__value">{{ view.curve | length }}</strong>
+      <div class="metric__top"><span>평가손익</span></div>
+      {% if marked %}
+      <strong class="metric__value">{% if pnl >= 0 %}+{% endif %}${{ '{:,.2f}'.format(pnl) }}</strong>
+      <span class="metric__delta {% if pnl < 0 %}metric__delta--bad{% elif pnl > 0 %}metric__delta--good{% endif %}">보유 {{ marked | length }}종목 종가 기준</span>
+      {% else %}
+      <strong class="metric__value">—</strong>
+      <span class="metric__delta">평가할 종가가 아직 없습니다</span>
+      {% endif %}
     </article>
   </div>
   {# 점이 둘 미만이면 좌표가 빈 문자열이다 — 선분이 성립하지 않는 것을
      한 점짜리 그래프로 그리면 "평평했다"로 읽힌다. #}
   {% if view.curve_points %}
   <figure class="chart">
-    <figcaption>계좌 평가액 추이 · {{ view.curve[0].trade_date }} ~ {{ view.curve[-1].trade_date }}</figcaption>
-    <svg viewBox="0 0 160 32" preserveAspectRatio="none" role="img" aria-label="계좌 평가액 추이">
-      <polyline points="{{ view.curve_points }}" fill="none" stroke="currentColor" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+    <figcaption>
+      <span>계좌 평가액 추이</span>
+      <span class="chart__span">{{ view.curve | length }}일 기록</span>
+    </figcaption>
+    {# 세로 축에는 최소 폭이 걸려 있다(equity_sparkline) — 작은 움직임이
+       화면에서도 작게 보여야 곡선이 원장보다 크게 말하지 않는다. #}
+    <svg viewBox="0 0 160 32" preserveAspectRatio="none" role="img"
+         aria-label="계좌 평가액 추이 {{ view.curve[0].trade_date }}부터 {{ view.curve[-1].trade_date }}까지">
+      <polygon class="chart__area" points="0,32 {{ view.curve_points }} 160,32"/>
+      <polyline class="chart__line" points="{{ view.curve_points }}" vector-effect="non-scaling-stroke"/>
     </svg>
+    <div class="chart__axis">
+      <span><b>{{ view.curve[0].trade_date }}</b> ${{ '{:,.2f}'.format(view.curve[0].equity) }}</span>
+      <span><b>{{ view.curve[-1].trade_date }}</b> ${{ '{:,.2f}'.format(view.curve[-1].equity) }}</span>
+    </div>
   </figure>
   {% elif view.curve %}
   <p class="ledger-empty">곡선은 기록이 이틀 이상 쌓이면 그려집니다 (현재 {{ view.curve | length }}일).</p>

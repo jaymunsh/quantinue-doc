@@ -28,6 +28,23 @@
       <header class="appbar">
         <nav class="breadcrumb" aria-label="위치">{% block breadcrumb %}{% endblock %}</nav>
         <div class="top-actions">
+          {# 세 시계를 나란히 두는 이유는 이 시스템의 하루가 두 도시에 걸쳐
+             있기 때문이다. 슬롯 날짜는 뉴욕 자정(KST 13:00)에 넘어가고,
+             원장은 UTC로 적힌다 — 그 관계를 화면이 말하지 않으면 일일 안내가
+             오후 1시에 오는 이유를 매번 다시 계산해야 한다. #}
+          <dl class="clock" aria-label="현재 시각">
+            <div class="clock__zone clock__zone--home">
+              <dt>서울</dt><dd data-clock="Asia/Seoul">--:--:--</dd>
+            </div>
+            <div class="clock__zone">
+              <dt>뉴욕 <span class="clock__note">슬롯 기준</span></dt>
+              <dd data-clock="America/New_York">--:--:--</dd>
+            </div>
+            <div class="clock__zone">
+              <dt>UTC <span class="clock__note">원장 기준</span></dt>
+              <dd data-clock="UTC">--:--:--</dd>
+            </div>
+          </dl>
           {% if current_user %}
           <span class="avatar" aria-hidden="true">{{ current_user.display_name[0] }}</span>
           <span class="who">{{ current_user.display_name }}</span>
@@ -49,5 +66,25 @@
       </main>
     </div>
   </div>
+  <script>
+    /* 상단 시계. 서버 시각이 아니라 브라우저 시각이지만, 목적이 "지금 몇
+       시인가"이고 세 칸이 같은 순간을 세 도시로 보여주는 것이라 브라우저가
+       맞는 출처다. 원장의 시각은 이 시계가 아니라 각 행이 스스로 말한다. */
+    (function () {
+      var cells = document.querySelectorAll('[data-clock]');
+      if (!cells.length) return;
+      function paint() {
+        var now = new Date();
+        cells.forEach(function (cell) {
+          cell.textContent = now.toLocaleTimeString('ko-KR', {
+            timeZone: cell.dataset.clock, hour12: false,
+            hour: '2-digit', minute: '2-digit', second: '2-digit'
+          });
+        });
+      }
+      paint();
+      setInterval(paint, 1000);
+    })();
+  </script>
 </body>
 </html>

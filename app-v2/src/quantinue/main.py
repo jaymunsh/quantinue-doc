@@ -43,6 +43,7 @@ from quantinue.orchestration.job_factory import (
     build_job_runner,
 )
 from quantinue.orchestration.policy import load_mvp2_config
+from quantinue.web.timefmt import register_filters
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Callable
@@ -193,6 +194,8 @@ def create_app(settings: Settings | None = None, *, store: RunStore | None = Non
     # 공통 셸(base.html)이 인라인하는 값이라 화면마다 컨텍스트로 나르지 않는다.
     # 빠뜨린 화면 하나가 스타일 없이 렌더되는 것을 막는다.
     templates.env.globals["dashboard_css"] = DASHBOARD_CSS
+    # 사람이 시계를 읽는 자리는 전부 KST다. 원장(UTC)·슬롯(뉴욕 날짜)은 그대로.
+    register_filters(templates.env)
     # 화면은 읽기 전용이 됐지만 리뷰 처리(POST)는 여전히 상태를 바꾼다 —
     # 토큰 게이트가 지킬 대상은 이제 그쪽이다.
     access = (

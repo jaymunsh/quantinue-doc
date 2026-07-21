@@ -9,6 +9,7 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_settings import SettingsConfigDict
 
 from quantinue.core.config import LlmMode, Settings
 from quantinue.core.errors import TransientFailureError
@@ -19,6 +20,18 @@ from quantinue.llm.provider import (
     PydanticAiAnalyzer,
     build_llm_analyzer,
 )
+
+
+class IsolatedSettings(Settings):
+    """개발자의 .env를 읽지 않는 설정.
+
+    이 프로젝트가 세 번 밟은 함정이다(결함 22). 여기 테스트들은 출력 상한·
+    재시도 같은 **기본값 계약**을 고정하는데, .env가 그 값을 덮으면 계약이
+    아니라 그날의 개발 환경을 검사하게 된다 — 실제로 openai 전환 때
+    QUANTINUE_LLM_MAX_OUTPUT_TOKENS를 올리자 두 건이 깨졌다.
+    """
+
+    model_config = SettingsConfigDict(env_file=None, env_prefix="QUANTINUE_", extra="ignore")
 
 
 class WireMessage(BaseModel):
@@ -74,7 +87,7 @@ async def test_same_input_has_identical_mock_output() -> None:
 
 @pytest.mark.anyio
 async def test_mock_build_path_returns_the_common_schema_and_metadata() -> None:
-    analyzer = build_llm_analyzer(Settings(llm_mode=LlmMode.MOCK))
+    analyzer = build_llm_analyzer(IsolatedSettings(llm_mode=LlmMode.MOCK))
 
     result = await analyzer.analyze(AnalysisTask.DISCLOSURE, "same contract input")
 
@@ -210,7 +223,7 @@ async def test_remote_build_paths_share_schema_and_metadata_contract(mode: LlmMo
             base_url="http://local.test/v1",
             http_client=http_client,
         )
-        analyzer = build_llm_analyzer(Settings.model_validate(values), openai_client=sdk)
+        analyzer = build_llm_analyzer(IsolatedSettings.model_validate(values), openai_client=sdk)
         result = await analyzer.analyze(AnalysisTask.DISCLOSURE, "same contract input")
 
     # bull_case·key_risk는 전략 태스크만 채우는 서사 필드다(잔여 작업 B) —
@@ -289,7 +302,7 @@ async def test_local_mode_disables_reasoning_and_caps_structured_output() -> Non
             base_url="http://local.test/v1",
             http_client=http_client,
         )
-        analyzer = build_llm_analyzer(Settings.model_validate(values), openai_client=sdk)
+        analyzer = build_llm_analyzer(IsolatedSettings.model_validate(values), openai_client=sdk)
 
         _ = await analyzer.analyze(AnalysisTask.DISCLOSURE, "same contract input")
 
@@ -364,7 +377,7 @@ async def test_openai_mode_caps_output_but_leaves_reasoning_to_the_provider() ->
             base_url="http://local.test/v1",
             http_client=http_client,
         )
-        analyzer = build_llm_analyzer(Settings.model_validate(values), openai_client=sdk)
+        analyzer = build_llm_analyzer(IsolatedSettings.model_validate(values), openai_client=sdk)
 
         _ = await analyzer.analyze(AnalysisTask.DISCLOSURE, "same contract input")
 
@@ -393,7 +406,7 @@ async def test_local_transport_timeout_becomes_safe_transient_failure() -> None:
             max_retries=0,
             http_client=http_client,
         )
-        analyzer = build_llm_analyzer(Settings.model_validate(values), openai_client=sdk)
+        analyzer = build_llm_analyzer(IsolatedSettings.model_validate(values), openai_client=sdk)
 
         with pytest.raises(TransientFailureError) as captured:
             _ = await analyzer.analyze(AnalysisTask.DISCLOSURE, "same contract input")
@@ -465,7 +478,7 @@ async def test_the_local_output_budget_is_config_owned() -> None:
             base_url="http://local.test/v1",
             http_client=http_client,
         )
-        analyzer = build_llm_analyzer(Settings.model_validate(values), openai_client=sdk)
+        analyzer = build_llm_analyzer(IsolatedSettings.model_validate(values), openai_client=sdk)
 
         _ = await analyzer.analyze(AnalysisTask.DISCLOSURE, "same contract input")
 
@@ -489,7 +502,7 @@ def test_the_local_path_honours_the_configured_retry_budget() -> None:
     }
 
     # When
-    analyzer = build_llm_analyzer(Settings.model_validate(values))
+    analyzer = build_llm_analyzer(IsolatedSettings.model_validate(values))
 
     # Then
     assert getattr(analyzer, "_retries", None) == 3

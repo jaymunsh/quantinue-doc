@@ -228,6 +228,30 @@ def test_a_flat_curve_draws_down_the_middle_not_along_the_floor() -> None:
     assert plotted == "0.0,10.0 100.0,10.0"
 
 
+def test_a_nearly_flat_curve_is_not_drawn_as_a_cliff() -> None:
+    """정규화만 하면 -0.01%도 전 구간 대각선이 된다 — 화면이 원장보다 크게 말한다.
+
+    실측으로 잡혔다: 계좌가 $150,000 → $149,991.29(-0.01%)로 움직인 날,
+    /me의 곡선이 좌상단에서 우하단까지 떨어지는 절벽을 그렸다. min을 바닥에,
+    max를 천장에 붙이는 정규화는 **변화의 크기를 지운다.**
+    """
+    # Given — 하루 만에 0.01% 하락
+    points = (
+        AccountEquityPoint(
+            account_id=1, trade_date=_DAY - timedelta(days=1), equity=Decimal("150000.00")
+        ),
+        AccountEquityPoint(account_id=1, trade_date=_DAY, equity=Decimal("149985.00")),
+    )
+    curve = equity_curve_views(points)[0]
+
+    # When
+    plotted = sparkline_points(curve, width=100, height=20)
+
+    # Then — 20 높이에서 1/5 이상 움직이면 그건 절벽이다
+    heights = [float(pair.split(",")[1]) for pair in plotted.split()]
+    assert abs(heights[0] - heights[1]) < 4
+
+
 def test_a_rising_curve_ends_higher_on_screen_than_it_started() -> None:
     # Given
     points = (

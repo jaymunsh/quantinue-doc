@@ -622,7 +622,6 @@ th { color: var(--sub); background: var(--bg); font-size: 13px; }
 .nav-link { display: flex; align-items: center; gap: 11px; min-height: 40px; padding: 9px 11px; color: oklch(82% .025 250); border-radius: 10px; font-size: 13px; font-weight: 600; text-decoration: none; transition: background 150ms ease-out, color 150ms ease-out, transform 150ms ease-out; }
 .nav-link:hover { color: var(--white); background: oklch(100% 0 0 / .08); transform: translateX(2px); }
 .nav-link[aria-current="page"] { color: var(--white); background: oklch(100% 0 0 / .12); }
-.nav-link b { min-width: 22px; color: oklch(70% .03 250); font: 500 11px var(--font-mono); }
 .sidebar__footer { margin-top: auto; padding: 14px; color: oklch(80% .03 250); border: 1px solid oklch(100% 0 0 / .12); border-radius: 12px; font-size: 11px; }
 .sidebar__footer strong { display: block; margin-bottom: 6px; color: var(--white); font-size: 12px; }
 .sidebar__footer ul { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; }
@@ -634,6 +633,19 @@ th { color: var(--sub); background: var(--bg); font-size: 13px; }
 .breadcrumb strong { color: var(--fg); font-weight: 600; }
 .breadcrumb i { color: var(--border-strong); font-style: normal; }
 .top-actions { display: flex; align-items: center; gap: 12px; }
+
+/* 상단 시계. 세 도시가 같은 순간을 말한다 — 슬롯 날짜가 뉴욕 자정에 넘어가고
+   원장은 UTC로 적히므로, 이 셋의 관계가 곧 "언제 무슨 일이 벌어지나"다.
+   숫자가 매초 바뀌므로 tabular-nums로 폭을 고정한다(안 하면 흔들린다). */
+.clock { display: flex; align-items: stretch; gap: 0; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: var(--r-control); overflow: hidden; background: var(--bg); }
+.clock__zone { display: grid; gap: 1px; padding: 6px 12px; border-right: 1px solid var(--border); }
+.clock__zone:last-child { border-right: 0; }
+.clock__zone dt { color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.clock__zone dd { margin: 0; color: var(--fg); font: 500 13px/1.1 var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.clock__zone--home { background: var(--accent-soft); }
+.clock__zone--home dt { color: var(--accent-ink); }
+.clock__zone--home dd { color: var(--accent-ink); }
+.clock__note { font-weight: 500; letter-spacing: 0; text-transform: none; opacity: .72; }
 .top-actions .who { color: var(--muted); font-size: 13px; font-weight: 600; }
 .avatar { display: grid; flex: none; place-items: center; width: 34px; height: 34px; color: var(--accent-ink); background: var(--accent-soft); border-radius: 50%; font: 600 12px var(--font-mono); }
 .top-actions form { margin: 0; }
@@ -645,12 +657,12 @@ th { color: var(--sub); background: var(--bg); font-size: 13px; }
 .date-note { color: var(--muted); font: 12px var(--font-mono); white-space: nowrap; }
 
 /* ═══ metric ═══════════════════════════════════════════════════ */
-.metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 22px; }
+.metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(176px, 1fr)); gap: 14px; margin-bottom: 22px; }
 .metric { min-width: 0; padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-card); }
 .metric--primary { color: var(--white); background: var(--navy); border-color: var(--navy); box-shadow: var(--shadow); }
 .metric__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; font-weight: 600; }
 .metric--primary .metric__top { color: oklch(78% .03 250); }
-.metric__value { display: block; margin-top: 14px; font: 500 clamp(1.5rem, 3vw, 2.2rem)/1 var(--font-mono); letter-spacing: -.04em; }
+.metric__value { display: block; margin-top: 14px; font: 500 clamp(1.35rem, 2.4vw, 1.95rem)/1 var(--font-mono); letter-spacing: -.04em; }
 .metric__delta { display: inline-flex; align-items: center; gap: 4px; margin-top: 12px; color: var(--muted); font: 500 12px var(--font-mono); }
 .metric--primary .metric__delta { color: oklch(78% .03 250); }
 .metric__delta--good { color: var(--success); }
@@ -706,13 +718,54 @@ th { color: var(--sub); background: var(--bg); font-size: 13px; }
   color: var(--accent);
 }
 .chart figcaption {
-  margin-bottom: 10px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
   font-size: 12px;
+  font-weight: 600;
   letter-spacing: 0.02em;
   color: var(--muted);
 }
+.chart__span { font: 500 11px var(--font-mono); color: var(--muted); }
 .chart svg {
   display: block;
   width: 100%;
-  height: 96px;
+  height: 104px;
 }
+/* 선 아래를 옅게 채운다. 두 점짜리 기록도 "면"이 있으면 미완성이 아니라
+   시작으로 읽힌다 — 선 하나만 있으면 그리다 만 화면처럼 보인다. */
+.chart__area { fill: var(--accent); opacity: .09; }
+.chart__line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart__axis {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font: 500 11px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.chart__axis b { color: var(--fg); font-weight: 600; }
+@media (max-width: 520px) {
+  .chart__axis { flex-direction: column; gap: 4px; }
+}
+
+/* ═══ 작동 로그 ═══════════════════════════════════════════════
+   날짜 하나가 하루다. 접힌 상태에서도 그날의 판정(성공 수·재시도·안내)이
+   한 줄로 읽혀야 여러 날을 훑을 수 있다. */
+.log-day { border: 1px solid var(--border); border-radius: var(--r-control); margin-top: 10px; background: var(--surface); }
+.log-day[open] { border-color: var(--border-strong); }
+.log-day > summary { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 13px 16px; cursor: pointer; font-size: 13px; color: var(--muted); list-style: none; border-radius: var(--r-control); }
+.log-day > summary::-webkit-details-marker { display: none; }
+.log-day > summary:hover { background: var(--bg); }
+.log-day > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.log-day__date { color: var(--fg); font: 600 14px var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.log-day__chip { padding: 3px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600; background: var(--slate-bg); color: var(--muted); }
+.log-day__chip--ok { background: var(--success-soft); color: var(--success); }
+.log-day__chip--bad { background: var(--danger-soft); color: var(--danger); }
+.log-day__chip--warn { background: var(--warning-soft); color: var(--warning); }
+.log-day .table-wrap { margin: 0 16px 16px; }

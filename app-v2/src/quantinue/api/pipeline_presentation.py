@@ -36,6 +36,8 @@ _PLANNED = "planned"
 _SKIPPED = "skipped"
 _PERCENT = Decimal(100)
 _CENT = Decimal("0.01")
+# 곡선 세로 축의 최소 폭(중앙값 대비). 이보다 작은 움직임은 화면에서도 작다.
+_MIN_SPAN_RATIO = Decimal("0.02")
 
 
 class JobRunView(BaseModel):
@@ -306,13 +308,22 @@ def equity_sparkline(
     """
     if len(values) < 2:  # noqa: PLR2004 - 점 하나로는 선분이 성립하지 않는다
         return ""
-    low = min(values)
-    span = max(values) - low
+    low, high = min(values), max(values)
+    # 세로 축에 **최소 폭**을 준다. min을 바닥에, max를 천장에 붙이는 정규화는
+    # 변화의 크기를 지운다 — 실측으로 -0.01% 움직인 계좌가 절벽으로 그려졌다.
+    # 하루치 유의미한 변동을 2%로 보고, 그보다 작은 움직임은 작게 보이게 한다.
+    # 큰 변동(2% 초과)에는 아무 영향이 없다.
+    midpoint = (low + high) / 2
+    floor_span = abs(midpoint) * _MIN_SPAN_RATIO
+    span = high - low
+    if span < floor_span:
+        low = midpoint - floor_span / 2
+        span = floor_span
     step = Decimal(width) / Decimal(len(values) - 1)
     coordinates: list[str] = []
     for index, value in enumerate(values):
-        # 완전히 평평한 구간은 중앙선으로 그린다. span이 0이면 비율이 정의되지
-        # 않는데, 그때 바닥(0)에 붙이면 "전액 손실"처럼 보인다.
+        # 완전히 평평한 구간(값이 0이라 최소 폭도 0인 경우 포함)은 중앙선으로
+        # 그린다. 비율이 정의되지 않는데 바닥(0)에 붙이면 "전액 손실"로 읽힌다.
         ratio = Decimal("0.5") if span == 0 else (value - low) / span
         y_position = Decimal(height) - ratio * Decimal(height)
         coordinates.append(f"{index * step:.1f},{y_position:.1f}")

@@ -10,7 +10,7 @@
   <p class="nav-label">운영</p>
   <a class="nav-link" href="/admin">잡 체인</a>
   <a class="nav-link" href="/admin/accounts">계좌 관리</a>
-  <a class="nav-link" href="/admin/logs" aria-current="page"><b>{{ log.slots | length }}</b>작동 로그</a>
+  <a class="nav-link" href="/admin/logs" aria-current="page">작동 로그</a>
 </nav>
 {% endblock %}
 {% block main %}
@@ -23,24 +23,24 @@
   </div>
   {% if log.slots %}
   {% for slot in log.slots %}
-  <details class="schema-details" {% if loop.first %}open{% endif %}>
+  <details class="log-day" {% if loop.first %}open{% endif %}>
     <summary>
-      <span class="mono"><strong>{{ slot.slot_date }}</strong></span>
-      · 잡 {{ slot.succeeded }}/{{ slot.total }} 성공
-      {% if slot.failed %} · <strong>실패 {{ slot.failed }}</strong>{% endif %}
-      {% if slot.running %} · 진행 {{ slot.running }}{% endif %}
-      {% if slot.retried_jobs %} · 재시도 잡 {{ slot.retried_jobs }}개{% endif %}
-      · 일일 안내 {% if slot.summary_sent %}발송됨{% else %}없음{% endif %}
+      <span class="log-day__date">{{ slot.slot_date }}</span>
+      <span class="log-day__chip {% if slot.failed %}log-day__chip--bad{% elif slot.succeeded == slot.total %}log-day__chip--ok{% endif %}">잡 {{ slot.succeeded }}/{{ slot.total }} 성공</span>
+      {% if slot.failed %}<span class="log-day__chip log-day__chip--bad">실패 {{ slot.failed }}</span>{% endif %}
+      {% if slot.running %}<span class="log-day__chip log-day__chip--warn">진행 중 {{ slot.running }}</span>{% endif %}
+      {% if slot.retried_jobs %}<span class="log-day__chip log-day__chip--warn">재시도 {{ slot.retried_jobs }}개 잡</span>{% endif %}
+      <span class="log-day__chip {% if slot.summary_sent %}log-day__chip--ok{% endif %}">일일 안내 {% if slot.summary_sent %}발송됨{% else %}없음{% endif %}</span>
     </summary>
     <div class="table-wrap" role="region" aria-label="{{ slot.slot_date }} 잡 상세" tabindex="0">
       <table class="portfolio-table">
         <caption>{{ slot.slot_date }} 슬롯의 잡 {{ slot.total }}개 — 실행 순서대로</caption>
-        <thead><tr><th scope="col">잡</th><th scope="col">상태</th><th scope="col">시도</th><th scope="col">시작(UTC)</th><th scope="col">소요</th><th scope="col">요약</th></tr></thead>
+        <thead><tr><th scope="col">잡</th><th scope="col">상태</th><th scope="col">시도</th><th scope="col">시작(KST)</th><th scope="col">소요</th><th scope="col">요약</th></tr></thead>
         <tbody>{% for job in slot.jobs %}<tr>
           <td data-label="잡" class="mono">{{ job.job_name }}</td>
           <td data-label="상태">{% if job.status == 'succeeded' %}성공{% elif job.status == 'failed' %}<strong>실패</strong>{% else %}<strong>진행 중</strong>{% endif %}</td>
           <td data-label="시도" class="mono">{% if job.attempts > 1 %}<strong>{{ job.attempts }}회</strong>{% else %}1회{% endif %}</td>
-          <td data-label="시작" class="mono">{{ job.started_at.strftime('%H:%M:%S') }}</td>
+          <td data-label="시작" class="mono">{{ job.started_at | kst }}</td>
           <td data-label="소요" class="mono">{% if job.duration_ms is not none %}{{ '%.1f' | format(job.duration_ms / 1000) }}s{% else %}—{% endif %}</td>
           <td data-label="요약">{{ job.detail or '—' }}</td>
         </tr>{% endfor %}</tbody>

@@ -19,11 +19,11 @@
   <a class="nav-link" href="/admin/accounts">계좌 관리</a>
   <a class="nav-link" href="/admin/logs">작동 로그</a>
   <p class="nav-label">운영 개요</p>
-  <a class="nav-link" href="#chain" aria-current="page"><b>{{ day.chain.jobs | length }}</b>잡 체인</a>
-  <a class="nav-link" href="#allocation"><b>{{ day.allocation.bought }}</b>배분</a>
-  <a class="nav-link" href="#judgements"><b>{{ day.profiles | sum(attribute='total') }}</b>판단과 반박</a>
-  <a class="nav-link" href="#accounts"><b>{{ day.curves | length }}</b>계좌 곡선</a>
-  <a class="nav-link" href="#ledger"><b>{{ roster.accounts | length }}</b>계좌 총람</a>
+  <a class="nav-link" href="#chain" aria-current="page">잡 체인</a>
+  <a class="nav-link" href="#allocation">배분</a>
+  <a class="nav-link" href="#judgements">판단과 반박</a>
+  <a class="nav-link" href="#accounts">계좌 곡선</a>
+  <a class="nav-link" href="#ledger">계좌 총람</a>
 </nav>
 {% endblock %}
 
@@ -69,7 +69,7 @@
   <article class="metric">
     <div class="metric__top"><span>LLM 지출</span></div>
     <strong class="metric__value">${{ '%.2f' | format(day.llm.spent_usd) }}</strong>
-    <span class="metric__delta">상한 ${{ '%.2f' | format(day.llm.limit_usd) }} · 초과 시 판단 스킵</span>
+    <span class="metric__delta">일 상한 ${{ '%.2f' | format(day.llm.limit_usd) }}</span>
   </article>
   {% endif %}
 </div>
