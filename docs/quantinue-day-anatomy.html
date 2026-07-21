@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quantinue 하루의 해부 — 실측으로 따라가는 전체 흐름</title>
+<link rel="icon" href="assets/favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="assets/quantinue-q-master.svg">
+<script>/* 초기 테마 (깜빡임 방지) */(function(){try{var t=localStorage.getItem('q-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<style>
+:root{
+  --sans:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --bg:#f7f8fa; --surface:#ffffff; --ink:#1c2330; --ink-soft:#4a5568; --ink-faint:#8a94a6;
+  --line:#e3e7ee; --accent:#2563eb; --accent-soft:#eff4ff;
+  --good:#16803c; --good-soft:#ecfdf3; --bad:#b42318; --bad-soft:#fef3f2;
+  --warn:#b54708; --warn-soft:#fffaeb; --radius:10px;
+}
+:root[data-theme="dark"]{
+  --bg:#0e1117; --surface:#161b24; --ink:#e6eaf2; --ink-soft:#aab3c5; --ink-faint:#6b7688;
+  --line:#252c3a; --accent:#6ba1ff; --accent-soft:#1a2540;
+  --good:#4ade80; --good-soft:#122a1c; --bad:#f87171; --bad-soft:#2d1516;
+  --warn:#fbbf24; --warn-soft:#2b2110;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15.5px;line-height:1.75;-webkit-font-smoothing:antialiased}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:var(--mono);font-size:.86em;background:var(--accent-soft);padding:1px 6px;border-radius:5px}
+.topbar{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.topbar-in{max-width:960px;margin:0 auto;padding:10px 20px;display:flex;align-items:center;gap:12px}
+.topbar-in .brand{font-weight:700;font-size:14px}
+.topbar-in .ver{font-family:var(--mono);font-size:11.5px;color:var(--ink-faint)}
+.topbar-in .sp{flex:1}
+.theme-btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;padding:4px 10px;cursor:pointer;font-size:13px}
+.wrap{max-width:960px;margin:0 auto;padding:36px 20px 90px}
+.hero h1{font-size:27px;line-height:1.35;margin:0 0 10px}
+.hero .lede{color:var(--ink-soft);font-size:16.5px;max-width:46em}
+.hero .lede b{color:var(--ink)}
+.toc{display:flex;flex-wrap:wrap;gap:8px;margin:22px 0 6px}
+.toc a{font-size:13px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 12px;color:var(--ink-soft)}
+.toc a:hover{border-color:var(--accent);color:var(--accent);text-decoration:none}
+section{margin-top:56px}
+h2{font-size:21px;margin:0 0 6px;padding-top:8px}
+h2 .no{font-family:var(--mono);color:var(--accent);font-size:15px;margin-right:8px}
+h3{font-size:16.5px;margin:28px 0 8px}
+.sub{color:var(--ink-faint);font-size:13.5px;margin:0 0 18px}
+p{margin:12px 0;max-width:52em}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin:16px 0}
+.tbl-wrap{overflow-x:auto;margin:16px 0;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13.8px}
+th,td{padding:9px 14px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{font-size:12.5px;color:var(--ink-faint);font-weight:600;white-space:nowrap;background:color-mix(in srgb,var(--surface) 60%,var(--bg))}
+tr:last-child td{border-bottom:none}
+td.mono,th.mono{font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+.tag{display:inline-block;font-family:var(--mono);font-size:11px;border-radius:5px;padding:1px 7px;white-space:nowrap}
+.tag.good{background:var(--good-soft);color:var(--good)}
+.tag.bad{background:var(--bad-soft);color:var(--bad)}
+.tag.warn{background:var(--warn-soft);color:var(--warn)}
+.tag.dim{background:var(--accent-soft);color:var(--accent)}
+.quote{border-left:3px solid var(--accent);background:var(--surface);border-radius:0 var(--radius) var(--radius) 0;padding:12px 18px;margin:14px 0;color:var(--ink-soft);font-size:14.2px}
+.quote .who{font-family:var(--mono);font-size:11.5px;color:var(--ink-faint);display:block;margin-bottom:4px}
+.note{background:var(--warn-soft);border:1px solid color-mix(in srgb,var(--warn) 30%,transparent);border-radius:var(--radius);padding:12px 18px;margin:16px 0;font-size:14.2px}
+.mermaid{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:16px 0;text-align:center;overflow-x:auto}
+.mermaid-note{font-family:var(--mono);font-size:11.5px;color:var(--ink-faint);margin:-8px 0 16px}
+.chain{display:flex;flex-direction:column;gap:0;margin:18px 0}
+.chain .step{display:flex;gap:14px}
+.chain .rail{display:flex;flex-direction:column;align-items:center;width:22px;flex-shrink:0}
+.chain .dot{width:12px;height:12px;border-radius:50%;background:var(--accent);margin-top:8px;flex-shrink:0}
+.chain .bar{width:2px;flex:1;background:var(--line)}
+.chain .body{padding:0 0 26px}
+.chain .t{font-family:var(--mono);font-size:11.5px;color:var(--ink-faint)}
+.chain .h{font-weight:700;margin:2px 0 4px}
+.chain .d{color:var(--ink-soft);font-size:14.2px;max-width:46em}
+.foot{margin-top:70px;padding-top:18px;border-top:1px solid var(--line);color:var(--ink-faint);font-size:12.5px;font-family:var(--mono)}
+@media (max-width:640px){body{font-size:15px}.hero h1{font-size:22px}}
+</style>
+</head>
+<body>
+
+<div class="topbar"><div class="topbar-in">
+  <span class="brand">Quantinue</span>
+  <span class="ver">하루의 해부 · 실측 스냅샷 2026-07-21</span>
+  <span class="sp"></span>
+  <a href="quantinue-integrated-design.html" style="font-size:13px">설계서 ↗</a>
+  <a href="quantinue-engineering.html" style="font-size:13px">기술 부록 ↗</a>
+  <button class="theme-btn" onclick="(function(){var r=document.documentElement,t=r.getAttribute('data-theme')==='dark'?'light':'dark';r.setAttribute('data-theme',t);try{localStorage.setItem('q-theme',t)}catch(e){}})()">🌙</button>
+</div></div>
+
+<div class="wrap">
+
+<div class="hero">
+  <h1>Quantinue 하루의 해부<br>— 실측으로 따라가는 전체 흐름</h1>
+  <p class="lede">설계서는 <b>구조</b>를 말하고 부록은 <b>만든 과정</b>을 말한다. 이 문서는 그 사이의 입구다 —
+  실제로 돌았던 하루, <b>2026-07-21 슬롯</b>을 처음부터 끝까지 따라간다.
+  여기 나오는 숫자는 전부 관측 DB에서 그대로 읽은 실측값이고, 의도적으로 갱신하지 않는 스냅샷이다.
+  이 하루를 이해하면 나머지 문서들은 색인이 된다.</p>
+  <div class="toc">
+    <a href="#big">① 큰 그림</a>
+    <a href="#clock">② 시계</a>
+    <a href="#timeline">③ 하루의 타임라인</a>
+    <a href="#lineage">④ 판단 하나의 계보</a>
+    <a href="#reject">⑤ 탈락의 경로</a>
+    <a href="#exit">⑥ 방어선과 청산</a>
+    <a href="#config">⑦ 숫자를 정하는 곳</a>
+    <a href="#watch">⑧ 지켜보는 방법</a>
+    <a href="#now">⑨ 지금 이 순간</a>
+    <a href="#map">⑩ 문서 지도</a>
+  </div>
+</div>
+
+<section id="big">
+  <h2><span class="no">①</span>큰 그림 — 화살표는 전부 DB를 거친다</h2>
+  <p>Quantinue는 미국 주식 모의 운용을 무인으로 돌리는 시스템이다. 하루에 한 번, 뉴욕 거래일마다
+  <b>JOB 13종(상시 12 + 조건부 1)</b>이 순서대로 돈다. JOB끼리는 직접 손을 잡지 않는다 —
+  앞 JOB이 원장(PostgreSQL)에 남긴 것을 뒤 JOB이 읽을 뿐이다. 그래서 한 JOB이 죽어도
+  나머지는 어제 데이터로 계속 돈다.</p>
+  <div class="mermaid">
+flowchart LR
+  A["🌎 세상<br>시세 · 공시 · 뉴스 · 금리"] --> B["📒 원장<br>PostgreSQL 28테이블"]
+  B --> C["🔍 선별<br>DB 랭킹 → 오늘의 픽"]
+  C --> D["🤖 판단 ×2 성향<br>LLM 제안 + 크리틱 반박"]
+  D --> E["💰 집행<br>모의 계좌 매수 · 청산"]
+  E --> B
+  B --> F["📱 텔레그램 한 통<br>+ 웹 화면 여섯"]
+  </div>
+  <p class="mermaid-note">모든 화살표는 DB를 거친다. 화면과 알림도 원장을 읽을 뿐, 원장에 쓰지 않는다.</p>
+  <p>돈은 진짜가 아니다 — 시세·공시·뉴스는 실물 데이터지만 체결은 로컬 시뮬(<code>MockBroker</code>)이다.
+  사람이 누르는 버튼도 없다. 사람이 하는 일은 두 가지뿐이다: 맥을 켜두는 것, 그리고 텔레그램을 읽는 것.</p>
+</section>
+
+<section id="clock">
+  <h2><span class="no">②</span>시계 — 왜 매일 KST 13:00인가</h2>
+  <p>이 시스템의 "하루"는 <b>뉴욕 날짜(슬롯)</b>다. 뉴욕의 자정이 한국 시간 13:00이므로,
+  매일 오후 1시에 새 슬롯이 열리고 JOB 체인이 돈다. JOB은 개장 전에 돌기 때문에
+  <b>직전에 닫힌 세션</b>의 데이터를 본다 — 7월 21일 슬롯이 보는 일봉은 7월 20일 세션의 것이다.</p>
+  <div class="tbl-wrap"><table>
+    <tr><th>맥락</th><th>기준 시간</th><th>이유</th></tr>
+    <tr><td>슬롯 (JOB의 하루)</td><td class="mono">뉴욕 날짜</td><td>거래일의 정의가 뉴욕에 있다</td></tr>
+    <tr><td>원장 (DB 기록)</td><td class="mono">UTC</td><td>서버 기록의 불변 기준</td></tr>
+    <tr><td>화면·알림</td><td class="mono">KST</td><td>읽는 사람이 한국에 있다</td></tr>
+  </table></div>
+  <p>주기 판정은 요일표가 아니라 <b>"마지막 성공으로부터 며칠 지났나"</b>다. 그래서 맥이 하루 꺼져
+  있었어도 그날(KST 13시 ~ 다음날 13시) 안에 켜면 밀린 JOB이 뒤늦게 돈다. 주말·공휴일엔
+  아무것도 안 도는 것이 정상이다.</p>
+</section>
+
+<section id="timeline">
+  <h2><span class="no">③</span>하루의 타임라인 — 2026-07-21 슬롯 실측</h2>
+  <p class="sub">tb_job_run 실측. 13:00:22 KST 시작 → 13:10:24 종료, 총 10분 2초. 12/12 성공.</p>
+  <p>수집(1~6번)은 API를 부르고, 선별(7~8번)은 원장만 읽고, 판단(9~10번)만 LLM을 쓰고,
+  집행(11~12번)은 다시 DB와 모의 브로커만 만진다. <b>하루 10분 중 9분 34초가 LLM 판단</b>이고
+  나머지 전부를 합쳐도 30초가 안 된다.</p>
+  <div class="tbl-wrap"><table>
+    <tr><th>시각 (KST)</th><th>JOB</th><th>소요</th><th>이날 실제로 한 일</th></tr>
+    <tr><td class="mono">—</td><td class="mono">universe</td><td class="mono">쉼</td><td>상장 목록은 주 1회 갱신 (최근 성공 07-20 · 2,000종목 스냅샷)</td></tr>
+    <tr><td class="mono">13:00:22</td><td class="mono">daily_bars</td><td class="mono">10초</td><td>직전 세션(07-20)의 일봉 <b>1,940종목</b>을 원장에 (Alpaca)</td></tr>
+    <tr><td class="mono">13:00:33</td><td class="mono">disclosures</td><td class="mono">3초</td><td>SEC EDGAR 데일리 인덱스에서 시장 전체 공시 수집</td></tr>
+    <tr><td class="mono">13:00:36</td><td class="mono">news</td><td class="mono">7초</td><td>Alpaca 뉴스 헤드라인 수집</td></tr>
+    <tr><td class="mono">13:00:42</td><td class="mono">news_wire</td><td class="mono">1초</td><td>보도자료 와이어(RSS)를 별도 소스로 수집</td></tr>
+    <tr><td class="mono">13:00:43</td><td class="mono">macro</td><td class="mono">1초</td><td>FRED 금리 → 시장 국면 <span class="tag dim">neutral · risk 0.302</span></td></tr>
+    <tr><td class="mono">13:00:43</td><td class="mono">screening</td><td class="mono">4초</td><td>API 0콜, 원장 랭킹만으로 오늘의 픽 <b>22종</b> (추세주도 14 · 52주 돌파 7 · 눌림목 1)</td></tr>
+    <tr><td class="mono">13:00:47</td><td class="mono">insider_scoring</td><td class="mono">0.3초</td><td>내부자 Form 4를 결정적 규칙으로 채점 (LLM 아님)</td></tr>
+    <tr><td class="mono">13:00:48</td><td class="mono">analysis:aggressive</td><td class="mono">5분 44초</td><td>공격형 LLM 판단 <b>25건</b> — 매수 18 · 매도 6 · 보류 1</td></tr>
+    <tr><td class="mono">13:06:32</td><td class="mono">analysis:conservative</td><td class="mono">3분 50초</td><td>안전형 LLM 판단 <b>22건</b> — 매수 8 · 보류 8 · 매도 6</td></tr>
+    <tr><td class="mono">13:10:22</td><td class="mono">exits</td><td class="mono">0.3초</td><td>방어선 점검 → <b>TMO 3주 시간 청산</b> (⑥에서 자세히)</td></tr>
+    <tr><td class="mono">13:10:22</td><td class="mono">allocation</td><td class="mono">1초</td><td>매수 계획 45건 → <b>집행 7 · 보류 38</b>, 계좌별 사이징 후 체결</td></tr>
+    <tr><td class="mono">13:10:23</td><td class="mono">daily_summary</td><td class="mono">1초</td><td>텔레그램 ✅ 한 통 — 이 JOB이 체인의 맨 끝이라 13:20 전후에 온다</td></tr>
+  </table></div>
+  <p>판단이 25건인데 픽이 22종인 이유: 판단 대상은 <b>픽 + 현재 보유 전부</b>다. 탈락한 보유
+  종목도 판단 범위에 남겨야 청산 시그널을 낼 자리가 있기 때문이다. <code>daily_summary</code>가
+  "조건부 1"이다 — 텔레그램 키가 설정된 인스턴스에서만 등록된다.</p>
+</section>
+
+<section id="lineage">
+  <h2><span class="no">④</span>판단 하나의 계보 — ILMN이 체결까지 간 길</h2>
+  <p class="sub">이날 크리틱을 통과해 실제 체결까지 간 매수 중 하나. 모든 값은 원장 실측.</p>
+  <p>Quantinue의 핵심 약속은 <b>"모든 판단은 자기 근거를 가리킨다"</b>이다. 아래 다섯 단계는
+  전부 FK로 연결되어 있어서, 체결에서 출발해 "왜 샀나"를 원장만으로 거슬러 올라갈 수 있다.</p>
+  <div class="chain">
+    <div class="step"><div class="rail"><div class="dot"></div><div class="bar"></div></div><div class="body">
+      <span class="t">tb_daily_pick · screening</span>
+      <div class="h">1. 픽 — 랭킹 7위로 오늘의 22종에 든다</div>
+      <div class="d">버킷 <code>trend_leader</code>(추세 주도주), 점수 0.966. API 없이 원장의 일봉만으로 계산된 순위다.</div>
+    </div></div>
+    <div class="step"><div class="rail"><div class="dot"></div><div class="bar"></div></div><div class="body">
+      <span class="t">tb_strategist_signals · analysis:conservative</span>
+      <div class="h">2. 제안 — 안전형 LLM이 확신도 0.81로 매수를 낸다</div>
+      <div class="d">
+        <span class="quote" style="display:block"><span class="who">강세 논리 (bull_case)</span>ma20(183.65) 상회 및 trend_leader 버켓으로 상승 추세 유지.</span>
+        <span class="quote" style="display:block"><span class="who">핵심 리스크 (key_risk)</span>거래량 부재(vol_ratio=1.03)와 고점 근접(high_252_ratio=0.94)으로 인한 모멘텀 약화.</span>
+        확신도 0.81은 안전형 매수 문턱 0.75를 넘는다. 공격형이었다면 문턱이 0.65다.
+      </div>
+    </div></div>
+    <div class="step"><div class="rail"><div class="dot"></div><div class="bar"></div></div><div class="body">
+      <span class="t">tb_critic_verdict · analysis:conservative</span>
+      <div class="h">3. 반박 — 둘째 LLM(크리틱)이 트집을 잡고도 통과시킨다 <span class="tag good">pass</span></div>
+      <div class="d">
+        <span class="quote" style="display:block"><span class="who">크리틱 판정문 (objection, 발췌)</span>제안은 기술적 지표와 정합성이 높으나, 근거에 '공시/뉴스 부재로 인한 변동성 대응 불가'라는 설명이 포함되어 있어 논리적 모순이 발생한다. 시스템 설계상 공시 부재는 악재가 아니며(침묵은 악재가 아님) … vol_ratio=1.03을 거래량 부재로 지적하는 것도 과장이다. 그럼에도 핵심 매수 논리는 유효하다 …</span>
+        크리틱은 도장 찍는 기계가 아니다 — 이날 판정 44건 중 25건을 기각했다(⑤).
+      </div>
+    </div></div>
+    <div class="step"><div class="rail"><div class="dot"></div><div class="bar"></div></div><div class="body">
+      <span class="t">tb_order_plan · allocation</span>
+      <div class="h">4. 사이징 — 안전형 계좌 3개에 각각 계획이 선다</div>
+      <div class="d">진입 184.59 · 손절 156.90(−15%) · 익절 221.51(+20%)의 브래킷으로,
+      계좌 크기에 따라 54주 · 54주 · 2주. 손절·익절 비율은 코드가 아니라 <code>pipeline.yaml</code>이 정한다(⑦).</div>
+    </div></div>
+    <div class="step"><div class="rail"><div class="dot"></div></div><div class="body">
+      <span class="t">tb_order → tb_fill · MockBroker</span>
+      <div class="h">5. 체결 — 세 계좌 모두 184.59에 filled</div>
+      <div class="d">여기서 움직인 것은 모의 계좌의 숫자뿐이다. 진짜 브로커 연동(Alpaca 실주문)은 로드맵에만 있다.</div>
+    </div></div>
+  </div>
+</section>
+
+<section id="reject">
+  <h2><span class="no">⑤</span>탈락의 경로 — 안 산 이유도 기록된다</h2>
+  <p>이날 LLM 판단은 47건이었지만 실제 신규 체결은 소수다. 후보는 두 관문에서 걸러졌고,
+  <b>걸러진 이유가 전부 원장에 남았다</b> — "왜 안 샀나"도 "왜 샀나"만큼 추적 가능하다.</p>
+  <div class="tbl-wrap"><table>
+    <tr><th>관문</th><th>실측 (07-21)</th><th>무엇이 거르나</th></tr>
+    <tr><td>크리틱 (LLM 반박)</td>
+      <td><span class="tag good">pass 10</span> <span class="tag bad">reject 25</span> <span class="tag warn">hold 9</span></td>
+      <td>제안의 논리 결함 — 근거와 결론의 모순, 과장된 지표 해석</td></tr>
+    <tr><td>배분 (기계적 규칙)</td>
+      <td><span class="tag good">집행 7</span> <span class="tag bad">보류 38</span></td>
+      <td>현금 부족 30 · 이미 보유 6 · 종목 수 상한 2 — 사유가 <code>tb_order_plan.skipped_reason</code>에 남는다</td></tr>
+  </table></div>
+  <p>비대칭이 의도된 설계다: 좋은 종목을 안 사면 기회를 놓칠 뿐이지만, 나쁜 종목을 안 팔면
+  손실이 계속 자란다. 그래서 매도 문턱이 매수 문턱보다 낮다(⑦의 표).</p>
+</section>
+
+<section id="exit">
+  <h2><span class="no">⑥</span>방어선과 청산 — TMO는 왜 팔렸나</h2>
+  <p><code>exits</code> JOB은 보유 종목마다 네 겹의 방어선을 우선순위대로 점검한다:</p>
+  <div class="tbl-wrap"><table>
+    <tr><th>층</th><th>이름</th><th>발동 조건</th></tr>
+    <tr><td class="mono">1</td><td>브래킷</td><td>손절가(−15%) 또는 익절가(+20%) 도달</td></tr>
+    <tr><td class="mono">2</td><td>명제 붕괴 (hard)</td><td>매수 논리를 깨는 확정 이벤트(악재 공시 등)</td></tr>
+    <tr><td class="mono">3</td><td>약세 판단 (soft)</td><td>오늘 LLM 매도 판단이 성향별 매도 문턱을 넘음</td></tr>
+    <tr><td class="mono">4</td><td>시간 청산</td><td>보유 10거래일 초과 — 논리가 실현되지 않으면 자리를 비운다</td></tr>
+  </table></div>
+  <p>이날 TMO가 4층에 걸렸다: 보유 10거래일이 지나 <b>3주를 526.23에 시간 청산</b>했다.
+  청산 주문은 원래 매수 주문을 <code>closes_order_id</code>로 가리키므로, 어떤 진입이 어떻게
+  끝났는지 원장에서 짝이 맞는다. 청산이 실제로 발생하면 텔레그램 🛡 알림이 온다.
+  <code>exits</code>가 <code>allocation</code>보다 먼저 도는 것도 의도다 — 청산으로 비운 현금과
+  자리를 같은 날 신규 매수가 쓸 수 있다.</p>
+
+  <h3>왜 실시간으로 가격을 안 보나 — 판단과 방어의 분리</h3>
+  <p>"하루 한 번"은 <b>판단</b>의 주기다. 판단 재료(일봉·공시·금리)가 하루 단위로만 갱신되므로,
+  더 자주 돌아도 같은 결론을 비용만 들여 반복하게 된다. 장중 타이밍을 맞추는 능력은 데이터의
+  신선도가 아니라 분 단위의 예측력에서 나오는데, 이 시스템은 그 예측력을 주장하지 않는다 —
+  노리는 움직임이 손절 −15%/익절 +20%, 10거래일짜리라 진입 분(分)의 오차는 2차 항이다.</p>
+  <p>실시간 가격이 정말 필요한 곳은 판단이 아니라 <b>방어</b>다. 그리고 방어의 정석은 시스템이
+  가격을 폴링하는 것이 아니라 <b>브로커에 상주하는 브래킷 주문에 맡기는 것</b>이다 — 손절·익절
+  다리가 브로커에 걸려 있으면 시스템이 꺼져 있어도 거래소 쪽이 가격을 지켜본다. 데이터 모델의
+  <code>stop_leg_order_id</code>·<code>take_profit_leg_order_id</code>가 그 자리이고, 실브로커
+  연동(로드맵 R1)에서 상주화된다.</p>
+  <p>받아들인 한계 둘은 장부에 적혀 있다: ① 지금의 MockBroker는 손절을 하루 한 번 직전 세션
+  일봉으로 평가하므로 장중 급락이 다음 슬롯에야 잡히고, 그만큼 모의 성적이 실전보다 후할 수
+  있다(R1에서 해소). ② 장중에 터진 악재에 다음날 13시에 반응하는 시차는 인트라데이 다회
+  사이클(로드맵 R3)로 좁힌다 — 그때는 Alpaca 분당 한도와 LLM 예산부터 다시 봐야 한다.</p>
+</section>
+
+<section id="config">
+  <h2><span class="no">⑦</span>숫자를 정하는 곳 — pipeline.yaml이 단일 소유자</h2>
+  <p>문턱·주기·한도·요율은 코드에 없다. 전부 <code>app-v2/config/pipeline.yaml</code>이 소유하고,
+  코드는 그 값을 읽기만 한다. 성향 2종의 차이도 코드 분기가 아니라 이 표의 숫자 차이다:</p>
+  <div class="tbl-wrap"><table>
+    <tr><th></th><th>공격형 aggressive</th><th>안전형 conservative</th><th>읽는 법</th></tr>
+    <tr><td>매수 문턱</td><td class="mono">0.65</td><td class="mono">0.75</td><td>확신도가 이보다 높아야 매수 후보</td></tr>
+    <tr><td>매도 문턱</td><td class="mono">0.60</td><td class="mono">0.50</td><td>안전형은 확신이 흔들리는 순간 더 빨리 판다</td></tr>
+    <tr><td>최대 종목 수</td><td class="mono">10</td><td class="mono">5</td><td>이날 skip 사유 "max_positions 2건"의 출처</td></tr>
+    <tr><td>종목당 최대 비중</td><td class="mono">20%</td><td class="mono">10%</td><td>한 종목에 몰빵 금지</td></tr>
+    <tr><td>일일 손실 한도</td><td class="mono">4%</td><td class="mono">2%</td><td>넘으면 리스크오프 (공격형은 감점 · 안전형은 신규 매수 금지)</td></tr>
+    <tr><td>최소 현금 비율</td><td class="mono">10%</td><td class="mono">30%</td><td>이날 skip 사유 "min_cash 30건"의 출처</td></tr>
+  </table></div>
+  <p>그 밖의 굵직한 수도 같은 파일에 있다: 유니버스 2,000종목 · LLM이 깊이 보는 픽 20종(+보유 전부) ·
+  손절 −15% / 익절 +20% · 시간 청산 10거래일 · <b>LLM 일일 예산 $3</b>. 그리고 안전장치 하나 —
+  모델 요율표(<code>model_pricing</code>)에 <b>선언되지 않은 모델로는 앱이 기동을 거부한다.</b>
+  요율이 없으면 비용이 영원히 $0으로 쌓여 예산이 무의미해지기 때문이다. 예산을 넘기면
+  그날 남은 종목의 LLM 분석은 skip된다 — 시스템이 멈추는 게 아니라 그 종목만 건너뛴다.</p>
+</section>
+
+<section id="watch">
+  <h2><span class="no">⑧</span>지켜보는 방법 — 화면 여섯, 알림 넷</h2>
+  <p>화면과 알림은 전부 <b>원장을 읽기만</b> 한다. 화면 문구와 숫자는 "원장이 답할 수 있는 것만"
+  쓰는 것이 규칙이다.</p>
+  <div class="tbl-wrap"><table>
+    <tr><th>화면</th><th>누가</th><th>무엇을 보나</th></tr>
+    <tr><td class="mono">/admin</td><td>관리자</td><td>관제실 — 잡 체인이 어디서 끊겼나 · 계좌 총람 · LLM 지출 카드</td></tr>
+    <tr><td class="mono">/admin/schedule</td><td>관리자</td><td>운영 기준(무엇이 언제 도나) + 용어집</td></tr>
+    <tr><td class="mono">/admin/logs</td><td>관리자</td><td>작동 로그 전체 기록 (10일씩 쪽 나눔)</td></tr>
+    <tr><td class="mono">/admin/accounts</td><td>관리자</td><td>계좌 개설·정지, 굳은 슬롯 잠금 해제</td></tr>
+    <tr><td class="mono">/me</td><td>유저</td><td>내 계좌 — 보유 · 평가액 곡선 · 매매 타임라인 (유저가 쓸 수 있는 것은 0)</td></tr>
+    <tr><td class="mono">/login</td><td>모두</td><td>로그인 — <code>/</code>는 역할별 갈림길 (관리자→관제실 · 유저→내 계좌)</td></tr>
+  </table></div>
+  <div class="tbl-wrap"><table>
+    <tr><th>텔레그램</th><th>언제</th><th>뜻</th></tr>
+    <tr><td>❌ 실패</td><td>잡이 죽은 즉시</td><td>어느 잡 · 어느 슬롯인지 즉시 지목</td></tr>
+    <tr><td>✅ 일일 안내</td><td>평일 KST 13:20 전후</td><td>잡 n/12 성공 · 신규 매수 k건 — 체인 맨 끝에서 발송</td></tr>
+    <tr><td>🛡 방어선</td><td>청산이 실제 발생 시</td><td>몇 건이 어떤 사유로 청산됐나</td></tr>
+    <tr><td>🔌 기동 / ⚠️ 굳음</td><td>재기동·슬롯 정체 시</td><td>관측 인스턴스만 켜는 운영 알림 (<code>ops_alerts</code>)</td></tr>
+  </table></div>
+  <p><b>평일 오후에 아무것도 안 오는 것이 가장 큰 신호다</b> — 알림을 보내는 주체가 앱이라,
+  앱이 죽으면 침묵한다. 침묵 자체가 장애 신호가 되도록 설계된 것이다.</p>
+</section>
+
+<section id="now">
+  <h2><span class="no">⑨</span>지금 이 순간 — 이 스냅샷의 위치</h2>
+  <p>이 문서가 해부한 07-21 슬롯은 <b>로컬 LLM(Qwen3.6-35B, 무료)으로 돈 마지막 날들 중 하루</b>다.
+  이날 저녁 관측 인스턴스가 openai(<code>gpt-5.4-mini</code>)로 전환됐고, 첫 openai 슬롯은
+  07-22 13:00 KST에 돈다. 그래서 이 스냅샷 시점의 <code>tb_llm_usage</code>(비용 원장)는
+  비어 있는 것이 정상이다 — 로컬은 공짜라 요율이 없고, 유료 콜이 시작되는 07-22부터 쌓인다.</p>
+  <p>계좌는 활성 9개(데모 5 · 테스트 4), 평가액 합계 약 $765,711. 누적 체결 56건.
+  무인 완주 카운트가 진행 중이고, 남은 개발 항목은
+  <a href="mvp2-planning/completion-plan.md">completion-plan.md</a>가 정본이다.</p>
+  <div class="note">이 문서는 의도적으로 갱신하지 않는다. "지금"이 궁금하면 관제실(<code>/admin</code>)과
+  <code>dev-handoff.md</code>를 볼 것 — 살아있는 상태를 문서로 복제하면 반드시 어긋난다.</div>
+</section>
+
+<section id="map">
+  <h2><span class="no">⑩</span>문서 지도 — 다음에 무엇을 읽나</h2>
+  <div class="tbl-wrap"><table>
+    <tr><th>궁금한 것</th><th>읽을 문서</th></tr>
+    <tr><td>구조와 확정 결정(D1~D8), 데이터 모델, JOB별 계약</td><td><a href="quantinue-integrated-design.html">quantinue-integrated-design.html</a> (설계 정본)</td></tr>
+    <tr><td>어떻게 만들어졌나 — 개발기 · 결함 27건 · ERD · 교훈</td><td><a href="quantinue-engineering.html">quantinue-engineering.html</a> (기술 부록)</td></tr>
+    <tr><td>켜고 · 보고 · 끄는 법, 장애 대응</td><td><a href="operations-runbook.md">operations-runbook.md</a> (운영 정본)</td></tr>
+    <tr><td>지금 어디까지 왔나 (세션별 기록)</td><td><a href="mvp2-planning/dev-handoff.md">mvp2-planning/dev-handoff.md</a></td></tr>
+    <tr><td>남은 일과 순서 · 열린 항목</td><td><a href="mvp2-planning/completion-plan.md">completion-plan.md</a> · <a href="mvp2-planning/open-items.md">open-items.md</a></td></tr>
+    <tr><td>LLM을 어디서 어떻게 쓰고 얼마가 드나</td><td><a href="mvp2-planning/llm-usage-guide.md">llm-usage-guide.md</a></td></tr>
+  </table></div>
+  <p>읽는 순서 제안: <b>이 문서 → 설계서의 "JOB별 상세" → 관제실을 직접 열어 오늘 슬롯 확인</b>.
+  문서에서 본 하루와 화면의 오늘이 같은 모양이면, 이해는 끝난 것이다.</p>
+</section>
+
+<div class="foot">Quantinue · 하루의 해부 v1.0 · 실측 스냅샷: 슬롯 2026-07-21 (관측 DB 5445) · 작성 2026-07-21</div>
+
+</div>
+
+<!-- mermaid는 로컬 벤더링(assets/mermaid.min.js) — 오프라인에서도 다이어그램이 렌더된다 -->
+<script src="assets/mermaid.min.js"></script>
+<script>document.addEventListener('DOMContentLoaded',function(){if(window.mermaid){mermaid.initialize({startOnLoad:false,theme:'neutral',securityLevel:'loose',flowchart:{useMaxWidth:true,curve:'basis'}});mermaid.run();}});</script>
+</body>
+</html>
