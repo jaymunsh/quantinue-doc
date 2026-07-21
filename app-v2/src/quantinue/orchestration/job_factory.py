@@ -621,12 +621,24 @@ def build_analysis_job(  # noqa: PLR0913 - 각 인자가 교체 가능한 협력
     return JobDefinition(name=name, run=run)
 
 
-def build_exit_job(
+# 발동 사유의 화면·알림 표기. 원장 값(ExitReason)은 영어로 남고, 사람이 읽는
+# 자리에서만 번역한다 — 원장까지 한국어면 role_11 채점과 조인이 문자열에 결박된다.
+EXIT_REASON_LABELS: Final[dict[str, str]] = {
+    "stop": "손절",
+    "take_profit": "익절",
+    "time": "시간 청산",
+    "thesis_break": "논지 붕괴(하드)",
+    "thesis_soft": "매도 판단",
+}
+
+
+def build_exit_job(  # noqa: PLR0913 - 알림이 늘며 협력자도 늘었다
     *,
     domain: _ObservationSource,
     exit_job: _ExitRunner,
     tickers: TickerSource,
     calendar: NyseCalendar,
+    notify: Callable[[str], Awaitable[None]] | None = None,
     name: str = "exits",
 ) -> JobDefinition:
     """Apply the exit rules to the holdings, using the stored bars as evidence.
@@ -651,6 +663,17 @@ def build_exit_job(
             for ticker, observation in observations.items()
         }
         closed = await exit_job.run(as_of=as_of, observations=observations)
+        # 방어선이 실제로 발동한 날만 알린다. 돈이 움직인 순간이라 일일 안내에
+        # 묻히면 안 되고, 0건인 날을 매일 알리면 진짜 발동이 소음에 묻힌다.
+        if closed and notify is not None:
+            lines = [f"🛡 {as_of} 방어선 발동 {len(closed)}건"]
+            lines.extend(
+                f"- {decision.position.ticker} {decision.position.quantity}주 · "
+                f"{EXIT_REASON_LABELS.get(decision.reason.value, decision.reason.value)}"
+                f" @ ${decision.reference_price}"
+                for decision in closed
+            )
+            await notify("\n".join(lines))
         return f"{len(closed)}/{len(held)} closed"
 
     return JobDefinition(name=name, run=run)
@@ -784,6 +807,8 @@ def build_job_runner(
         # 메모리 스토어에는 tb_job_run이 없다 — 멱등의 근거가 없으면 안 돈다.
         return None
     calendar = NyseCalendar()
+    # 알림 경로는 잡 조립 **앞**에서 만든다 — 청산 잡(방어선 발동)이 소비한다.
+    notifier = build_failure_notifier(settings)
 
     async def held_tickers(_: date) -> tuple[str, ...]:
         """Tickers we actually own — the only ones the exit rules can act on."""
@@ -865,6 +890,7 @@ def build_job_runner(
             # 하나도 쓰지 않는다 — 청산이 할 수 있는 일은 파는 것뿐이다.
             tickers=held_tickers,
             calendar=calendar,
+            notify=notifier,
         )
     )
     # 배분은 **청산 뒤**다. 청산이 자리(보유 수 한도)와 현금을 비운 다음에
@@ -885,7 +911,6 @@ def build_job_runner(
             ),
         )
     )
-    notifier = build_failure_notifier(settings)
     # 알림을 안 쓰는 설치에는 이 잡을 **등록하지 않는다.** 보낼 곳 없는 잡이
     # 매일 원장에 행 하나를 남기는 것은 유령이다.
     if notifier is not None:
@@ -897,6 +922,7 @@ def build_job_runner(
         calendar=calendar,
         # 키가 없으면 None이고, 그때 러너는 알림을 아예 시도하지 않는다.
         notifier=notifier,
+        ops_alerts=settings.ops_alerts,
     )
 
 

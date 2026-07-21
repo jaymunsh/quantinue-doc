@@ -190,6 +190,9 @@ class JobsConfig(BaseModel):
 
     enabled: bool = False
     tick_seconds: int = Field(default=60, gt=0, le=3_600)
+    # running으로 굳은 슬롯을 몇 분 뒤에 알릴지. 가장 긴 정상 잡(실 LLM 분석
+    # x2 ≈ 15분)보다 넉넉해야 정상 실행을 굳음으로 오인하지 않는다.
+    stuck_alert_minutes: int = Field(default=30, gt=0, le=1_440)
     cadences: dict[str, JobCadenceConfig] = Field(default_factory=dict)
 
     def cadence_for(self, job_name: str) -> JobCadenceConfig:

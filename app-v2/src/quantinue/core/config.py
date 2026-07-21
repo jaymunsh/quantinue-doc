@@ -114,6 +114,10 @@ class Settings(BaseSettings):
     # 빈 토큰으로 매번 401을 받는 것은 유령이다.
     telegram_bot_token: SecretStr | None = None
     telegram_chat_id: str | None = None
+    # 운영 알림(기동·슬롯 굳음)의 인스턴스 단위 스위치. 기본 꺼짐이 맞다 —
+    # 코드 작업용(8021)이 같은 텔레그램 키로 뜨는데 --reload 재기동마다
+    # "앱 기동"이 울리면 소음이 된다. 관측 기동 스크립트만 켠다.
+    ops_alerts: bool = False
     simulated_account_opening_cash_usd: SimulatedAccountOpeningCashUsd = Decimal("1000000.00")
 
     @field_validator("alpaca_base_url")

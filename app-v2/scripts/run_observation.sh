@@ -21,4 +21,5 @@ QUANTINUE_DATA_MODE=public \
 QUANTINUE_DATABASE_MODE=postgres \
 QUANTINUE_DATABASE_URL="postgresql+asyncpg://quantinue:quantinue@127.0.0.1:5445/quantinue" \
 QUANTINUE_LLM_MODE="${QUANTINUE_LLM_MODE:-local}" \
+QUANTINUE_OPS_ALERTS="${QUANTINUE_OPS_ALERTS:-1}" \
   exec uv run uvicorn quantinue.main:app --port "$PORT" 2>&1 | tee -a "$LOG"

@@ -13,7 +13,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Protocol
 
 import anyio
@@ -72,13 +72,15 @@ class JobOutcome:
 class JobRunner:
     """Run every registered job at most once per trading day."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - 협력자 나열이지 분기 아님
         self,
         config: JobsConfig,
         ledger: JobRunLedger,
         jobs: tuple[JobDefinition, ...],
         calendar: NyseCalendar | None = None,
         notifier: Callable[[str], Awaitable[None]] | None = None,
+        *,
+        ops_alerts: bool = False,
     ) -> None:
         """Bind collaborators; each job owns its own side effects."""
         self._config = config
@@ -87,6 +89,14 @@ class JobRunner:
         self._calendar = calendar or NyseCalendar()
         # 알림이 없는 설치가 기본이다. None이면 아무 일도 안 일어난다.
         self._notifier = notifier
+        # 운영 알림(기동·슬롯 굳음)은 **인스턴스 단위** opt-in이다. 코드 작업용
+        # 인스턴스가 같은 .env 키로 뜨는데 --reload 재기동마다 "앱 기동"이
+        # 울리면 진짜 신호가 소음에 묻힌다. 실패 알림은 이 플래그와 무관하다 —
+        # 어느 인스턴스가 보내든 실패는 실패다.
+        self._ops_alerts = ops_alerts
+        # 같은 굳음을 틱마다 반복 알리지 않기 위한 메모리. 재시작하면 비는데,
+        # 그때 한 번 더 오는 것은 결함이 아니라 확인이다 — 굳음은 지속 상태다.
+        self._stuck_alerted: set[tuple[str, date]] = set()
         self._logger: structlog.stdlib.BoundLogger = structlog.get_logger("jobs")
 
     @property
@@ -104,6 +114,7 @@ class JobRunner:
         if not self._calendar.is_trading_day(as_of):
             # 세션이 없으면 새 일봉도 새 청산 대상도 없다(D4 정규장 전용).
             return tuple(JobOutcome(job.name, "holiday") for job in self._jobs)
+        await self._announce_stuck(as_of, now)
         return tuple([await self._run_one(job, as_of) for job in self._jobs])
 
     async def _run_one(self, job: JobDefinition, as_of: date) -> JobOutcome:
@@ -141,8 +152,63 @@ class JobRunner:
             return
         await self._notifier(message)
 
+    async def announce_boot(self, now: datetime) -> None:
+        """Say the app is up and how much of today is still pending.
+
+        이동이 잦은 운용에서 "다시 켰는데 제대로 붙었나"를 화면 없이 답한다.
+        대기 수를 세는 기준은 실행 판정과 **같은 술어**(is_job_due)다 —
+        다른 술어로 세면 알림과 실제 실행이 다른 숫자를 말한다.
+        """
+        if not self._ops_alerts or self._notifier is None:
+            return
+        as_of = now.astimezone(NEW_YORK).date()
+        if not self._calendar.is_trading_day(as_of):
+            await self._announce(f"🔌 앱 기동 · {as_of} 휴장 — 오늘 잡 없음")
+            return
+        due = 0
+        for job in self._jobs:
+            cadence = self._config.cadence_for(job.name)
+            if not cadence.enabled:
+                continue
+            last_success = await self._ledger.last_job_success(job.name)
+            if is_job_due(
+                last_success=last_success,
+                as_of=as_of,
+                interval_days=cadence.interval_days,
+            ):
+                due += 1
+        await self._announce(
+            f"🔌 앱 기동 · 슬롯 {as_of} · 대기 잡 {due}/{len(self._jobs)}"
+        )
+
+    async def _announce_stuck(self, as_of: date, now: datetime) -> None:
+        """Report a slot frozen in running — the one failure retries cannot fix.
+
+        재시도는 failed만 집으므로 running으로 굳은 슬롯은 사람이 관제실의
+        잠금 해제를 눌러야 풀린다. 그 사실을 사람이 몰라서 하루를 잃는 것이
+        수동 운영의 최대 함정이었다(runbook §4-1).
+        """
+        if not self._ops_alerts or self._notifier is None:
+            return
+        reader = getattr(self._ledger, "job_runs", None)
+        if reader is None:
+            return
+        cutoff = now - timedelta(minutes=self._config.stuck_alert_minutes)
+        for row in await reader(as_of):
+            key = (row.job_name, row.slot_date)
+            if row.status != "running" or key in self._stuck_alerted:
+                continue
+            if row.started_at <= cutoff:
+                self._stuck_alerted.add(key)
+                await self._announce(
+                    f"⚠️ {row.job_name} 슬롯이 {as_of}에 running으로 굳어 있다 "
+                    f"(시작 {row.started_at:%H:%M} UTC).\n"
+                    "재시도는 failed만 집는다 — 관제실의 잠금 해제 버튼으로 풀 것."
+                )
+
     async def run_forever(self) -> None:
         """Tick forever; a failing tick is logged and never kills the loop."""
+        await self.announce_boot(datetime.now(UTC))
         while True:
             try:
                 for outcome in await self.tick(datetime.now(UTC)):
