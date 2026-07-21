@@ -269,7 +269,7 @@
       </div>
       <button class="theme-btn" id="themeBtn" type="button" aria-label="다크모드 전환">🌙</button>
     </div>
-    <span class="rail-ver">부록 v1.0 · MVP-2</span>
+    <span class="rail-ver">부록 v1.1 · MVP-2</span>
 
     <nav class="nav" aria-label="주요 섹션">
       <div class="nav-group">이 문서</div>
@@ -277,7 +277,7 @@
 
       <div class="nav-group">과정</div>
       <a href="#timeline"><span class="nnum">●</span> 프로젝트 연대기</a>
-      <a href="#defects"><span class="nnum">●</span> 결함 사전 (통산 20건)</a>
+      <a href="#defects"><span class="nnum">●</span> 결함 사전 (통산 26건)</a>
       <a href="#lessons"><span class="nnum">●</span> 되풀이된 교훈</a>
 
       <div class="nav-group">내부</div>
@@ -304,25 +304,26 @@
   <div class="wrap">
 
   <header class="hero">
-    <div class="eyebrow">Quantinue MVP-2 · 기술 부록 v1.0 · 2026-07-20</div>
+    <div class="eyebrow">Quantinue MVP-2 · 기술 부록 v1.1 · 2026-07-21</div>
     <h1>어떻게 여기까지 왔고,<br><span class="hl">내부는 어떻게</span> 생겼나</h1>
     <p class="lede">
       <a href="quantinue-integrated-design.html">설계 정본</a>이 "현재의 시스템"이라면, 이 문서는
-      <b>과정과 내부</b>다 — 9일 219커밋의 연대기, 실행에서만 잡힌 <b>결함 통산 20건</b>의 전체 기록,
+      <b>과정과 내부</b>다 — 10일 268커밋의 연대기, 실행에서만 잡힌 <b>결함 통산 26건</b>의 전체 기록,
       코드 구조 맵, 28테이블 전체 ERD, 그리고 운영 런북. 개발을 이어받는 사람이 읽는 문서다.
+      켜고 보고 끄는 <b>운영 방법의 정본은 <code>docs/operations-runbook.md</code></b>다 — 여기 런북 절은 개발용 명령만 담는다.
     </p>
     <div class="chips">
-      <span class="chip">기간 <b>9일</b> (07-12 ~ 07-20)</span>
-      <span class="chip">커밋 <b>219</b></span>
-      <span class="chip">결함 통산 <b>20건</b> + 1차 T13건</span>
-      <span class="chip">테스트 <b>523 + 105</b> green</span>
+      <span class="chip">기간 <b>10일</b> (07-12 ~ 07-21)</span>
+      <span class="chip">커밋 <b>268</b></span>
+      <span class="chip">결함 통산 <b>26건</b> + 1차 T13건</span>
+      <span class="chip">테스트 <b>572 + 107</b> green</span>
     </div>
   </header>
 
   <!-- ═══════════════ 연대기 ═══════════════ -->
   <section id="timeline">
     <div class="sec-eyebrow">Timeline</div>
-    <h2>프로젝트 연대기 — 9일, 219커밋</h2>
+    <h2>프로젝트 연대기 — 10일, 268커밋</h2>
     <p class="sec-intro">
       git 이력과 <code>dev-handoff.md</code>에서 재구성한 시간 순서. 핵심 사건마다 커밋 해시를 달았다.
     </p>
@@ -358,12 +359,22 @@
           <b>잔여 작업 A~E</b>(런 저장소 절반 삭제 −3,667줄, 판단 서사 원장 착지,
           <code>jobs.enabled=true</code>, 캘린더 통합, 와이어 RSS) ·
           <b>투표권 기각 2건</b>(와이어·폼종류) · <b>R8 인사이더 채점</b> 완성 · 정본 문서 v6.0.</td></tr>
+        <tr><td class="mono">07-20 후반<br>~07-21</td><td class="mono">49</td>
+          <td><b>웹 완성 + 알림 + 관측 시작.</b> 웹 W1 인증·role 가드(미들웨어, 구역 밖 404) ·
+          W3-2 계좌 총람(유령 계좌 읽기·쓰기 동시 삭제 <code>91169dd</code>) ·
+          W2-1 내 계좌 홈(원장 대조 테스트 탄생, 오차 0 · <code>125ef74</code>) ·
+          W2-2 거래 타임라인·W2-3 리스크(<code>ef54793</code>·<code>1ac6687</code>) ·
+          W3-1 <code>/admin</code> 이동+역할 갈림길(<code>3ca8d57</code>) · W3-3 계좌 CRUD(<code>cc4f65c</code>) ·
+          W3-4 잠금 해제(<code>714e20d</code>) — <b>완성 조건 2/3 충족</b>.
+          <b>텔레그램 알림 2종</b>(실패 즉시 <code>404545e</code> · 일일 안내 <code>3cbd142</code>) ·
+          운영 매뉴얼(<code>operations-runbook.md</code>) 신설 · <b>무인 완주 관측 시작(07-21 카운트 0일)</b> ·
+          AWS 이전 검토(10일 지평엔 비권고)와 LLM 사용처 전수(<code>llm-usage-guide.md</code>).</td></tr>
       </tbody>
     </table></div>
 
     <div class="note">
       <b>이 연대기의 패턴:</b> 매 단계가 "만들고 → 실행하고 → 실행이 잡아낸 결함을 고치고 → 문서에
-      정본화"의 반복이다. 테스트가 아니라 <b>실행에서만 잡힌 결함이 통산 20건</b> — 그래서 이
+      정본화"의 반복이다. 테스트가 아니라 <b>실행에서만 잡힌 결함이 통산 26건</b> — 그래서 이
       프로젝트의 규칙이 "코드에서 확인한 것만 쓴다"가 됐다.
     </div>
   </section>
@@ -371,7 +382,7 @@
   <!-- ═══════════════ 결함 사전 ═══════════════ -->
   <section id="defects">
     <div class="sec-eyebrow">Defect Ledger</div>
-    <h2>결함 사전 — 실행이 잡아낸 통산 20건</h2>
+    <h2>결함 사전 — 실행이 잡아낸 통산 26건</h2>
     <p class="sec-intro">
       MVP-2에서 번호가 매겨진 결함 전체. 대부분 유닛·통합 테스트를 통과한 뒤 <b>실행에서만</b> 드러났다.
       출처: <code>dev-handoff.md</code> (커밋 메시지의 번호는 발견 순서라 표와 1씩 어긋난다 — 이 표가 정본).
@@ -400,6 +411,12 @@
         <tr><td class="mono">18</td><td><code>jobs.enabled=true</code>를 켜자 앱 종료가 안 됨 — task group이 <code>run_forever</code> 대기 → <code>cancel_scope</code> 수리</td><td>자동 운행 첫 켬</td><td class="mono">—</td></tr>
         <tr><td class="mono">19</td><td><code>save_signal</code>이 <code>src_disclosure_at</code>을 인자로 받고 조용히 버림 — 통합 테스트가 반환 id만 봐서 통과</td><td>컬럼 실 판독</td><td class="mono">6c0785f</td></tr>
         <tr><td class="mono">20</td><td><code>tb_strategist_signals</code>에 <code>disclosure_score</code> 컬럼이 없음 — 계약의 그 필드는 DB 집 없는 유령. 값은 <code>tb_disclosure_signal.sentiment_score</code>에 한 번만 살림</td><td>실 스모크</td><td class="mono">6c0785f</td></tr>
+        <tr class="r-new"><td class="mono">21</td><td>리뷰 POST가 <code>trading_enabled=false</code>면 <b>인증 없이 열렸다</b> — 토큰 게이트가 그 조건일 때만 만들어짐(<code>main.py</code>)</td><td>웹 W1 착수 실사</td><td class="mono">d4311cb</td></tr>
+        <tr class="r-new"><td class="mono">22</td><td>테스트가 개발자의 <code>.env</code>를 읽고 있었다 — 세션 키를 넣자 "미설정이면 무작위 생성" 테스트가 그 값을 읽어 실패</td><td>실 .env 변경</td><td class="mono">14fac9d</td></tr>
+        <tr class="r-new"><td class="mono">23</td><td>라우트 감사가 아무것도 안 보고 통과할 뻔 — <code>include_router</code> 라우트는 <code>isinstance(APIRoute)</code> 훑기에서 사라져 유일한 쓰기 엔드포인트가 표에서 소실. "쓰기 0개면 이 테스트는 아무것도 증명하지 않는다" assert가 잡음</td><td>방어 assert</td><td class="mono">3e22376</td></tr>
+        <tr class="r-new"><td class="mono">24</td><td>재시도한 슬롯의 <code>started_at</code>이 첫 시도 값으로 남아 관제실이 소요시간과 잡 체인 <b>순서를 동시에</b> 잃음 (news 14.5초 → 9.8시간)</td><td>관제실 실행</td><td class="mono">111bf03</td></tr>
+        <tr class="r-new"><td class="mono">25</td><td>유령 계좌를 앱이 <b>매 기동마다 다시 만들고</b> 있었다 — 삭제해도 재기동 시 부활 (체결 전 기간 0건)</td><td>실 DB 검증</td><td class="mono">91169dd</td></tr>
+        <tr class="r-new"><td class="mono">26</td><td>관제실을 <code>/admin</code>으로 옮긴 뒤 슬롯 링크가 <code>/?slot=</code>을 가리켜 어제 슬롯이 안 열림</td><td>화면 실 클릭</td><td class="mono">27e4af4</td></tr>
       </tbody>
     </table></div>
     <p class="small muted">#11·13·18은 핸드오프에 개별 커밋 명시가 없다. #13은 문서에 개별 행이 없고
@@ -483,7 +500,7 @@
         <tr><td>유닛 테스트</td><td class="mono">T6 · T10</td><td rowspan="3">신규 외부 연동·게이트는 ①유닛 ②통합 ③강제 발동 E2E ④실호출 드라이런까지 통과시킨다</td></tr>
         <tr><td>통합 테스트</td><td class="mono">T4</td></tr>
         <tr><td>강제 발동 E2E</td><td class="mono">T3</td></tr>
-        <tr><td><b>실행(드라이런)</b></td><td class="mono">T1 · T5 · T8 · T11</td><td><b>가장 많이, 가장 위험한 것을 잡았다.</b> mock은 우리가 만든 세계라 우리가 안 만든 현실을 보여주지 않는다 — 2차에서도 결함 20건 대부분이 이 계층에서 나왔다</td></tr>
+        <tr><td><b>실행(드라이런)</b></td><td class="mono">T1 · T5 · T8 · T11</td><td><b>가장 많이, 가장 위험한 것을 잡았다.</b> mock은 우리가 만든 세계라 우리가 안 만든 현실을 보여주지 않는다 — 2차에서도 결함 26건 대부분이 이 계층에서 나왔다</td></tr>
         <tr><td>코드 정독</td><td class="mono">T7 · T9 · T12</td><td>—</td></tr>
       </tbody>
     </table></div>
@@ -509,6 +526,7 @@
         <tr><td class="mono">market_data/</td><td>공개 시장 피드</td><td><code>alpaca_bars.py</code>(배치 일봉) · <code>alpaca_news.py</code> · <code>wire_news.py</code>(RSS) · <code>sec_daily_index.py</code>(공시) · <code>sec_ownership.py</code>(Form 4) · <code>fixture.py</code>(오프라인 기본)</td></tr>
         <tr><td class="mono">llm/</td><td>LLM 어댑터</td><td><code>provider.py</code>(openai·local·mock 3단) · <code>prompts.py</code> + <code>prompts/</code>(버전 관리 시스템 프롬프트)</td></tr>
         <tr><td class="mono">api/ · web/</td><td>HTTP·관제실</td><td><code>pipeline_day.py</code>(잡 원장 → 하루 뷰) · <code>account_roster.py</code>(계좌 총람) · <code>my_account.py</code>(유저 계좌) · <code>admin_accounts.py</code>(계좌 CRUD·슬롯 해제 — <b>유일한 쓰기</b>) · <code>route_guard.py</code>(3구역 기본 거부) · <code>review_runtime.py</code>(T+5 처리) · Jinja2 템플릿</td></tr>
+        <tr class="r-new"><td class="mono">notify/</td><td>텔레그램 알림</td><td><code>telegram.py</code> — 잡 실패 즉시 + 일일 안내(<code>daily_summary</code> 잡, 체인 맨 끝). 봇 토큰·챗 ID 둘 다 있어야 경로가 만들어진다(없으면 침묵이 정상) · <b>침묵이 신호</b> 설계: 매일 오는 한 통을 정상으로 두면 부재가 곧 경보다</td></tr>
       </tbody>
     </table></div>
 
@@ -644,14 +662,21 @@ erDiagram
       <tbody>
         <tr><td class="mono">mock</td><td>고정 점수 (STRATEGY 0.76 · 크리틱 0.82)</td><td>0</td><td>유닛 테스트. ⚠️ 고정값이라 reject 갈래·성향 격차를 영영 못 본다 (결함 11의 교훈)</td></tr>
         <tr class="r-chg"><td class="mono">local <span class="b b-teal">현행</span></td><td>oMLX <code>127.0.0.1:8888</code> · Qwen3.6-35B-A3B-OptiQ-4bit</td><td>0 (전기료)</td><td>개발·운용. 추론형 모델이 사고과정을 본문에 쏟아 JSON을 깨므로 <code>enable_thinking=false</code>를 함께 보낸다. ~20초/종목, 2성향 22종목 ≈ 15분. <code>max_tokens=512</code>(256은 A/B로 유죄 확정 — 성향당 2 skip)</td></tr>
-        <tr><td class="mono">openai</td><td>gpt-4o-mini</td><td>≈ $0.3~1.0/일 (월 $10~30 추정)</td><td>클라우드 전환 옵션. 전환 전 재확인 목록: retries 동작·성향 격차·<code>tb_llm_usage</code> 예산 배선</td></tr>
+        <tr><td class="mono">openai</td><td><code>QUANTINUE_OPENAI_MODEL</code> (기본 gpt-4o-mini — <b>경량 모델</b>, 추론 tier 아님)</td><td>경량 ≈ $0.05/일 · 추론 tier ≈ $0.2~0.5/일</td><td>클라우드 전환 옵션. 전환 전 재확인 목록: retries 동작·성향 격차·<code>tb_llm_usage</code> 예산 배선·<b>model_settings 부재</b>(max_tokens·temperature가 로컬 경로에만 붙어 있다)</td></tr>
       </tbody>
     </table></div>
+    <div class="note">
+      <b>LLM 사용처 전수는 <code>docs/mvp2-planning/llm-usage-guide.md</code>가 정본이다(2026-07-21).</b>
+      요지: 실제 콜사이트는 <b>STRATEGY(전략 판단)·CRITIC(반증) 둘뿐</b>이고(공시는 결정론, 뉴스는 프롬프트 흡수,
+      리뷰는 결정론), 모델은 모드당 하나라 태스크별(추론/경량) 분리는 미배선이다. 하루 최대 ~100콜.
+      openai 전환 검토는 <code>aws-migration-review.md</code>.
+    </div>
     <div class="note warn">
       비용 가드(<code>budget.daily_llm_usd</code> 3.0)는 <b>선언만 있고 배선이 없다</b> —
       <code>tb_llm_usage</code>는 소비자 0. 로컬 LLM이라 당장 비용 0이지만, 인트라데이 다회
       사이클(R3)이나 openai 전환 전에 반드시 배선할 것. 초과 시 동작은 "판단 없이 사는" 쪽이 아니라
-      "안 사는" 쪽이어야 한다.
+      "안 사는" 쪽이어야 한다. 비용이 작아도(§위 표) 이 가드가 필요한 이유는 절약이 아니라
+      <b>폭주 차단</b>이다 — 무인 상태에서 버그로 재시도가 도는 경우를 끊는다.
     </div>
   </section>
 
@@ -659,6 +684,11 @@ erDiagram
   <section id="runbook">
     <div class="sec-eyebrow">Runbook</div>
     <h2>런북 — 명령과, 우리가 실제로 밟은 함정들</h2>
+    <p class="sec-intro">
+      <b>일상 운영(켜고 보고 끄기)의 정본은 <code>docs/operations-runbook.md</code>다</b> — 관측 인스턴스는
+      <code>scripts/run_observation.sh</code>(8020, --reload 없음)로 띄우고, 코드 작업은 8021로 분리한다.
+      여기는 개발 명령과 함정만 담는다.
+    </p>
 
     <h3>실행 명령</h3>
     <div class="twrap"><table>
@@ -666,7 +696,7 @@ erDiagram
       <tbody>
         <tr><td>앱 (관제실 8020)</td><td class="mono">cd app-v2 && uv run uvicorn quantinue.main:app --port 8020</td></tr>
         <tr><td>dev DB (5445)</td><td class="mono">docker compose up -d db</td></tr>
-        <tr><td>유닛 + 관제실</td><td class="mono">uv run pytest tests/unit tests/test_pipeline_dashboard.py -q</td></tr>
+        <tr><td>유닛 + 웹</td><td class="mono">uv run pytest tests/unit tests/test_pipeline_dashboard.py tests/test_my_account.py -q</td></tr>
         <tr><td>린트</td><td class="mono">uv run ruff check src tests scripts</td></tr>
         <tr><td>통합 (새 컨테이너 5480)</td><td class="mono">docker run -d --name t … -p 127.0.0.1:5480:5432 postgres:17-alpine<br>docker exec -i t psql -q -U quantinue -d quantinue &lt; db/schema.sql<br>QUANTINUE_TEST_DATABASE_URL=… uv run pytest tests/integration -q -p no:unraisableexception</td></tr>
       </tbody>
@@ -738,12 +768,18 @@ erDiagram
         <tr><td class="mono">mvp2-planning/future-roadmap.md</td><td>로드맵 R1~R11 — 미룬 것과 기각된 것</td></tr>
         <tr><td class="mono">mvp2-planning/troubleshooting-log.md</td><td>1차 T1~T13 시점 기록 (동결)</td></tr>
         <tr><td class="mono">mvp2-planning/dev-playbook.md · phase*-*.md · ghost-config-audit.md · m4-scope-decisions.md · remaining-work-plan.md</td><td>단계별 계획·감사의 시점 기록 (M5~M11 표는 superseded)</td></tr>
+        <tr class="r-new"><td class="mono">docs/operations-runbook.md</td><td><b>운영 정본</b> — 켜고 보고 끄는 법·문제 해결·코드 작업 분리 (2026-07-21 신설)</td></tr>
+        <tr class="r-new"><td class="mono">mvp2-planning/completion-plan.md</td><td>완성 계획 — "완성"의 정의 3조건과 남은 것의 순서</td></tr>
+        <tr class="r-new"><td class="mono">mvp2-planning/open-items.md</td><td>열린 항목 정본 — 아직 안 끝난 것만</td></tr>
+        <tr class="r-new"><td class="mono">mvp2-planning/how-to-check-guide.md</td><td>"로컬 기준 완성인가?"를 5분에 확인하는 법 (2026-07-21 신설)</td></tr>
+        <tr class="r-new"><td class="mono">mvp2-planning/llm-usage-guide.md</td><td>LLM 사용처 전수 — 콜사이트 2곳·모드 배선·tier 제안 (2026-07-21 신설)</td></tr>
+        <tr class="r-new"><td class="mono">mvp2-planning/aws-migration-review.md</td><td>AWS 이전 검토 — 10일 지평엔 비권고, openai 전환은 분리 선행 (2026-07-21 신설)</td></tr>
         <tr><td class="mono">mvp2-planning/NEXT-SESSION-PROMPT.md</td><td>다음 세션 시작 프롬프트</td></tr>
         <tr><td class="mono">app-v2/db/schema.sql</td><td>스키마 단일 정본 — 문서의 모든 스키마 서술이 여기서 파생</td></tr>
         <tr><td class="mono">app-v2/config/pipeline.yaml</td><td>정책 단일 소유자 — 문턱·주기·한도</td></tr>
       </tbody>
     </table></div>
-    <p class="small muted">부록 v1.0 · 2026-07-20 · 작성: 문성혁 + Claude · 원천: dev-handoff.md ·
+    <p class="small muted">부록 v1.1 · 2026-07-21 (v1.0: 2026-07-20) · 작성: 문성혁 + Claude · 원천: dev-handoff.md ·
     troubleshooting-log.md · git 이력 · app-v2 코드</p>
   </section>
 

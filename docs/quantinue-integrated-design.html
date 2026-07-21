@@ -271,7 +271,7 @@
       </div>
       <button class="theme-btn" id="themeBtn" type="button" aria-label="다크모드 전환">🌙</button>
     </div>
-    <span class="rail-ver">v6.0 · MVP-2</span>
+    <span class="rail-ver">v6.1 · MVP-2</span>
 
     <nav class="nav" aria-label="주요 섹션">
       <div class="nav-group">시작</div>
@@ -279,11 +279,11 @@
       <a href="#glossary"><span class="nnum">●</span> 용어 30초 사전</a>
 
       <div class="nav-group">시스템</div>
-      <a href="#jobs"><span class="nnum">●</span> JOB 체인 12종</a>
+      <a href="#jobs"><span class="nnum">●</span> JOB 체인 12종+1</a>
       <div class="spine">
         <a href="#j-collect"><span class="snum">1–6</span> 수집 JOB</a>
         <a href="#j-decide"><span class="snum">7–10</span> 판단 JOB</a>
-        <a href="#j-act"><span class="snum">11–12</span> 집행 JOB</a>
+        <a href="#j-act"><span class="snum">11–13</span> 집행·안내 JOB</a>
       </div>
       <a href="#jobdetail"><span class="nnum">●</span> JOB별 상세</a>
       <a href="#judgment"><span class="nnum">●</span> 판단이 만들어지는 과정</a>
@@ -291,7 +291,7 @@
       <div class="spine">
         <a href="#schema-detail"><span class="snum">§</span> 컬럼 명세·ENUM</a>
       </div>
-      <a href="#screens"><span class="nnum">●</span> 관제실</a>
+      <a href="#screens"><span class="nnum">●</span> 웹 화면·알림</a>
 
       <div class="nav-group">결정</div>
       <a href="#decisions"><span class="nnum">●</span> 확정 결정 D1~D8</a>
@@ -319,19 +319,20 @@
 
   <!-- ── 히어로 ── -->
   <header class="hero">
-    <div class="eyebrow">Quantinue MVP-2 · v6.0 · 2026-07-20</div>
+    <div class="eyebrow">Quantinue MVP-2 · v6.1 · 2026-07-21</div>
     <h1>매일 아침 스스로 도는<br><span class="hl">AI 모의 운용</span> 시스템</h1>
     <p class="lede">
       시세·공시·뉴스는 <b>실물 데이터</b>로 받고, 판단은 <b>LLM 두 성향</b>이 내리고,
       크리틱이 반박하고, 돈은 <b>모의 계좌</b>에서만 움직인다.
-      사람이 누르는 버튼은 없다 — <b>JOB 12종</b>이 뉴욕 세션일마다 한 번씩 돌고,
-      모든 판단은 자기 근거를 가리키는 <b>계보(FK)</b>로 원장에 남는다.
+      사람이 누르는 버튼은 없다 — <b>JOB 12종(+조건부 1)</b>이 뉴욕 세션일마다 한 번씩 돌고,
+      모든 판단은 자기 근거를 가리키는 <b>계보(FK)</b>로 원장에 남고, 하루의 결과는
+      <b>텔레그램 한 통</b>으로 온다.
     </p>
     <div class="chips">
-      <span class="chip">JOB <b>12종</b> 자동 운행</span>
+      <span class="chip">JOB <b>12종+1</b> 자동 운행</span>
       <span class="chip">투자 성향 <b>2종</b> (aggressive · conservative)</span>
       <span class="chip">체결 <b>MockBroker</b> 시뮬</span>
-      <span class="chip">테스트 <b>523 + 105</b> green</span>
+      <span class="chip">테스트 <b>572 + 107</b> green</span>
       <span class="chip">LLM <b>로컬</b> (oMLX · Qwen3.6-35B)</span>
     </div>
   </header>
@@ -406,11 +407,12 @@ flowchart LR
   <!-- ═══════════════ 3. JOB 체인 12종 ═══════════════ -->
   <section id="jobs">
     <div class="sec-eyebrow">Job Chain</div>
-    <h2>JOB 체인 12종 <span class="b b-new">2차 신규</span></h2>
+    <h2>JOB 체인 12종 + 조건부 1 <span class="b b-new">2차 신규</span></h2>
     <p class="sec-intro">
       하루의 운용은 JOB 12종이 <b>등록 순서대로</b> 도는 것이다. 순서 자체가 계약이다 —
       수집이 판단보다 앞이라 오늘 시세·공시로 판단하고, 청산이 배분보다 앞이라 판 돈과
-      빈 자리로 산다. 출처: <code>orchestration/job_factory.py</code> <code>build_job_runner()</code>.
+      빈 자리로 산다. 맨 끝에 <b>조건부 13번째</b>가 있다: 일일 안내(<code>daily_summary</code>)는
+      텔레그램 키가 있을 때만 등록된다. 출처: <code>orchestration/job_factory.py</code> <code>build_job_runner()</code>.
     </p>
 
     <div class="mermaid">
@@ -432,10 +434,11 @@ flowchart TB
   subgraph A ["③ 집행 — 모의 계좌가 움직인다"]
     direction TB
     J11["11 · exits<br/>청산 — 손절·익절·시간·매도판단"] --> J12["12 · allocation<br/>배분 — 지갑이 허락할 때까지 산다"]
+    J12 -.-> J13["13 · daily_summary<br/>일일 안내 (텔레그램 키 있을 때만)"]
   end
   C --> D --> A
     </div>
-    <p class="mermaid-note">등록 순서 = 실행 순서 = 데이터 의존성. 한 틱 안에서 순차로 돈다.</p>
+    <p class="mermaid-note">등록 순서 = 실행 순서 = 데이터 의존성. 한 틱 안에서 순차로 돈다. 점선(13)은 조건부 등록.</p>
 
     <h3>순서가 계약인 이유</h3>
     <ul class="rules">
@@ -530,7 +533,7 @@ flowchart TB
       </tbody>
     </table></div>
 
-    <h3 id="j-act">집행 JOB 2종</h3>
+    <h3 id="j-act">집행 JOB 2종 + 조건부 안내 1</h3>
     <div class="twrap"><table>
       <thead><tr><th>#</th><th>JOB</th><th>먹는 것 (입력)</th><th>내놓는 것 (출력)</th></tr></thead>
       <tbody>
@@ -543,6 +546,11 @@ flowchart TB
           <td>12</td><td class="mono"><b>allocation</b></td>
           <td>크리틱 통과한 buy 후보 전체 + 계좌별 지갑</td>
           <td><code>tb_order</code>(bracket)·<code>tb_fill</code>·<code>tb_order_plan</code> — 후보를 계좌 앞에 놓고 <b>지갑이 허락할 때까지</b> 산다. 못 산 것은 사유와 함께 기록</td>
+        </tr>
+        <tr class="r-new">
+          <td>13</td><td class="mono"><b>daily_summary</b> <span class="b b-gray">조건부</span></td>
+          <td>그날 슬롯의 <code>tb_job_run</code>·체결 요약</td>
+          <td>텔레그램 한 통 — <code>✅ 슬롯 · 잡 12/12 성공 · 신규 매수 3건</code>. 기능이 아니라 <b>멱등 때문에 잡</b>이다: 하루 한 번 보장을 <code>tb_job_run</code> PK가 DB로 강제한다. 키가 없으면 등록 자체가 안 된다 (<a href="#screens">§알림</a>)</td>
         </tr>
       </tbody>
     </table></div>
@@ -1601,14 +1609,23 @@ erDiagram
   <!-- ═══════════════ 6. 관제실 ═══════════════ -->
   <section id="screens">
     <div class="sec-eyebrow">Control Room</div>
-    <h2>관제실 — 화면 하나, 읽기 전용 <span class="b b-new">2차 신규</span></h2>
+    <h2>웹 — 화면 넷, 유저의 쓰기는 0 <span class="b b-new">v6.1 갱신</span></h2>
     <p class="sec-intro">
-      화면은 <code>GET /</code>(포트 8020) 하나다. 실행 버튼이 없다 — 시스템은 스스로 돌고,
-      화면은 지켜보기만 한다. 과거는 <code>/?slot=YYYY-MM-DD</code>로 이동한다.
-      구 화면의 "런 상세"는 폐기됐다: "런 하나가 11단계 중 어디까지 갔나"라는 질문 자체가
-      독립 JOB 세계에서는 성립하지 않기 때문이다.
+      화면은 넷이고 <code>/</code>는 역할별 갈림길이다(admin → <code>/admin</code>, user → <code>/me</code>,
+      익명 → <code>/login</code>). 가드는 라우트가 아니라 <b>미들웨어</b>에 있고, 구역 밖은 403이 아니라
+      <b>404</b>다 — 경로의 존재 자체를 확인해 주지 않는다. 유저 role의 쓰기 엔드포인트는 0개이고
+      이는 <code>test_route_audit.py</code>가 동적으로 강제한다.
     </p>
-    <p>화면이 답하는 질문은 네 가지다:</p>
+    <div class="twrap"><table>
+      <thead><tr><th>화면</th><th>경로</th><th>누가</th><th>무엇</th></tr></thead>
+      <tbody>
+        <tr><td>로그인</td><td class="mono">/login</td><td>모두</td><td>세션 쿠키 발급. 셀프 가입 없음 — 계정은 관리자가 화면에서 만든다</td></tr>
+        <tr><td>관제실</td><td class="mono">/admin</td><td>admin</td><td>잡 체인·슬롯·계좌 총람. 아래 네 질문에 답한다</td></tr>
+        <tr><td>계좌 관리</td><td class="mono">/admin/accounts</td><td>admin</td><td><b>이 앱의 쓰기 전부가 여기 있다</b> — 개설(유저 생성 포함)·성향 지정·정지, 그리고 관제실의 <b>잠금 해제</b> 버튼(running으로 굳은 슬롯을 푼다 — 잡을 실행하지 않고 잠금만 푼다)</td></tr>
+        <tr><td>내 계좌</td><td class="mono">/me</td><td>user</td><td>총자산·수익률·보유·거래 타임라인(체결마다 판단·근거·반박)·리스크 상태. <b>원장 대조 테스트</b>가 화면 숫자와 원장의 일치를 강제한다(오차 0 실측)</td></tr>
+      </tbody>
+    </table></div>
+    <p>관제실이 답하는 질문은 네 가지다:</p>
     <div class="grid c2">
       <div class="stat"><div class="k">① 체인이 어디서 끊겼나</div><div class="v mono" style="font-size:15px">tb_job_run</div>
         <div class="d">JOB 12종의 상태·소요시간·요약. 실패 시 <b>처음</b> 실패한 JOB을 지목한다 — 수집이 깨지면 뒤가 줄줄이 실패하고 범인은 첫 JOB이다.</div></div>
@@ -1620,10 +1637,32 @@ erDiagram
         <div class="d">성향별 승인 수, 종목별 side·확신도·요약과 크리틱의 반박문.</div></div>
     </div>
     <p class="small muted">
-      JSON 관측 API: <code>GET /api/pipeline/today</code> · <code>GET /api/accounts</code>(구 <code>/api/portfolio</code> 대체 — 유령 계좌 하나가 아니라 계좌 전부) ·
+      과거 슬롯은 <code>/admin?slot=YYYY-MM-DD</code>. JSON 관측 API: <code>GET /api/pipeline/today</code> ·
+      <code>GET /api/accounts</code>(구 <code>/api/portfolio</code> 대체 — 유령 계좌 하나가 아니라 계좌 전부) ·
       <code>GET /health</code>. 리뷰 처리는 별도 라우터(<code>POST /api/reviews/{signal_id}/process</code>).
       출처: <code>src/quantinue/main.py</code>.
     </p>
+
+    <h3>알림 — 침묵이 신호다 <span class="b b-new">2차 신규</span></h3>
+    <p>
+      화면을 매일 열지 않아도 되도록 텔레그램이 두 가지를 보낸다(<code>notify/telegram.py</code>):
+    </p>
+    <div class="twrap"><table>
+      <thead><tr><th>언제</th><th>무엇</th></tr></thead>
+      <tbody>
+        <tr><td>잡이 실패한 즉시</td><td class="mono">❌ news 실패 · 슬롯 2026-07-21</td></tr>
+        <tr><td>평일 KST 13:20 전후 (체인 맨 끝)</td><td class="mono">✅ 2026-07-21 슬롯 · 잡 12/12 성공 · 신규 매수 3건</td></tr>
+      </tbody>
+    </table></div>
+    <div class="note">
+      <b>설계 논거 — 부재를 경보로 만든다.</b> 평일 오후에 아무것도 안 오면 그게 신호다: 앱이 안 떴거나
+      맥이 꺼져 있었다는 뜻이다. 보내는 주체가 앱이라 앱이 죽으면 침묵하는데, <b>매일 오는 한 통을
+      정상으로 두면 침묵이 곧 경보가 된다.</b> launchd 워치독을 안 만든 이유가 이것이다 — 같은 맥에서
+      도는 워치독은 "맥이 꺼진 경우"를 어차피 못 잡는다. 일일 안내가 <b>잡</b>인 이유는 기능이 아니라
+      멱등이다: 하루 한 번 보장을 <code>tb_job_run</code> PK가 DB로 강제하므로 앱을 껐다 켜도 두 번
+      안 온다. 시각이 13시대인 이유는 슬롯이 <b>뉴욕 날짜</b> 기준이고 뉴욕 자정이 KST 13:00이기
+      때문이다. 봇 토큰·챗 ID 둘 중 하나라도 없으면 알림 경로 자체가 만들어지지 않는다(의도된 동작).
+    </div>
   </section>
 
   <!-- ═══════════════ 7. 확정 결정 D1~D8 ═══════════════ -->
@@ -1676,7 +1715,7 @@ erDiagram
       <h3>빅뱅이 아니라 점진 교체</h3>
       <p>구 11단계 러너를 한 번에 갈아엎지 않고, JOB을 하나씩 세워 공존시킨 뒤 소비자가
       전부 옮겨간 시점에 러너를 삭제했다(<code>1a48aea</code>).
-      <b>왜:</b> 실행에서만 잡히는 결함이 통산 20건인 프로젝트다. 두 세계를 잠시 공존시키는 비용이
+      <b>왜:</b> 실행에서만 잡히는 결함이 통산 26건인 프로젝트다. 두 세계를 잠시 공존시키는 비용이
       한 번에 바꾸고 며칠 눈이 머는 비용보다 싸다.</p>
     </div></div>
 
@@ -1796,17 +1835,21 @@ erDiagram
 
     <h3>지금 이 순간의 사실</h3>
     <ul class="rules">
-      <li><b>무인 완주 실적 0일.</b> 자동 운행(<code>jobs.enabled=true</code>)을 켠 것이 2026-07-20 당일이다.
-        수동 스모크로는 전 JOB 완주를 확인했지만, 사람이 안 보는 날의 연속 완주는 아직 검증되지 않았다.</li>
+      <li><b>무인 완주 실적 0일.</b> 자동 운행은 2026-07-20에 켜졌고 관측 카운트는 2026-07-21부터다.
+        수동 스모크로는 전 JOB 완주를 확인했지만, 사람이 안 보는 날의 연속 완주는 아직 검증되지 않았다.
+        확인 루틴은 <code>docs/mvp2-planning/how-to-check-guide.md</code>.</li>
       <li><b>인사이더 표는 아직 드물다.</b> 픽의 12~14%만 Form 4가 걸리고 그중 재량 거래는 다시 일부다.
         문턱(0.80/0.30)은 며칠 데이터를 쌓은 뒤 재조정해야 한다.</li>
       <li><b><code>premarket_gap_max</code>(0.03)는 잠정값.</b> 실제 갭 분포를 1~2주 관측한 뒤 조정한다.
         발동 사유는 <code>tb_order_plan</code>에 남는다.</li>
       <li><b>LLM 예산 상한은 선언뿐.</b> <code>budget.daily_llm_usd</code>(3.0)는 config에 있지만
         <code>tb_llm_usage</code> 기록·강제 배선이 없다. 로컬 LLM이라 당장 비용 0이지만, R3(다회 사이클)나
-        클라우드 전환 전에 반드시 배선해야 한다.</li>
-      <li><b>로컬 LLM 경로는 <code>retries=0</code>.</b> 구조화 출력을 한 번 놓치면 그 종목이 skip된다.
-        skip 수는 JOB 요약에 남긴다. openai 전환 시 재확인 대상.</li>
+        openai 전환 전에 반드시 배선해야 한다. 사용처 전수와 전환 검토:
+        <code>llm-usage-guide.md</code> · <code>aws-migration-review.md</code>.</li>
+      <li><b>재시도는 config 소유로 복원됐지만 openai에서 미검증.</b> 한때 로컬 경로에
+        <code>retries=0</code>이 굳어 구조화 출력 1회 실패가 성향 22종목을 통째로 날렸다(결함 13) —
+        지금은 종목 단위 격리 + <code>llm_max_retries</code>(기본 1)로 수리됐다. openai 전환 시
+        재시도 동작 재확인이 남아 있다.</li>
       <li><b>성향 격차가 기계적일 때가 있다.</b> 모델이 같은 판단을 내고 보수형에서 일괄 −0.100을 빼는
         패턴이 관찰됐다. 성향이 "다른 사고"가 아니라 "같은 사고 − 상수"가 되고 있는지 감시가 필요하다.</li>
       <li><b>구 러너의 유물이 남아 있다.</b> <code>pipeline_runs</code> 계열 테이블과
@@ -1819,17 +1862,22 @@ erDiagram
   <section id="ops">
     <div class="sec-eyebrow">Operations</div>
     <h2>운영·검증</h2>
+    <p class="sec-intro">
+      <b>운영(켜고 보고 끄기)의 정본은 <code>docs/operations-runbook.md</code>다.</b>
+      관측 인스턴스는 8020(<code>scripts/run_observation.sh</code>), 코드 작업은 8021로 분리한다.
+      계정: <code>admin</code>/<code>user1~5</code> — 비밀번호는 runbook §2-3.
+    </p>
     <div class="grid c3">
-      <div class="stat"><div class="k">앱 (관제실)</div><div class="v mono" style="font-size:16px">:8020</div><div class="d">FastAPI + Jinja2 서버 렌더</div></div>
+      <div class="stat"><div class="k">앱 (웹)</div><div class="v mono" style="font-size:16px">:8020</div><div class="d">FastAPI + Jinja2 서버 렌더 · 작업용은 :8021</div></div>
       <div class="stat"><div class="k">DB (dev)</div><div class="v mono" style="font-size:16px">:5445</div><div class="d">PostgreSQL · 통합 테스트는 :5480</div></div>
       <div class="stat"><div class="k">LLM (로컬)</div><div class="v mono" style="font-size:16px">:8888</div><div class="d">oMLX · Qwen3.6-35B-A3B-OptiQ-4bit</div></div>
     </div>
     <div class="twrap"><table>
       <thead><tr><th>무엇을</th><th>어떻게</th><th>기대</th></tr></thead>
       <tbody>
-        <tr><td>유닛 + 관제실</td><td class="mono">cd app-v2 && uv run pytest tests/unit tests/test_pipeline_dashboard.py -q</td><td class="mono">523 green</td></tr>
-        <tr><td>통합 (실 Postgres)</td><td class="mono">uv run pytest tests/integration -q -p no:unraisableexception</td><td class="mono">105 green · 새 컨테이너에서 돌릴 것 (멱등 가드가 옛 행을 지킨다)</td></tr>
-        <tr><td>오늘 슬롯 확인</td><td class="mono">GET http://localhost:8020/?slot=YYYY-MM-DD</td><td>JOB 12종 상태 + 매수/보류 + 계좌 곡선</td></tr>
+        <tr><td>유닛 + 웹</td><td class="mono">cd app-v2 && uv run pytest tests/unit tests/test_pipeline_dashboard.py tests/test_my_account.py -q</td><td class="mono">572 green</td></tr>
+        <tr><td>통합 (실 Postgres)</td><td class="mono">uv run pytest tests/integration -q -p no:unraisableexception</td><td class="mono">107 green · 새 컨테이너에서 돌릴 것 (멱등 가드가 옛 행을 지킨다)</td></tr>
+        <tr><td>오늘 슬롯 확인</td><td class="mono">GET http://127.0.0.1:8020/admin?slot=YYYY-MM-DD</td><td>JOB 12(+1)종 상태 + 매수/보류 + 계좌 곡선 (로그인 필요)</td></tr>
       </tbody>
     </table></div>
     <div class="note warn">
@@ -1838,7 +1886,7 @@ erDiagram
     </div>
     <div class="note">
       개발을 이어받는 사람은 <a href="quantinue-engineering.html"><b>기술 부록</b></a>을 함께 읽을 것 —
-      프로젝트 연대기(9일·219커밋), 결함 통산 20건의 전체 기록, 코드 구조 맵, 28테이블 전체 ERD,
+      프로젝트 연대기(10일·268커밋), 결함 통산 26건의 전체 기록, 코드 구조 맵, 28테이블 전체 ERD,
       운영 함정 목록이 거기 있다.
     </div>
   </section>
@@ -1850,7 +1898,13 @@ erDiagram
     <div class="twrap"><table>
       <thead><tr><th>버전</th><th>날짜</th><th>내용</th></tr></thead>
       <tbody>
-        <tr class="r-new"><td class="mono"><b>v6.0</b></td><td class="mono">2026-07-20</td>
+        <tr class="r-new"><td class="mono"><b>v6.1</b></td><td class="mono">2026-07-21</td>
+          <td><b>웹 완성·알림 반영.</b> 관제실 절을 "웹 — 화면 넷"으로 교체(로그인·<code>/admin</code>·
+          계좌 관리·<code>/me</code>, 역할 갈림길, 관리자 쓰기 2종 — 계좌 CRUD·슬롯 잠금 해제).
+          텔레그램 알림 절 신설(실패 즉시 + 일일 안내, "침묵이 신호" 논거). JOB 체인 12종 +
+          조건부 1(<code>daily_summary</code>)로 갱신. 정직한 한계 현행화(retries 수리 반영 ·
+          무인 관측 07-21 시작). 운영·검증을 runbook 기준으로 교체(572+107 green).</td></tr>
+        <tr><td class="mono">v6.0</td><td class="mono">2026-07-20</td>
           <td><b>전면 재작성 — JOB 체인 기준 정본화.</b> 구 11단계 러너 서술 전부 제거,
           JOB 12종·인사이더 채점(R8)·기각 2건·D1~D8·Alpaca 한도 반영.
           1차 대비 신규 항목 배지 표기. JOB 12종 상세 카드 + 전 테이블 컬럼 명세(schema.sql
