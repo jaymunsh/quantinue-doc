@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+# pydantic이 런타임에 필드 타입을 해석하므로 타입 전용 임포트로 옮길 수 없다.
+from quantinue.llm.budget import ModelPrice  # noqa: TC001
 from quantinue.roles.disclosure.insider import InsiderPolicy
 
 UTC_ZONE = ZoneInfo("UTC")
@@ -201,6 +203,10 @@ class BudgetConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     daily_llm_usd: float = Field(default=3.0, ge=0)
+    # 모델별 요율. 비어 있는 기본값이 맞다 — 로컬 LLM은 실제로 공짜이고,
+    # 요율이 필요한 것은 openai 모드뿐이다. 그 모드에서 선언이 빠지면
+    # 기동이 거부된다(``require_pricing_for``).
+    model_pricing: dict[str, ModelPrice] = Field(default_factory=dict)
 
 
 def _default_profiles() -> dict[str, ProfileConfig]:

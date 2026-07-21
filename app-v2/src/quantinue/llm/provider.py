@@ -44,6 +44,21 @@ class AnalysisMetadata(BaseModel):
     input_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class TokenUsage(BaseModel):
+    """What one call actually consumed, as the provider reported it.
+
+    추정치가 아니라 응답이 말한 값이다. 비용을 우리가 세는 대신 제공자가
+    센 것을 받아 적는 이유는, 토큰 계산을 우리가 재현하려는 순간 모델·
+    템플릿이 바뀔 때마다 조용히 틀리기 때문이다. 못 받으면 None이고,
+    그때는 비용을 0으로 적지 않고 **적지 않는다**(§budget).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    input_tokens: int = Field(ge=0)
+    output_tokens: int = Field(ge=0)
+
+
 class AnalysisResult(BaseModel):
     """Structured result accepted from any LLM provider."""
 
@@ -52,6 +67,9 @@ class AnalysisResult(BaseModel):
     score: float = Field(ge=0, le=1)
     label: str
     reason: str
+    # 과금 원장이 읽는 자리. mock은 공짜라 None이고, 로컬도 요율이 없으면
+    # 비용 0으로 적힌다 — 토큰 수 자체는 남겨 콜 규모를 볼 수 있게 한다.
+    usage: TokenUsage | None = None
     # 전략 태스크만 채우는 판단 서사. None 기본값이 설계다 — 서사는 부가물이라
     # 모델이 빼먹어도 분석이 죽으면 안 되고(구조화 출력 실패 = 종목 skip의
     # 전례), 서사가 없는 태스크(공시·뉴스·크리틱)는 애초에 만들지 않는다.
@@ -223,8 +241,26 @@ class PydanticAiAnalyzer:
             key_risk=_narrative(output.key_risk)
             if isinstance(output, StrategyModelOutput)
             else None,
+            usage=_usage(result),
             metadata=_metadata(self._model_name, self._provider, system_prompt, prompt),
         )
+
+
+def _usage(result: object) -> TokenUsage | None:
+    """Read what the provider said this run consumed, if it said anything.
+
+    재시도가 있었으면 그 시도들까지 합산된 값이 온다 — 지갑이 실제로 치른
+    것이 그것이므로 맞다. 값을 못 얻으면 0으로 적지 않고 None이다:
+    0은 "공짜였다"는 주장이고, 모르는 것을 그렇게 적으면 예산이 샌다.
+    """
+    # pydantic-ai 2.9에서 ``usage``는 메서드가 아니라 속성이다(실측).
+    usage = getattr(result, "usage", None)
+    if usage is None:
+        return None
+    return TokenUsage(
+        input_tokens=usage.input_tokens or 0,
+        output_tokens=usage.output_tokens or 0,
+    )
 
 
 class ModelInput(BaseModel):

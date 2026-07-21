@@ -19,8 +19,11 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, Final, Protocol, TypeAlias
 
 from quantinue.broker.mock import MockBroker
+from quantinue.core.config import LlmMode
 from quantinue.core.market_calendar import NyseCalendar
 from quantinue.db.domain_records import DailyPickWrite
+from quantinue.llm.budget import BudgetedAnalyzer, require_pricing_for
+from quantinue.llm.provider import build_llm_analyzer
 from quantinue.market_data.alpaca_bars import AlpacaBarSource
 from quantinue.market_data.alpaca_news import AlpacaNewsSource
 from quantinue.market_data.sec_daily_index import SecDailyIndexSource
@@ -56,12 +59,45 @@ if TYPE_CHECKING:
         RawDisclosureWrite,
         RawNewsWrite,
     )
+    from quantinue.llm.budget import LlmUsageLedger
     from quantinue.llm.provider import LlmAnalyzer
     from quantinue.market_data.models import MacroObservation, SecuritySnapshot
     from quantinue.orchestration.policy import Mvp2Config, ScreeningConfig
     from quantinue.roles.disclosure.insider import InsiderPolicy
     from quantinue.roles.exits import DailyObservation
     from quantinue.roles.screening import RankedCandidate
+
+
+def build_budgeted_analyzer(
+    settings: Settings,
+    config: Mvp2Config,
+    *,
+    ledger: LlmUsageLedger | None,
+    inner: LlmAnalyzer | None = None,
+) -> LlmAnalyzer:
+    """Wrap the provider analyzer in the day's spend ledger and ceiling.
+
+    로컬·mock까지 감싸는 것이 의도다. 공짜 모드에서도 콜 수와 토큰이 원장에
+    남아야 **전환 전에** 비용을 예측할 수 있고, openai로 바꾸는 순간
+    배선을 새로 하지 않아도 된다 — 그때 새로 만드는 배선이 곧 미검증 경로다.
+
+    원장이 없으면(메모리 스토어) 감싸지 않는다. 기록할 곳이 없는데 감싸면
+    상한이 늘 0원으로 보여 "예산이 지켜지고 있다"는 거짓 신호가 된다.
+    """
+    analyzer = inner if inner is not None else build_llm_analyzer(settings)
+    if ledger is None:
+        return analyzer
+    if settings.llm_mode is LlmMode.OPENAI:
+        # 과금 모드에서만 요율을 강제한다. 로컬은 실제로 공짜라 요율이 없는
+        # 것이 정확한 상태이고, 거기에 선언을 요구하면 없는 비용을 지어낸다.
+        require_pricing_for(settings.openai_model, config.budget.model_pricing)
+    return BudgetedAnalyzer(
+        analyzer,
+        ledger=ledger,
+        daily_limit_usd=config.budget.daily_llm_usd,
+        pricing=config.budget.model_pricing,
+    )
+
 
 TickerSource: TypeAlias = Callable[[date], Awaitable[tuple[str, ...]]]
 

@@ -86,8 +86,11 @@ async def test_mock_build_path_returns_the_common_schema_and_metadata() -> None:
         "reason",
         "bull_case",
         "key_risk",
+        "usage",
         "metadata",
     }
+    # mock은 네트워크에 안 나가므로 셀 토큰이 없다 — 과금 원장에 남을 것도 없다.
+    assert result.usage is None
     assert result.metadata.input_hash == sha256(b"same contract input").hexdigest()
     assert result.metadata.prompt_version
     assert result.metadata.policy_version
@@ -218,8 +221,12 @@ async def test_remote_build_paths_share_schema_and_metadata_contract(mode: LlmMo
         "reason",
         "bull_case",
         "key_risk",
+        "usage",
         "metadata",
     }
+    # 과금 원장의 입력은 우리가 세는 값이 아니라 **응답이 말한 값**이다.
+    assert result.usage is not None
+    assert (result.usage.input_tokens, result.usage.output_tokens) == (5, 3)
     assert result.metadata.model == "contract-model"
     assert result.metadata.input_hash == sha256(b"same contract input").hexdigest()
     assert result.metadata.prompt_version

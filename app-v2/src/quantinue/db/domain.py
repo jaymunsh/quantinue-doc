@@ -60,6 +60,7 @@ from quantinue.db.users import (
     set_account_profile,
     set_account_status,
 )
+from quantinue.llm.budget import LlmUsageRecord
 from quantinue.roles.analysis import AnalysisSubject
 from quantinue.roles.exits import DailyObservation, OpenPosition
 from quantinue.roles.role_01_universe_screener.contracts import UniverseScreenerOutput
@@ -88,6 +89,7 @@ _TABLES = (
     "tb_account_equity_daily",
     "tb_order",
     "tb_fill",
+    "tb_llm_usage",
 )
 
 
@@ -1929,6 +1931,35 @@ class PostgresDomainRepository:
                     )
                 }
             ).value
+
+    async def record_llm_usage(self, record: LlmUsageRecord) -> None:
+        """Append one model call to the spend ledger."""
+        table = self._table("tb_llm_usage")
+        async with self._engine.begin() as connection:
+            _ = await connection.execute(
+                insert(table).values(**record.model_dump())
+            )
+
+    async def llm_spend_on(self, day: date) -> Decimal:
+        """Return that UTC day's estimated spend, zero when nothing was called.
+
+        하루의 경계를 UTC 구간으로 못박는다. ``date(called_at)``으로 자르면
+        세션 타임존이 답을 바꾸는데, 그러면 서버를 옮기는 것만으로 예산의
+        하루가 달라진다 — AWS 이전이 예정된 이 앱에서 그건 실제 위험이다.
+        NULL 대신 0을 돌려주는 이유는 소비자가 곧바로 상한과 비교하기 때문이다.
+        """
+        table = self._table("tb_llm_usage")
+        start = datetime.combine(day, time(), tzinfo=UTC)
+        statement = select(
+            func.coalesce(func.sum(table.c.est_cost_usd), 0)
+        ).where(
+            and_(
+                table.c.called_at >= start,
+                table.c.called_at < start + timedelta(days=1),
+            )
+        )
+        async with self._engine.begin() as connection:
+            return Decimal(str(await connection.scalar(statement)))
 
     @property
     def engine(self) -> AsyncEngine:

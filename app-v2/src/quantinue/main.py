@@ -35,9 +35,12 @@ from quantinue.api.sessions import resolve_session_secret
 from quantinue.core.config import DatabaseMode, Settings
 from quantinue.core.logging import configure_logging
 from quantinue.db.store import build_run_store
-from quantinue.llm.provider import build_llm_analyzer
 from quantinue.market_data.factory import build_market_data
-from quantinue.orchestration.job_factory import JobSources, build_job_runner
+from quantinue.orchestration.job_factory import (
+    JobSources,
+    build_budgeted_analyzer,
+    build_job_runner,
+)
 from quantinue.orchestration.policy import load_mvp2_config
 
 if TYPE_CHECKING:
@@ -193,7 +196,14 @@ def create_app(settings: Settings | None = None, *, store: RunStore | None = Non
             # 같은 어댑터가 유니버스와 매크로를 모두 구현한다 — 필드가 갈라져
             # 있는 것은 테스트 조립의 타입 정직성 때문이다(JobSources 주석).
             macro=market_data,
-            analyzer=build_llm_analyzer(selected_settings),
+            # 판단 콜은 예산 원장을 통과한다. 원장은 도메인 저장소가 들고
+            # 있으므로(메모리 스토어에는 없다) 여기서 넘긴다 — 없으면 감싸지
+            # 않고, 그건 잡도 안 도는 설치라 예산을 지킬 대상 자체가 없다.
+            analyzer=build_budgeted_analyzer(
+                selected_settings,
+                mvp2_config,
+                ledger=getattr(selected_store, "domain", None),
+            ),
         ),
     )
 
