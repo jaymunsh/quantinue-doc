@@ -6,12 +6,10 @@
 {% block subheading %}<p>잡이 <b>언제</b>, <b>어떤 기준으로</b> 도는지. 이 화면의 숫자는 config와 잡 원장이 답하는 것만입니다.</p>{% endblock %}
 {% block breadcrumb %}<strong>관제실</strong><i>/</i><span>운영 기준</span>{% endblock %}
 {% block nav %}
-<nav class="nav-group" aria-label="섹션">
-  <p class="nav-label">운영</p>
-  <a class="nav-link" href="/admin">잡 체인</a>
-  <a class="nav-link" href="/admin/schedule" aria-current="page">운영 기준</a>
-  <a class="nav-link" href="/admin/logs">작동 로그</a>
-  <a class="nav-link" href="/admin/accounts">계좌 관리</a>
+{% with current = 'schedule' %}{% include "_admin_nav.html" %}{% endwith %}
+<nav class="nav-group nav-group--sections" aria-label="이 페이지">
+  <p class="nav-label">이 페이지</p>
+  <a class="nav-link nav-link--section" href="#jobs">잡 목록</a>
 </nav>
 {% endblock %}
 {% block main %}

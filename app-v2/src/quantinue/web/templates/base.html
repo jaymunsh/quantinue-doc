@@ -33,12 +33,15 @@
              원장은 UTC로 적힌다 — 그 관계를 화면이 말하지 않으면 일일 안내가
              오후 1시에 오는 이유를 매번 다시 계산해야 한다. #}
           <dl class="clock" aria-label="현재 시각">
-            <div class="clock__zone clock__zone--home">
-              <dt>서울</dt><dd data-clock="Asia/Seoul">--:--:--</dd>
+            {# 강조는 뉴욕이다 — 이 시스템의 '오늘'을 정하는 시계라서.
+               슬롯 날짜를 함께 붙여, 강조가 "중요한 도시"가 아니라
+               "기계가 보는 시계"라는 뜻이 되게 한다. #}
+            <div class="clock__zone clock__zone--basis">
+              <dt>뉴욕 <span class="clock__note">슬롯 기준</span></dt>
+              <dd data-clock="America/New_York">--:--:--<span class="clock__slot" data-clock-date="America/New_York">-------</span></dd>
             </div>
             <div class="clock__zone">
-              <dt>뉴욕 <span class="clock__note">슬롯 기준</span></dt>
-              <dd data-clock="America/New_York">--:--:--</dd>
+              <dt>서울</dt><dd data-clock="Asia/Seoul">--:--:--</dd>
             </div>
             <div class="clock__zone">
               <dt>UTC <span class="clock__note">원장 기준</span></dt>
@@ -72,14 +75,23 @@
        맞는 출처다. 원장의 시각은 이 시계가 아니라 각 행이 스스로 말한다. */
     (function () {
       var cells = document.querySelectorAll('[data-clock]');
+      var dates = document.querySelectorAll('[data-clockDate], [data-clock-date]');
       if (!cells.length) return;
       function paint() {
         var now = new Date();
         cells.forEach(function (cell) {
-          cell.textContent = now.toLocaleTimeString('ko-KR', {
+          var stamp = now.toLocaleTimeString('ko-KR', {
             timeZone: cell.dataset.clock, hour12: false,
             hour: '2-digit', minute: '2-digit', second: '2-digit'
           });
+          /* 날짜 자식이 있으면 시각만 갈아끼운다 — textContent로 통째로
+             덮으면 그 자식이 매초 지워진다. */
+          var child = cell.querySelector('[data-clock-date]');
+          if (child) { cell.firstChild.nodeValue = stamp; } else { cell.textContent = stamp; }
+        });
+        dates.forEach(function (cell) {
+          /* en-CA가 YYYY-MM-DD를 준다 — 슬롯 날짜와 같은 표기다. */
+          cell.textContent = now.toLocaleDateString('en-CA', { timeZone: cell.dataset.clockDate });
         });
       }
       paint();

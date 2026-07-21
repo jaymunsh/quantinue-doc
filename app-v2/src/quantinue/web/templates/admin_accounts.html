@@ -6,11 +6,11 @@
 {% block subheading %}<p>계좌를 개설하고, 성향과 운용 상태를 지정합니다.</p>{% endblock %}
 {% block breadcrumb %}<strong>관제실</strong><i>/</i><span>계좌 관리</span>{% endblock %}
 {% block nav %}
-<nav class="nav-group" aria-label="섹션">
-  <p class="nav-label">운영</p>
-  <a class="nav-link" href="/admin">잡 체인</a>
-  <a class="nav-link" href="/admin/schedule">운영 기준</a>
-  <a class="nav-link" href="/admin/accounts" aria-current="page">계좌 관리</a>
+{% with current = 'accounts' %}{% include "_admin_nav.html" %}{% endwith %}
+<nav class="nav-group nav-group--sections" aria-label="이 페이지">
+  <p class="nav-label">이 페이지</p>
+  <a class="nav-link nav-link--section" href="#accounts">계좌 목록</a>
+  <a class="nav-link nav-link--section" href="#open">계좌 개설</a>
 </nav>
 {% endblock %}
 {% block main %}

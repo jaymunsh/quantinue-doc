@@ -12,19 +12,16 @@
 {% endblock %}
 
 {% block nav %}
-{# 진짜 경로와 페이지 안 앵커가 섞여 있다. 계좌 관리는 W3-3에서 실제
-   화면이 됐고, 나머지는 아직 이 페이지의 섹션이다. #}
-<nav class="nav-group" aria-label="섹션">
-  <p class="nav-label">운영</p>
-  <a class="nav-link" href="/admin/schedule">운영 기준</a>
-  <a class="nav-link" href="/admin/accounts">계좌 관리</a>
-  <a class="nav-link" href="/admin/logs">작동 로그</a>
-  <p class="nav-label">운영 개요</p>
-  <a class="nav-link" href="#chain" aria-current="page">잡 체인</a>
-  <a class="nav-link" href="#allocation">배분</a>
-  <a class="nav-link" href="#judgements">판단과 반박</a>
-  <a class="nav-link" href="#accounts">계좌 곡선</a>
-  <a class="nav-link" href="#ledger">계좌 총람</a>
+{% with current = 'control' %}{% include "_admin_nav.html" %}{% endwith %}
+{# 아래는 이 페이지 안의 섹션이다. 화면 이동과 같은 무게로 두면 "어디로 갈
+   수 있나"와 "여기 뭐가 있나"가 구별되지 않는다. #}
+<nav class="nav-group nav-group--sections" aria-label="이 페이지">
+  <p class="nav-label">이 페이지</p>
+  <a class="nav-link nav-link--section" href="#chain">잡 체인</a>
+  <a class="nav-link nav-link--section" href="#allocation">배분</a>
+  <a class="nav-link nav-link--section" href="#judgements">판단과 반박</a>
+  <a class="nav-link nav-link--section" href="#accounts">계좌 곡선</a>
+  <a class="nav-link nav-link--section" href="#ledger">계좌 총람</a>
 </nav>
 {% endblock %}
 

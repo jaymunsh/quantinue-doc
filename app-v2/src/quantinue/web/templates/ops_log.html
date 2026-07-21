@@ -6,13 +6,7 @@
 {% block subheading %}<p>매일의 잡 체인이 돌았는지, 몇 번 돌았는지, 안내가 나갔는지를 날짜별로 봅니다. 숫자는 전부 잡 원장(tb_job_run)이 답하는 것만입니다.</p>{% endblock %}
 {% block breadcrumb %}<strong>관제실</strong><i>/</i><span>작동 로그</span>{% endblock %}
 {% block nav %}
-<nav class="nav-group" aria-label="섹션">
-  <p class="nav-label">운영</p>
-  <a class="nav-link" href="/admin">잡 체인</a>
-  <a class="nav-link" href="/admin/schedule">운영 기준</a>
-  <a class="nav-link" href="/admin/accounts">계좌 관리</a>
-  <a class="nav-link" href="/admin/logs" aria-current="page">작동 로그</a>
-</nav>
+{% with current = 'logs' %}{% include "_admin_nav.html" %}{% endwith %}
 {% endblock %}
 {% block main %}
 <section class="panel" id="log" aria-labelledby="log-title">
