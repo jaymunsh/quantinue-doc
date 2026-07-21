@@ -150,6 +150,29 @@ def test_the_page_renders_the_chain_in_execution_order() -> None:
     assert chain.index("universe") < chain.index("daily_bars") < chain.index("allocation")
 
 
+def test_a_retried_job_shows_its_attempt_count_in_the_chain() -> None:
+    """재시도는 성공 뒤에 숨는다 — 시도 횟수가 화면에 없으면 "한 번에 됐다"로 읽힌다."""
+    # Given
+    record = _job("news")
+    retried = JobRunRecord(
+        job_name=record.job_name,
+        slot_date=record.slot_date,
+        status=record.status,
+        detail=record.detail,
+        started_at=record.started_at,
+        finished_at=record.finished_at,
+        attempts=2,
+    )
+    reads = _StubReads(jobs=(retried,))
+
+    # When
+    with _client(reads) as client:
+        chain = _chain_list(client.get("/").text)
+
+    # Then
+    assert "2회 시도" in chain
+
+
 def test_a_chain_without_failures_does_not_claim_it_finished_everything() -> None:
     """등록된 잡 중 몇 개가 돌았는지는 원장이 모른다 — 분모를 지어내면 안 된다.
 

@@ -17,6 +17,7 @@
 <nav class="nav-group" aria-label="섹션">
   <p class="nav-label">운영</p>
   <a class="nav-link" href="/admin/accounts">계좌 관리</a>
+  <a class="nav-link" href="/admin/logs">작동 로그</a>
   <p class="nav-label">운영 개요</p>
   <a class="nav-link" href="#chain" aria-current="page"><b>{{ day.chain.jobs | length }}</b>잡 체인</a>
   <a class="nav-link" href="#allocation"><b>{{ day.allocation.bought }}</b>배분</a>
@@ -109,6 +110,7 @@
           <strong class="job-name">{{ job.job_name }}
             <span class="badge {% if job.status == 'succeeded' %}badge--success{% elif job.status == 'failed' %}badge--danger{% else %}badge--warning{% endif %} job-status">{{ job.status }}</span>
           </strong>
+          {% if job.attempts > 1 %}<span class="badge badge--warning">{{ job.attempts }}회 시도</span>{% endif %}
           {% if job.detail %}<small class="job-detail">{{ job.detail }}</small>{% endif %}
         </div>
         <time class="job-duration">{% if job.duration_ms is not none %}{{ (job.duration_ms / 1000) | round(1) }}s{% else %}진행 중{% endif %}</time>

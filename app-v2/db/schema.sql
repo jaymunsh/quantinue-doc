@@ -279,6 +279,9 @@ CREATE TABLE IF NOT EXISTS tb_job_run (
   job_name TEXT NOT NULL, slot_date DATE NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('running','succeeded','failed')),
   detail TEXT, started_at TIMESTAMPTZ NOT NULL DEFAULT now(), finished_at TIMESTAMPTZ,
+  -- 같은 슬롯을 몇 번 집었나(재시도 포함). started_at은 마지막 시도의 것만
+  -- 남으므로(결함 24 수리) 이 수가 없으면 "하루에 몇 번 돌았나"를 원장이 못 답한다.
+  attempts INT NOT NULL DEFAULT 1 CHECK (attempts > 0),
   PRIMARY KEY (job_name, slot_date),
   CHECK ((status = 'running') = (finished_at IS NULL))
 );

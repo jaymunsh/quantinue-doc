@@ -37,6 +37,8 @@ class JobRunRecord:
     detail: str | None
     started_at: datetime
     finished_at: datetime | None
+    # 같은 슬롯의 시도 횟수(재시도 포함). 1이 정상이고 2+는 그날 실패가 있었다는 뜻.
+    attempts: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,7 +147,8 @@ async def job_runs(engine: AsyncEngine, slot_date: date) -> tuple[JobRunRecord, 
                 text(
                     dedent(
                         """
-                        SELECT job_name, slot_date, status, detail, started_at, finished_at
+                        SELECT job_name, slot_date, status, detail,
+                               started_at, finished_at, attempts
                         FROM tb_job_run
                         WHERE slot_date = :slot_date
                         ORDER BY started_at, job_name
@@ -163,6 +166,7 @@ async def job_runs(engine: AsyncEngine, slot_date: date) -> tuple[JobRunRecord, 
             detail=row.detail,
             started_at=row.started_at,
             finished_at=row.finished_at,
+            attempts=row.attempts,
         )
         for row in rows
     )

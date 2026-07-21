@@ -1041,6 +1041,7 @@ class PostgresDomainRepository:
                     "detail": None,
                     "started_at": func.now(),
                     "finished_at": None,
+                    "attempts": table.c.attempts + 1,
                 },
                 where=table.c.status == "failed",
             )

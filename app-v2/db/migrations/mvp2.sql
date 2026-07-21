@@ -206,9 +206,16 @@ CREATE TABLE IF NOT EXISTS tb_job_run (
   job_name TEXT NOT NULL, slot_date DATE NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('running','succeeded','failed')),
   detail TEXT, started_at TIMESTAMPTZ NOT NULL DEFAULT now(), finished_at TIMESTAMPTZ,
+  -- 같은 슬롯을 몇 번 집었나(재시도 포함). started_at은 마지막 시도의 것만
+  -- 남으므로(결함 24 수리) 이 수가 없으면 "하루에 몇 번 돌았나"를 원장이 못 답한다.
+  attempts INT NOT NULL DEFAULT 1 CHECK (attempts > 0),
   PRIMARY KEY (job_name, slot_date),
   CHECK ((status = 'running') = (finished_at IS NULL))
 );
+-- 기존 설치는 CREATE IF NOT EXISTS가 건너뛰므로 컬럼을 따로 더한다(멱등).
+-- 이미 있으면 CHECK까지 통째로 스킵된다 — 제약이 중복 생성되지 않는다.
+ALTER TABLE tb_job_run
+  ADD COLUMN IF NOT EXISTS attempts INT NOT NULL DEFAULT 1 CHECK (attempts > 0);
 
 -- Phase 2: 공시 원시 원장. 신규 테이블이라 무손실.
 CREATE TABLE IF NOT EXISTS tb_disclosure_raw (

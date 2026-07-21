@@ -49,6 +49,9 @@ class JobRunView(BaseModel):
     started_at: datetime
     finished_at: datetime | None
     duration_ms: int | None = Field(default=None, ge=0)
+    # 같은 슬롯의 시도 횟수. 재시도는 성공 뒤에 숨으므로 화면이 이 수를
+    # 말하지 않으면 "한 번에 됐다"로 읽힌다.
+    attempts: int = Field(default=1, ge=1)
 
 
 class ChainView(BaseModel):
@@ -185,6 +188,7 @@ def chain_view(slot_date: date | None, records: tuple[JobRunRecord, ...]) -> Cha
             started_at=record.started_at,
             finished_at=record.finished_at,
             duration_ms=_duration_ms(record),
+            attempts=record.attempts,
         )
         for record in records
     )

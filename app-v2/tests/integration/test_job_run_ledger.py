@@ -38,6 +38,29 @@ async def test_a_slot_can_be_reserved_once_and_only_once() -> None:
 
 
 @pytest.mark.anyio
+async def test_a_retry_is_counted_so_the_day_shows_how_many_times_it_ran() -> None:
+    """"하루에 몇 번 돌았나"는 원장이 답해야 한다 — 화면이 지어내면 안 된다."""
+    # Given: 첫 시도가 실패로 끝났다
+    assert DATABASE_URL is not None
+    store = PostgresRunStore(DATABASE_URL)
+    await store.initialize()
+    day = date(2026, 7, 11)
+    assert await store.domain.reserve_job_run("ledger-attempts", day) is True
+    await store.domain.finish_job_run("ledger-attempts", day, succeeded=False, detail="boom")
+
+    # When: 같은 날 재시도가 슬롯을 다시 집는다
+    assert await store.domain.reserve_job_run("ledger-attempts", day) is True
+    await store.domain.finish_job_run("ledger-attempts", day, succeeded=True, detail="ok")
+
+    # Then: 시도 횟수가 2로 남는다
+    rows = await store.domain.job_runs(day)
+    row = next(item for item in rows if item.job_name == "ledger-attempts")
+    assert row.attempts == 2
+    assert row.status == "succeeded"
+    await store.close()
+
+
+@pytest.mark.anyio
 async def test_different_jobs_and_days_do_not_block_each_other() -> None:
     # Given
     assert DATABASE_URL is not None

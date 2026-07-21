@@ -252,6 +252,7 @@ CHECKS = {
         # 상태와 종료시각이 어긋난 행을 만들 수 없게 묶는다 — running인데
         # 끝난 시각이 있거나, 끝났는데 없는 행은 주기 판정을 거짓으로 만든다.
         ("status", "finished_at"): ("'running'", "finished_at is null"),
+        ("attempts",): ("attempts >",),
     },
     "tb_macro": {
         ("regime",): ("'risk_on'", "'risk_off'"),

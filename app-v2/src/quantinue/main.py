@@ -21,6 +21,7 @@ from quantinue.api.admin_accounts import build_admin_accounts_router
 from quantinue.api.auth import session_user
 from quantinue.api.login_routes import build_auth_router
 from quantinue.api.my_account import MyAccountView, my_account_view
+from quantinue.api.ops_log import OpsLogView, build_ops_log
 from quantinue.api.pipeline_day import (
     DEFAULT_CURVE_DAYS,
     build_pipeline_day,
@@ -119,6 +120,28 @@ async def _owned_account(reads: object | None, current: object | None) -> UserAc
 def _landing_target(current: object | None) -> str:
     """Pick the screen this role owns. 부트스트랩(세션 없음)은 관제실로 보낸다."""
     return "/me" if current is not None and not current.is_admin else "/admin"
+
+
+def _mount_ops_log(
+    app: FastAPI,
+    templates: Jinja2Templates,
+    reads: object | None,
+    settings: Settings,
+) -> None:
+    """Mount the day-by-day operations log page."""
+
+    @app.get("/admin/logs", response_class=HTMLResponse)
+    async def ops_log(request: Request) -> HTMLResponse:
+        log = OpsLogView() if reads is None else await build_ops_log(reads)
+        return templates.TemplateResponse(
+            request=request,
+            name="ops_log.html",
+            context={
+                "log": log,
+                "settings": settings,
+                "current_user": session_user(request),
+            },
+        )
 
 
 async def _account_roster(reads: object | None) -> AccountRosterView:
@@ -294,6 +317,8 @@ def create_app(settings: Settings | None = None, *, store: RunStore | None = Non
                 "current_user": session_user(request),
             },
         )
+
+    _mount_ops_log(app, templates, control_room_reads, selected_settings)
 
     @app.get("/api/accounts", response_model=AccountRosterView)
     async def accounts_observability() -> AccountRosterView:
