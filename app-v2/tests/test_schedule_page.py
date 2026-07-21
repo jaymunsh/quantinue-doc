@@ -108,3 +108,5 @@ def test_the_schedule_page_explains_the_clock_and_lists_the_jobs() -> None:
     body = response.text
     assert "뉴욕" in body  # 슬롯 기준이 무엇인지
     assert "13:00" in body  # 서울에서 하루가 바뀌는 시각
+    # "매일"은 하루 몇 번인지 말하지 않는다 — 1회 보장이 화면에 있어야 한다.
+    assert "거래일마다 1회" in body

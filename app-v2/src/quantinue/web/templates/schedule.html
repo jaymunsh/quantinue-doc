@@ -42,8 +42,11 @@
       아래 표의 번호가 그 순서입니다.
     </li>
     <li>
-      <b>러너는 {{ schedule.tick_seconds }}초마다 깨어납니다.</b>
-      깨어나서 밀린 잡만 집습니다. 정규장이 없는 날(주말·공휴일)은 아무것도 돌지 않습니다 — 정상입니다.
+      <b>러너는 {{ schedule.tick_seconds }}초마다 깨어나지만, 잡은 하루 1회만 돕니다.</b>
+      깨어나는 것은 "아직 안 돌았나" 확인일 뿐이고, "한 슬롯에 한 번"은 원장(tb_job_run)의
+      키가 강제합니다 — 앱을 껐다 켜도 같은 날 두 번 돌지 않습니다.
+      예외는 하나, <b>실패한 잡만</b> 같은 날 다시 집습니다(작동 로그의 "시도 N회").
+      정규장이 없는 날(주말·공휴일)은 아무것도 돌지 않습니다 — 정상입니다.
     </li>
   </ol>
   <div class="basis-state">
@@ -75,7 +78,7 @@
         <td data-label="#" class="mono">{{ job.order }}</td>
         <td data-label="잡" class="mono"><strong>{{ job.job_name }}</strong></td>
         <td data-label="무엇을 하나">{{ job.summary }}</td>
-        <td data-label="주기" class="mono">{% if job.interval_days == 1 %}매일{% else %}{{ job.interval_days }}일마다{% endif %}</td>
+        <td data-label="주기" class="mono">{% if job.interval_days == 1 %}거래일마다 1회{% else %}{{ job.interval_days }}일마다 1회{% endif %}</td>
         <td data-label="마지막 성공" class="mono">{{ job.last_success or '없음' }}</td>
         <td data-label="다음">
           {% if not job.enabled %}<span class="log-day__chip">꺼짐</span>
