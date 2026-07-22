@@ -4,7 +4,7 @@ from decimal import Decimal
 import pytest
 
 from quantinue.market_data.models import LatestTrade
-from quantinue.orchestration.policy import WatchConfig
+from quantinue.orchestration.policy import RejudgeConfig, WatchConfig
 from quantinue.orchestration.watch_runner import WatchRunner
 from quantinue.roles.exits import ExitDecision, ExitReason, OpenPosition
 
@@ -26,6 +26,11 @@ def _position() -> OpenPosition:
 class _Domain:
     async def open_positions(self) -> tuple[OpenPosition, ...]:
         return (_position(),)
+
+    async def reference_closes(
+        self, tickers: tuple[str, ...], *, before: date
+    ) -> dict[str, Decimal]:
+        return {ticker: Decimal("100.00") for ticker in tickers}
 
 
 class _Quotes:
@@ -61,6 +66,17 @@ class _Notify:
 
     async def __call__(self, message: str) -> None:
         self.messages.append(message)
+
+
+class _Rejudge:
+    def __init__(self) -> None:
+        self.calls: list[tuple[datetime, dict[str, Decimal]]] = []
+
+    async def run(
+        self, *, now: datetime, prices: dict[str, Decimal]
+    ) -> int:
+        self.calls.append((now, prices))
+        return 1
 
 
 @pytest.mark.anyio
@@ -136,3 +152,49 @@ async def test_open_tick_fetches_held_quotes_and_closes_in_the_same_tick() -> No
     assert len(notify.messages) == 1
     assert "NVDA 2주" in notify.messages[0]
     assert "손절" in notify.messages[0]
+
+
+@pytest.mark.anyio
+async def test_five_percent_move_rejudges_once_inside_the_cooldown() -> None:
+    # Given
+    quotes = _Quotes()
+    quotes.latest_trades = lambda tickers: _latest_trade(tickers, "105.00")
+    rejudge = _Rejudge()
+    runner = WatchRunner(
+        WatchConfig(enabled=True, rejudge=RejudgeConfig(enabled=True)),
+        domain=_Domain(),
+        quotes=quotes,
+        exits=_NoExit(),
+        rejudge=rejudge,
+    )
+    first = datetime(2026, 7, 20, 14, 0, tzinfo=UTC)
+
+    # When
+    first_outcome = await runner.tick(first)
+    second_outcome = await runner.tick(first.replace(minute=29))
+
+    # Then
+    assert first_outcome.rejudged == 1
+    assert second_outcome.rejudged == 0
+    assert rejudge.calls == [(first, {"NVDA": Decimal("105.00")})]
+
+
+async def _latest_trade(
+    tickers: tuple[str, ...], price: str
+) -> tuple[LatestTrade, ...]:
+    return tuple(
+        LatestTrade(
+            ticker=ticker,
+            price=Decimal(price),
+            observed_at=datetime(2026, 7, 20, 14, 0, tzinfo=UTC),
+            source="fixture",
+        )
+        for ticker in tickers
+    )
+
+
+class _NoExit:
+    async def run_brackets(
+        self, *, as_of: date, prices: dict[str, Decimal]
+    ) -> tuple[ExitDecision, ...]:
+        return ()

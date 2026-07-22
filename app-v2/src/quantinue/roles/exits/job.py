@@ -26,13 +26,19 @@ from quantinue.db.domain_records import (
     CompletedFillWrite,
     StrategistSignalWrite,
 )
-from quantinue.roles.exits.contracts import DailyObservation, decide_bracket, decide_exit
+from quantinue.roles.exits.contracts import (
+    DailyObservation,
+    ExitDecision,
+    ExitReason,
+    decide_bracket,
+    decide_exit,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from datetime import date
 
-    from quantinue.roles.exits.contracts import ExitDecision, OpenPosition
+    from quantinue.roles.exits.contracts import OpenPosition
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +95,25 @@ class ExitJob:
                 continue
             decision = decide_bracket(position, price)
             if decision is not None and await self._execute(decision, as_of=as_of):
+                closed.append(decision)
+        return tuple(closed)
+
+    async def run_soft_sells(
+        self,
+        *,
+        as_of: date,
+        prices: Mapping[str, Decimal],
+        profiles: Mapping[str, frozenset[str]],
+    ) -> tuple[ExitDecision, ...]:
+        """Close only holdings whose persona approved the refreshed sell."""
+        closed: list[ExitDecision] = []
+        for position in await self._open_positions():
+            price = prices.get(position.ticker)
+            approved = profiles.get(position.ticker, frozenset())
+            if price is None or position.inv_type not in approved:
+                continue
+            decision = ExitDecision(position, ExitReason.THESIS_SOFT, price)
+            if await self._execute(decision, as_of=as_of):
                 closed.append(decision)
         return tuple(closed)
 

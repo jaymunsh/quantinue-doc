@@ -32,6 +32,7 @@ from quantinue.market_data.sec_daily_index import SecDailyIndexSource
 from quantinue.market_data.sec_ownership import SecOwnershipSource
 from quantinue.market_data.wire_news import WireRssSource, default_wire_feeds
 from quantinue.notify.telegram import build_failure_notifier
+from quantinue.orchestration.intraday_rejudge import IntradayRejudgeEngine
 from quantinue.orchestration.job_runner import JobDefinition, JobRunner
 from quantinue.orchestration.watch_runner import LatestTradeSource, WatchRunner
 from quantinue.roles.allocation.job import AllocationJob
@@ -99,6 +100,7 @@ def build_budgeted_analyzer(
         analyzer,
         ledger=ledger,
         daily_limit_usd=config.budget.daily_llm_usd,
+        sell_budget_reserve_ratio=config.watch.rejudge.sell_budget_reserve_ratio,
         pricing=config.budget.model_pricing,
     )
 
@@ -918,6 +920,7 @@ def build_watch_runner(
     *,
     store: object,
     quotes: LatestTradeSource | None = None,
+    analyzer: LlmAnalyzer | None = None,
 ) -> WatchRunner | None:
     """Assemble intraday bracket watching when a durable portfolio is available."""
     domain = getattr(store, "domain", None)
@@ -941,16 +944,35 @@ def build_watch_runner(
                 assert_never(unreachable)
     if source is None:
         return None
+    exit_job = ExitJob(
+        store=store,
+        broker=MockBroker(),
+        time_exit_bdays=config.exits.time_exit_bdays,
+    )
+    rejudge = None
+    if config.watch.rejudge.enabled and analyzer is not None:
+        rejudge = IntradayRejudgeEngine(
+            domain=domain,
+            jobs=tuple(
+                AnalysisJob(
+                    store=store,
+                    analyzer=analyzer,
+                    gates=config.gates,
+                    profile=profile,
+                    profile_name=name,
+                    headlines_per_ticker=config.news.headlines_per_ticker,
+                )
+                for name, profile in config.profiles.items()
+            ),
+            exits=exit_job,
+        )
     return WatchRunner(
         config.watch,
         domain=domain,
         quotes=source,
-        exits=ExitJob(
-            store=store,
-            broker=MockBroker(),
-            time_exit_bdays=config.exits.time_exit_bdays,
-        ),
+        exits=exit_job,
         notifier=build_failure_notifier(settings),
+        rejudge=rejudge,
     )
 
 

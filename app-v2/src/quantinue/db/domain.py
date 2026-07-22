@@ -626,6 +626,34 @@ class PostgresDomainRepository:
             )
         return tuple(sorted(latest.values(), key=lambda item: item.rank))
 
+    async def reference_closes(
+        self, tickers: tuple[str, ...], *, before: date
+    ) -> dict[str, Decimal]:
+        """Return each ticker's newest closed-session price before a watch date."""
+        if not tickers:
+            return {}
+        bars = self._table("tb_daily_bar")
+        ranked = (
+            select(
+                bars.c.ticker,
+                bars.c.close,
+                func.row_number()
+                .over(partition_by=bars.c.ticker, order_by=bars.c.trade_date.desc())
+                .label("position"),
+            )
+            .where(bars.c.ticker.in_(tickers), bars.c.trade_date < before)
+            .subquery()
+        )
+        async with self._engine.begin() as connection:
+            rows = (
+                await connection.execute(
+                    select(ranked.c.ticker, ranked.c.close).where(
+                        ranked.c.position == 1
+                    )
+                )
+            ).all()
+        return {row.ticker: Decimal(str(row.close)) for row in rows}
+
     async def disclosure_evidence(
         self, session: date, tickers: tuple[str, ...]
     ) -> dict[str, tuple[str, ...]]:

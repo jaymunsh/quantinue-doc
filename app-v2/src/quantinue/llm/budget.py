@@ -71,12 +71,13 @@ class LlmUsageLedger(Protocol):
 class BudgetedAnalyzer:
     """Wraps an analyzer so every billable call is counted and capped."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - 한 가드는 원장·한도·예약·요율·시계를 함께 소유한다.
         self,
         inner: LlmAnalyzer,
         *,
         ledger: LlmUsageLedger,
         daily_limit_usd: float,
+        sell_budget_reserve_ratio: float = 0.0,
         pricing: dict[str, ModelPrice],
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
@@ -84,6 +85,9 @@ class BudgetedAnalyzer:
         self._inner = inner
         self._ledger = ledger
         self._limit = Decimal(str(daily_limit_usd))
+        self._general_limit = self._limit * (
+            Decimal(1) - Decimal(str(sell_budget_reserve_ratio))
+        )
         self._pricing = pricing
         self._now = now
 
@@ -91,13 +95,33 @@ class BudgetedAnalyzer:
         self, task: AnalysisTask, prompt: str, *, profile: str | None = None
     ) -> AnalysisResult:
         """Refuse, or run the wrapped call and write what it cost to the ledger."""
+        return await self._analyze(
+            task, prompt, profile=profile, spending_limit=self._general_limit
+        )
+
+    async def analyze_reserved(
+        self, task: AnalysisTask, prompt: str, *, profile: str | None = None
+    ) -> AnalysisResult:
+        """Use the sell-only reserve for a holding rejudgement call."""
+        return await self._analyze(
+            task, prompt, profile=profile, spending_limit=self._limit
+        )
+
+    async def _analyze(
+        self,
+        task: AnalysisTask,
+        prompt: str,
+        *,
+        profile: str | None,
+        spending_limit: Decimal,
+    ) -> AnalysisResult:
         called_at = self._now()
         spent = await self._ledger.llm_spend_on(called_at.date())
-        if spent >= self._limit:
+        if spent >= spending_limit:
             # 남은 예산으로 살 수 없으면 **안 산다**. 여기서 중립 결과를
             # 지어내 돌려주면 판단 없이 주문이 나가는 길이 열린다 —
             # 분석 잡은 예외를 종목 단위로 격리하므로 이 종목만 건너뛴다.
-            message = f"daily llm budget exhausted: {spent} >= {self._limit}"
+            message = f"daily llm budget exhausted: {spent} >= {spending_limit}"
             raise LlmBudgetExceededError(message)
         result = await self._inner.analyze(task, prompt, profile=profile)
         usage = result.usage

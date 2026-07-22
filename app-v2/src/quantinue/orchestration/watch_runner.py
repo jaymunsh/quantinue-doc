@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import TYPE_CHECKING, Literal, Protocol
 
 import anyio
@@ -15,7 +16,6 @@ from quantinue.roles.exits.alerts import format_exit_alert
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
     from datetime import date
-    from decimal import Decimal
 
     from quantinue.market_data.models import LatestTrade
     from quantinue.orchestration.policy import WatchConfig
@@ -27,6 +27,12 @@ class WatchDomain(Protocol):
 
     async def open_positions(self) -> tuple[OpenPosition, ...]:
         """Return every position that remains open."""
+        ...
+
+    async def reference_closes(
+        self, tickers: tuple[str, ...], *, before: date
+    ) -> Mapping[str, Decimal]:
+        """Return the last closed-session price before the intraday tick."""
         ...
 
 
@@ -48,6 +54,14 @@ class BracketExitExecutor(Protocol):
         ...
 
 
+class RejudgeExecutor(Protocol):
+    """Re-run the shared proposal and critic path for triggered holdings."""
+
+    async def run(self, *, now: datetime, prices: Mapping[str, Decimal]) -> int:
+        """Return how many holdings the refreshed judgement closed."""
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class WatchOutcome:
     """One observable result from an intraday watch tick."""
@@ -55,6 +69,7 @@ class WatchOutcome:
     reason: Literal["disabled", "market_closed", "ready"]
     watched: int = 0
     closed: int = 0
+    rejudged: int = 0
 
 
 class WatchRunner:
@@ -68,6 +83,7 @@ class WatchRunner:
         quotes: LatestTradeSource | None = None,
         exits: BracketExitExecutor | None = None,
         notifier: Callable[[str], Awaitable[None]] | None = None,
+        rejudge: RejudgeExecutor | None = None,
     ) -> None:
         """Bind the watch policy to the shared NYSE calendar adapter."""
         self._config = config
@@ -76,6 +92,8 @@ class WatchRunner:
         self._quotes = quotes
         self._exits = exits
         self._notifier = notifier
+        self._rejudge = rejudge
+        self._last_rejudged_at: dict[str, datetime] = {}
         self._logger: structlog.stdlib.BoundLogger = structlog.get_logger("watch")
 
     async def tick(self, now: datetime) -> WatchOutcome:
@@ -96,7 +114,57 @@ class WatchRunner:
         closed = await self._exits.run_brackets(as_of=as_of, prices=prices)
         if closed and self._notifier is not None:
             await self._notifier(format_exit_alert(as_of, closed))
-        return WatchOutcome("ready", watched=len(tickers), closed=len(closed))
+        rejudged = await self._rejudge_moves(
+            now,
+            positions=positions,
+            prices=prices,
+            closed_order_ids={decision.position.order_id for decision in closed},
+        )
+        return WatchOutcome(
+            "ready", watched=len(tickers), closed=len(closed) + rejudged, rejudged=rejudged
+        )
+
+    async def _rejudge_moves(
+        self,
+        now: datetime,
+        *,
+        positions: tuple[OpenPosition, ...],
+        prices: Mapping[str, Decimal],
+        closed_order_ids: set[int],
+    ) -> int:
+        """Send material, cooled-down price moves to the shared LLM path."""
+        policy = self._config.rejudge
+        if not policy.enabled or self._rejudge is None or self._domain is None:
+            return 0
+        active = tuple(
+            dict.fromkeys(
+                position.ticker
+                for position in positions
+                if position.order_id not in closed_order_ids
+            )
+        )
+        if not active:
+            return 0
+        references = await self._domain.reference_closes(
+            active, before=now.astimezone(NEW_YORK).date()
+        )
+        cooldown = timedelta(minutes=policy.cooldown_minutes)
+        triggered: dict[str, Decimal] = {}
+        for ticker in active:
+            price = prices.get(ticker)
+            reference = references.get(ticker)
+            if price is None or reference is None or reference <= 0:
+                continue
+            if abs(price - reference) / reference < Decimal(str(policy.move_trigger_pct)):
+                continue
+            previous = self._last_rejudged_at.get(ticker)
+            if previous is None or now - previous >= cooldown:
+                triggered[ticker] = price
+        if not triggered:
+            return 0
+        closed = await self._rejudge.run(now=now, prices=triggered)
+        self._last_rejudged_at.update(dict.fromkeys(triggered, now))
+        return closed
 
     async def run_forever(self) -> None:
         """Tick forever while isolating failures from the application lifespan."""

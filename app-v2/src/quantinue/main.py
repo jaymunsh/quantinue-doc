@@ -261,6 +261,11 @@ def create_app(settings: Settings | None = None, *, store: RunStore | None = Non
     # 어댑터를 한 번만 만든다. 예전에는 유니버스용·매크로용으로 두 번 만들어
     # 하나는 아무도 닫지 않았다 — 러너가 자기 것만 소유했기 때문이다.
     market_data = build_market_data(selected_settings)
+    analyzer = build_budgeted_analyzer(
+        selected_settings,
+        mvp2_config,
+        ledger=getattr(selected_store, "domain", None),
+    )
     job_runner = build_job_runner(
         selected_settings,
         mvp2_config,
@@ -273,17 +278,14 @@ def create_app(settings: Settings | None = None, *, store: RunStore | None = Non
             # 판단 콜은 예산 원장을 통과한다. 원장은 도메인 저장소가 들고
             # 있으므로(메모리 스토어에는 없다) 여기서 넘긴다 — 없으면 감싸지
             # 않고, 그건 잡도 안 도는 설치라 예산을 지킬 대상 자체가 없다.
-            analyzer=build_budgeted_analyzer(
-                selected_settings,
-                mvp2_config,
-                ledger=getattr(selected_store, "domain", None),
-            ),
+            analyzer=analyzer,
         ),
     )
     watch_runner = build_watch_runner(
         selected_settings,
         mvp2_config,
         store=selected_store,
+        analyzer=analyzer,
     )
 
     app = FastAPI(

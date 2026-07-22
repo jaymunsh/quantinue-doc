@@ -200,6 +200,18 @@ class JobsConfig(BaseModel):
         return self.cadences.get(job_name, JobCadenceConfig())
 
 
+class RejudgeConfig(BaseModel):
+    """LLM rejudgement limits inside the regular-session watch loop."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: bool = False
+    move_trigger_pct: float = Field(default=0.05, gt=0, le=1)
+    cooldown_minutes: int = Field(default=30, gt=0, le=390)
+    sweep_times_ny: tuple[str, ...] = ("10:00", "12:45", "15:15")
+    sell_budget_reserve_ratio: float = Field(default=0.20, ge=0, le=1)
+
+
 class WatchConfig(BaseModel):
     """Regular-session polling policy for the intraday watch runner."""
 
@@ -208,6 +220,7 @@ class WatchConfig(BaseModel):
     enabled: bool = False
     interval_minutes: int = Field(default=1, gt=0, le=60)
     session: Literal["regular"] = "regular"
+    rejudge: RejudgeConfig = RejudgeConfig()
 
 
 class BudgetConfig(BaseModel):

@@ -151,6 +151,10 @@ class _Domain:
     async def open_positions(self) -> tuple[OpenPosition, ...]:
         return self._positions
 
+    async def ensure_holding_in_scope(self, trade_date: date, ticker: str) -> bool:
+        del trade_date
+        return ticker in {subject.ticker for subject in self._subjects}
+
     async def save_signal(self, value: StrategistSignalWrite) -> int:
         self.signals.append(value)
         return len(self.signals)
@@ -232,6 +236,24 @@ async def test_a_held_ticker_whose_thesis_collapsed_is_sold() -> None:
     # Then
     assert outcomes[0].side == "sell"
     assert domain.signals[0].side == "sell"
+
+
+@pytest.mark.anyio
+async def test_intraday_rejudge_persists_the_current_price_and_tick_time() -> None:
+    # Given
+    domain = _Domain((_subject("HELD", rank=15, score=0.1),), (_position("HELD"),))
+    now = datetime(2026, 7, 17, 15, 5, tzinfo=UTC)
+
+    # When
+    result = await _job(domain, _Analyzer(strategy=0.1)).run_intraday(
+        now=now, prices={"HELD": Decimal("94.00")}
+    )
+
+    # Then
+    assert result.outcomes[0].side == "sell"
+    assert domain.signals[0].decision_close == Decimal("94.00")
+    assert domain.signals[0].cycle_ts == now
+    assert domain.signals[0].run_id.startswith("rejudge:")
 
 
 @pytest.mark.anyio

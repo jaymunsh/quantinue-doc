@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, time
 from decimal import Decimal
 from typing import TYPE_CHECKING, Final
@@ -92,6 +92,48 @@ class AnalysisJob:
         """Decide, verify, and persist one signal per ticker in scope."""
         domain = getattr(self.store, "domain", self.store)
         subjects = await domain.analysis_subjects(as_of, session)
+        cycle_ts = datetime.combine(as_of, time(), tzinfo=UTC)
+        return await self._run_subjects(
+            domain, subjects, as_of=as_of, session=session, cycle_ts=cycle_ts
+        )
+
+    async def run_intraday(
+        self, *, now: datetime, prices: dict[str, Decimal]
+    ) -> AnalysisRun:
+        """Rejudge held tickers at current prices through the daily contracts."""
+        domain = getattr(self.store, "domain", self.store)
+        as_of = now.astimezone(UTC).date()
+        session = self.calendar.previous_trading_day(as_of)
+        scoped = [
+            ticker
+            for ticker in prices
+            if await domain.ensure_holding_in_scope(as_of, ticker)
+        ]
+        subjects = await domain.analysis_subjects(as_of, session)
+        current = tuple(
+            replace(
+                subject,
+                close=prices[subject.ticker],
+                high=prices[subject.ticker],
+                low=prices[subject.ticker],
+            )
+            for subject in subjects
+            if subject.ticker in scoped
+        )
+        return await self._run_subjects(
+            domain, current, as_of=as_of, session=session, cycle_ts=now
+        )
+
+    async def _run_subjects(
+        self,
+        domain: object,
+        subjects: tuple[AnalysisSubject, ...],
+        *,
+        as_of: date,
+        session: date,
+        cycle_ts: datetime,
+    ) -> AnalysisRun:
+        """Run one already-priced scope through evidence, proposal, and critic."""
         if not subjects:
             return AnalysisRun(())
         tickers = tuple(subject.ticker for subject in subjects)
@@ -123,6 +165,7 @@ class AnalysisJob:
                     macro,
                     indicators.get(subject.ticker),
                     as_of=as_of,
+                    cycle_ts=cycle_ts,
                     disclosure_score=disclosure_scores.get(subject.ticker),
                 )
             except Exception:  # noqa: BLE001 - 종목 하나의 실패를 격리하는 자리다
@@ -196,19 +239,33 @@ class AnalysisJob:
         indicators: RankedCandidate | None,
         *,
         as_of: date,
+        cycle_ts: datetime,
         disclosure_score: float | None = None,
     ) -> AnalysisOutcome | None:
         """Run one ticker through evidence synthesis, the gates, and the critic."""
-        cycle_ts = datetime.combine(as_of, time(), tzinfo=UTC)
-        run_id = analysis_run_id(as_of, self.profile_name)
-        evidence = await self.analyzer.analyze(
-            AnalysisTask.STRATEGY,
-            analysis_prompt(subject, holding, filings, headlines, indicators),
-            # 성향이 여기서 끊기면 두 페르소나가 같은 시스템 프롬프트로 돌고,
-            # 원장에는 inv_type만 다른 **같은 확신도**가 두 줄 남는다.
-            # 실제로 그랬다 — 문턱만 다르고 판단은 하나였다.
-            profile=self.profile_name,
+        midnight = datetime.combine(as_of, time(), tzinfo=UTC)
+        run_id = (
+            analysis_run_id(as_of, self.profile_name)
+            if cycle_ts == midnight
+            else f"rejudge:{cycle_ts.isoformat()}:{self.profile_name}"
         )
+        strategy_prompt = analysis_prompt(
+            subject, holding, filings, headlines, indicators
+        )
+        reserved_analyze = getattr(self.analyzer, "analyze_reserved", None)
+        if holding.quantity > 0 and reserved_analyze is not None:
+            evidence = await reserved_analyze(
+                AnalysisTask.STRATEGY, strategy_prompt, profile=self.profile_name
+            )
+        else:
+            evidence = await self.analyzer.analyze(
+                AnalysisTask.STRATEGY,
+                strategy_prompt,
+                # 성향이 여기서 끊기면 두 페르소나가 같은 시스템 프롬프트로 돌고,
+                # 원장에는 inv_type만 다른 **같은 확신도**가 두 줄 남는다.
+                # 실제로 그랬다 — 문턱만 다르고 판단은 하나였다.
+                profile=self.profile_name,
+            )
         strategy_input = StrategyInput(
             run_id=run_id,
             ticker=subject.ticker,
@@ -369,16 +426,18 @@ class AnalysisJob:
         )
         if blocked is not None:
             return blocked.model_copy(update={"skipped_rules": skipped})
-        review = await self.analyzer.analyze(
-            AnalysisTask.CRITIC,
-            critique_prompt(
-                subject,
-                decision.side,
-                decision.conviction,
-                decision.summary,
-                indicators,
-            ),
+        prompt = critique_prompt(
+            subject,
+            decision.side,
+            decision.conviction,
+            decision.summary,
+            indicators,
         )
+        reserved_analyze = getattr(self.analyzer, "analyze_reserved", None)
+        if decision.side == "sell" and reserved_analyze is not None:
+            review = await reserved_analyze(AnalysisTask.CRITIC, prompt)
+        else:
+            review = await self.analyzer.analyze(AnalysisTask.CRITIC, prompt)
         threshold = max(self.gates.critic_approval, 0.0)
         if decision.conviction >= self.gates.overconfidence_conviction:
             # 과신할수록 반박을 더 세게 통과해야 한다(M4 승인 문턱 규칙 승계).

@@ -112,6 +112,12 @@ mvp2:
     enabled: false
     interval_minutes: 1
     session: regular
+    rejudge:
+      enabled: false
+      move_trigger_pct: 0.05
+      cooldown_minutes: 30
+      sweep_times_ny: ["10:00", "12:45", "15:15"]
+      sell_budget_reserve_ratio: 0.20
   market_data:
     # 한 요청에 넣을 종목 수(요청 수가 아니라 **한 요청의 크기**다). URL 길이가
     # 안전한 값에서 잡았다.

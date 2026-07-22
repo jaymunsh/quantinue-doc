@@ -84,12 +84,16 @@ class StubAnalyzer:
 
 
 def _analyzer(
-    inner: StubAnalyzer, ledger: RecordingLedger, limit: float = 3.0
+    inner: StubAnalyzer,
+    ledger: RecordingLedger,
+    limit: float = 3.0,
+    reserve: float = 0.0,
 ) -> BudgetedAnalyzer:
     return BudgetedAnalyzer(
         inner,
         ledger=ledger,
         daily_limit_usd=limit,
+        sell_budget_reserve_ratio=reserve,
         pricing={"gpt-x": ModelPrice(input_usd_per_1m=1.0, output_usd_per_1m=4.0)},
         now=lambda: datetime(2026, 7, 21, 4, 0, tzinfo=UTC),
     )
@@ -124,6 +128,22 @@ async def test_exhausted_budget_stops_the_call_before_the_model_is_reached() -> 
 
     assert inner.calls == 0
     assert ledger.records == []
+
+
+@pytest.mark.anyio
+async def test_sell_reserve_blocks_general_calls_but_keeps_sell_calls_open() -> None:
+    # Given
+    ledger = RecordingLedger(opening_spend=Decimal("2.41"))
+    inner = StubAnalyzer(TokenUsage(input_tokens=1_000, output_tokens=500))
+    analyzer = _analyzer(inner, ledger, limit=3.0, reserve=0.20)
+
+    # When / Then
+    with pytest.raises(LlmBudgetExceededError):
+        await analyzer.analyze(AnalysisTask.STRATEGY, "buy")
+    result = await analyzer.analyze_reserved(AnalysisTask.STRATEGY, "sell")
+
+    assert result.score == 0.5
+    assert inner.calls == 1
 
 
 @pytest.mark.anyio
