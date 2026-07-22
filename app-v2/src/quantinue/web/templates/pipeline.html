@@ -154,6 +154,29 @@
     </ol>
   </section>
 
+  <section class="panel" id="protection" aria-labelledby="protection-title">
+    <div class="panel__head">
+      <div>
+        <h2 id="protection-title">방어선 발동 내역</h2>
+        <p>실제로 매도 체결까지 끝난 청산만 보여줍니다.</p>
+      </div>
+      <span class="badge{% if day.exits %} badge--warning{% endif %}">{{ day.exits | length }}건</span>
+    </div>
+    {% if day.exits %}
+    <ol class="event-list">
+      {% for event in day.exits %}
+      <li class="event-record">
+        <span class="badge badge--warning">{{ event.reason_label }}</span>
+        <div><strong>{{ event.ticker }} · {{ event.quantity }}주</strong><small>{{ event.account }}</small></div>
+        <div class="event-record__meta"><strong>${{ '{:,.2f}'.format(event.price) }}</strong><time datetime="{{ event.filled_at.isoformat() }}">{{ event.filled_at | kst }}</time></div>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p class="ledger-empty">선택한 슬롯에는 매도 체결로 남은 방어선 발동이 없습니다.</p>
+    {% endif %}
+  </section>
+
   <div class="grid-2">
     <section class="panel" id="allocation" aria-labelledby="allocation-title">
       <div class="panel__head">

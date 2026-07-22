@@ -319,6 +319,7 @@ def test_with_credentials_collection_is_registered_before_the_exit_job() -> None
     assert runner is not None
     assert [job.name for job in runner.jobs] == [
         "daily_bars",
+        "benchmark_spy",
         "disclosures",
         "news",
         "news_wire",
@@ -604,6 +605,7 @@ def test_the_universe_job_is_registered_first() -> None:
     assert [job.name for job in runner.jobs] == [
         "universe",
         "daily_bars",
+        "benchmark_spy",
         "disclosures",
         "news",
         "news_wire",

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, time
+from decimal import Decimal
 from textwrap import dedent
 from typing import TYPE_CHECKING
 
@@ -22,7 +23,6 @@ from sqlalchemy import text
 
 if TYPE_CHECKING:
     from datetime import date
-    from decimal import Decimal
 
     from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -65,6 +65,14 @@ class AccountEquityPoint:
     # ``DEMO-AGGRESSIVE-01``이라 부르는 계좌를 곡선은 ``#20``이라 부른다 —
     # 한 화면이 같은 계좌를 두 이름으로 말하게 된다.
     broker_account_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class BenchmarkPriceRecord:
+    """One persisted benchmark close."""
+
+    price_date: date
+    close: Decimal
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +120,18 @@ class WatchActivityRecord:
     ticker_count: int
 
 
+@dataclass(frozen=True, slots=True)
+class ExitEventRecord:
+    """One completed close with its durable rule reason."""
+
+    ticker: str
+    broker_account_id: str
+    reason: str
+    quantity: int
+    price: Decimal
+    filled_at: datetime
+
+
 async def latest_job_slot(engine: AsyncEngine) -> date | None:
     """Return the most recent slot the job runner touched, if it ever ran."""
     async with engine.begin() as connection:
@@ -141,6 +161,43 @@ async def watch_activity(
         latest_at=row.latest_at,
         signal_count=int(row.signal_count),
         ticker_count=int(row.ticker_count),
+    )
+
+
+async def exit_events(engine: AsyncEngine, trade_date: date) -> tuple[ExitEventRecord, ...]:
+    """List completed closes attributed to the selected trading slot."""
+    async with engine.begin() as connection:
+        rows = (
+            await connection.execute(
+                text(
+                    dedent(
+                        """
+                        SELECT o.ticker, a.broker_account_id,
+                               replace(s.summary, ' exit', '') AS reason,
+                               f.quantity, f.price, f.filled_at
+                        FROM tb_fill AS f
+                        JOIN tb_order AS o ON o.id = f.order_id
+                        JOIN tb_account AS a ON a.id = o.account_id
+                        JOIN tb_strategist_signals AS s ON s.id = o.signal_id
+                        WHERE f.side = 'sell'
+                          AND s.trade_date = :day
+                        ORDER BY f.filled_at DESC, f.id DESC
+                        """
+                    )
+                ),
+                {"day": trade_date},
+            )
+        ).all()
+    return tuple(
+        ExitEventRecord(
+            ticker=row.ticker,
+            broker_account_id=row.broker_account_id,
+            reason=row.reason,
+            quantity=int(row.quantity),
+            price=Decimal(str(row.price)),
+            filled_at=row.filled_at,
+        )
+        for row in rows
     )
 
 

@@ -23,6 +23,7 @@ from quantinue.api.pipeline_presentation import (
     allocation_view,
     chain_view,
     equity_curve_views,
+    exit_event_views,
     profile_judgement_views,
 )
 
@@ -60,6 +61,7 @@ if TYPE_CHECKING:
     from quantinue.db.control_room_reads import (
         AccountEquityPoint,
         AccountOverviewRecord,
+        ExitEventRecord,
         JobRunRecord,
         JudgementRecord,
         OrderPlanRecord,
@@ -108,6 +110,10 @@ class ControlRoomReads(Protocol):
         """
         ...
 
+    async def exit_events(self, trade_date: date) -> tuple[ExitEventRecord, ...]:
+        """Return completed closes for one slot day."""
+        ...
+
 
 def empty_pipeline_day() -> PipelineDayView:
     """Return the view for an installation whose jobs have never run.
@@ -147,4 +153,5 @@ async def build_pipeline_day(
         slots=slots,
         llm=await _llm_spend(reads, selected, llm_limit_usd),
         watch=await _watch_activity(reads, selected),
+        exits=exit_event_views(await reads.exit_events(selected)),
     )

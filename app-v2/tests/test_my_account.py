@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
-from quantinue.api.my_account import my_account_view
+from quantinue.api.my_account import BenchmarkPoint, my_account_view
 from quantinue.db.control_room_reads import AccountEquityPoint
 from quantinue.db.domain_records import AccountHoldingRecord, TradeTimelineRecord
 from quantinue.db.users import UserAccount
@@ -102,6 +102,25 @@ def test_a_single_day_of_history_yields_no_return() -> None:
 
     # Then
     assert view.return_pct is None
+
+
+def test_account_return_is_compared_with_spy_over_the_same_dates() -> None:
+    # Given
+    curve = (
+        AccountEquityPoint(7, date(2026, 7, 17), Decimal(1000)),
+        AccountEquityPoint(7, date(2026, 7, 20), Decimal(1100)),
+    )
+    benchmark = (
+        BenchmarkPoint(price_date=date(2026, 7, 17), close=Decimal(500)),
+        BenchmarkPoint(price_date=date(2026, 7, 20), close=Decimal(525)),
+    )
+
+    # When
+    view = my_account_view(_ACCOUNT, (), curve, benchmark=benchmark)
+
+    # Then
+    assert view.benchmark_return_pct == "5.00"
+    assert view.excess_return_pct == "5.00"
 
 
 def _trade(ticker: str, *, side: str, summary: str | None) -> TradeTimelineRecord:

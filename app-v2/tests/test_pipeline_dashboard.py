@@ -17,6 +17,7 @@ from quantinue.core.config import Settings
 from quantinue.db.control_room_reads import (
     AccountEquityPoint,
     AccountOverviewRecord,
+    ExitEventRecord,
     JobRunRecord,
     JudgementRecord,
     OrderPlanRecord,
@@ -42,6 +43,7 @@ class _StubReads:
         judged: tuple[JudgementRecord, ...] = (),
         older_slots: tuple[date, ...] = (),
         accounts: tuple[AccountOverviewRecord, ...] = (),
+        exits: tuple[ExitEventRecord, ...] = (),
     ) -> None:
         self._older_slots = older_slots
         self._slot_date = slot_date
@@ -50,6 +52,7 @@ class _StubReads:
         self._equity = equity
         self._judged = judged
         self._accounts = accounts
+        self._exits = exits
 
     async def latest_job_slot(self) -> date | None:
         return self._slot_date
@@ -73,6 +76,9 @@ class _StubReads:
 
     async def account_overviews(self) -> tuple[AccountOverviewRecord, ...]:
         return self._accounts
+
+    async def exit_events(self, trade_date: date) -> tuple[ExitEventRecord, ...]:
+        return self._exits if trade_date == self._slot_date else ()
 
 
 class _LedgerStore(InMemoryRunStore):
@@ -205,6 +211,33 @@ def test_watch_card_reports_only_persisted_intraday_activity() -> None:
     assert "판단 기록 있음" in body
     assert "종목</dt><dd>2개" in body
     assert "성향별 시그널</dt><dd>4건" in body
+
+
+def test_the_control_room_shows_durable_protection_events() -> None:
+    # Given
+    reads = _StubReads(
+        jobs=(_job("exits"),),
+        exits=(
+            ExitEventRecord(
+                ticker="AAA",
+                broker_account_id="DEMO-01",
+                reason="stop",
+                quantity=3,
+                price=Decimal("91.25"),
+                filled_at=_START,
+            ),
+        ),
+    )
+
+    # When
+    with _client(reads) as client:
+        body = client.get("/").text
+
+    # Then
+    assert "방어선 발동 내역" in body
+    assert "AAA" in body
+    assert "손절" in body
+    assert "DEMO-01" in body
 
 
 def test_a_retried_job_shows_its_attempt_count_in_the_chain() -> None:

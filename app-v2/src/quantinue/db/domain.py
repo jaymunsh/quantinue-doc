@@ -15,11 +15,14 @@ from quantinue.db.contracts import AppOrderExposureStatus
 from quantinue.db.control_room_reads import (
     AccountEquityPoint,
     AccountOverviewRecord,
+    BenchmarkPriceRecord,
+    ExitEventRecord,
     JobRunRecord,
     JudgementRecord,
     OrderPlanRecord,
     WatchActivityRecord,
     account_equity_series,
+    exit_events,
     job_runs,
     judgements,
     latest_job_slot,
@@ -83,6 +86,7 @@ _TABLES = (
     "tb_critic_verdict",
     "tb_order_plan",
     "tb_daily_bar",
+    "tb_benchmark_price",
     "tb_job_run",
     "tb_disclosure_raw",
     "tb_news_raw",
@@ -451,6 +455,54 @@ class PostgresDomainRepository:
                 )
             ).all()
         return {row.ticker: float(row.sentiment_score) for row in rows}
+
+    async def benchmark_coverage(self, ticker: str) -> date | None:
+        """Return the newest persisted benchmark date."""
+        table = self._table("tb_benchmark_price")
+        async with self._engine.begin() as connection:
+            return await connection.scalar(
+                select(func.max(table.c.price_date)).where(table.c.ticker == ticker)
+            )
+
+    async def save_benchmark_bars(self, bars: tuple[DailyBarWrite, ...]) -> None:
+        """Upsert benchmark closes from the shared daily-bar adapter."""
+        if not bars:
+            return
+        table = self._table("tb_benchmark_price")
+        statement = insert(table)
+        statement = statement.on_conflict_do_update(
+            index_elements=["price_date", "ticker"],
+            set_={"close": statement.excluded.close},
+        )
+        async with self._engine.begin() as connection:
+            _ = await connection.execute(
+                statement,
+                [
+                    {"price_date": bar.trade_date, "ticker": bar.ticker, "close": bar.close}
+                    for bar in bars
+                ],
+            )
+
+    async def benchmark_prices(
+        self, ticker: str, start: date, end: date
+    ) -> tuple[BenchmarkPriceRecord, ...]:
+        """Read benchmark closes across an inclusive window."""
+        table = self._table("tb_benchmark_price")
+        async with self._engine.begin() as connection:
+            rows = (
+                await connection.execute(
+                    select(table.c.price_date, table.c.close)
+                    .where(
+                        table.c.ticker == ticker,
+                        table.c.price_date >= start,
+                        table.c.price_date <= end,
+                    )
+                    .order_by(table.c.price_date)
+                )
+            ).all()
+        return tuple(
+            BenchmarkPriceRecord(row.price_date, Decimal(str(row.close))) for row in rows
+        )
 
     async def save_daily_bars(self, bars: tuple[DailyBarWrite, ...]) -> None:
         """Upsert one session's bars, letting a later collection correct an earlier one.
@@ -1683,6 +1735,10 @@ class PostgresDomainRepository:
     async def watch_activity(self, trade_date: date) -> WatchActivityRecord | None:
         """Delegate the intraday ledger summary to the control-room reader."""
         return await watch_activity(self._engine, trade_date)
+
+    async def exit_events(self, trade_date: date) -> tuple[ExitEventRecord, ...]:
+        """Delegate completed-close history to the control-room reader."""
+        return await exit_events(self._engine, trade_date)
 
     async def account_holdings(self, account_id: int) -> tuple[AccountHoldingRecord, ...]:
         """List one account's open positions with the close that marks them.

@@ -64,6 +64,15 @@ class CurvePointView(BaseModel):
     equity: Decimal
 
 
+class BenchmarkPoint(BaseModel):
+    """One persisted SPY close used for an owner-visible comparison."""
+
+    model_config = ConfigDict(frozen=True)
+
+    price_date: date
+    close: Decimal
+
+
 class TimelineEntryView(BaseModel):
     """One fill with the judgement that caused it, as the owner reads it."""
 
@@ -109,6 +118,8 @@ class MyAccountView(BaseModel):
     equity: Decimal
     return_pct: str | None = None
     baseline_date: date | None = None
+    benchmark_return_pct: str | None = None
+    excess_return_pct: str | None = None
     holdings: tuple[HoldingView, ...] = ()
     curve: tuple[CurvePointView, ...] = ()
     timeline: tuple[TimelineEntryView, ...] = ()
@@ -153,22 +164,36 @@ def _timeline_view(record: TradeTimelineRecord) -> TimelineEntryView:
     )
 
 
-def my_account_view(
+def my_account_view(  # noqa: PLR0913 - each argument is one independent ledger axis
     account: UserAccount,
     holdings: tuple[AccountHoldingRecord, ...],
     curve: tuple[AccountEquityPoint, ...],
     timeline: tuple[TradeTimelineRecord, ...] = (),
     macro: MacroSnapshot | None = None,
+    *,
+    benchmark: tuple[BenchmarkPoint, ...] = (),
 ) -> MyAccountView:
     """Project one account's ledger rows into the page the owner reads."""
     ordered = tuple(sorted(curve, key=lambda point: point.trade_date))
+    account_return = _return_pct(ordered)
+    benchmark_return = _benchmark_return_pct(ordered, benchmark)
     return MyAccountView(
         broker_account_id=account.broker_account_id,
         inv_type=account.inv_type,
         status=account.status,
         cash=account.cash,
         equity=account.equity,
-        return_pct=_return_pct(ordered),
+        return_pct=account_return,
+        benchmark_return_pct=benchmark_return,
+        excess_return_pct=(
+            None
+            if account_return is None or benchmark_return is None
+            else str(
+                (Decimal(account_return) - Decimal(benchmark_return)).quantize(
+                    _CENT, rounding=ROUND_HALF_UP
+                )
+            )
+        ),
         baseline_date=ordered[0].trade_date if ordered else None,
         holdings=tuple(_holding_view(record) for record in holdings),
         curve=tuple(
@@ -202,4 +227,18 @@ def _return_pct(curve: tuple[AccountEquityPoint, ...]) -> str | None:
         # 0으로 시작한 계좌의 수익률은 정의되지 않는다 — 나누지 않는다.
         return None
     change = (curve[-1].equity - baseline) / baseline * _PERCENT
+    return str(change.quantize(_CENT, rounding=ROUND_HALF_UP))
+
+
+def _benchmark_return_pct(
+    curve: tuple[AccountEquityPoint, ...], benchmark: tuple[BenchmarkPoint, ...]
+) -> str | None:
+    if len(curve) < _MIN_CURVE_POINTS:
+        return None
+    closes = {point.price_date: point.close for point in benchmark}
+    first = closes.get(curve[0].trade_date)
+    last = closes.get(curve[-1].trade_date)
+    if first is None or last is None or first == 0:
+        return None
+    change = (last - first) / first * _PERCENT
     return str(change.quantize(_CENT, rounding=ROUND_HALF_UP))

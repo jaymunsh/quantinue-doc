@@ -24,6 +24,7 @@ from quantinue.core.ontology import Decision
 if TYPE_CHECKING:
     from quantinue.db.control_room_reads import (
         AccountEquityPoint,
+        ExitEventRecord,
         JobRunRecord,
         JudgementRecord,
         OrderPlanRecord,
@@ -178,6 +179,20 @@ class WatchActivityView(BaseModel):
     ticker_count: int = Field(ge=0)
 
 
+class ExitEventView(BaseModel):
+    """A completed protective or judgement-driven close."""
+
+    model_config = ConfigDict(frozen=True)
+
+    ticker: str
+    account: str
+    reason: str
+    reason_label: str
+    quantity: int = Field(gt=0)
+    price: Decimal = Field(gt=0)
+    filled_at: datetime
+
+
 class PipelineDayView(BaseModel):
     """Everything the control room reports about one pipeline day."""
 
@@ -191,6 +206,32 @@ class PipelineDayView(BaseModel):
     # 지출 원장이 있는 스토어에서만 채워진다 — 없으면 카드를 그리지 않는다.
     llm: LlmSpendView | None = None
     watch: WatchActivityView | None = None
+    exits: tuple[ExitEventView, ...] = ()
+
+
+_EXIT_LABELS = {
+    "stop": "손절",
+    "take_profit": "익절",
+    "time": "기간 청산",
+    "thesis_break": "명제 붕괴",
+    "thesis_soft": "판단 반전",
+}
+
+
+def exit_event_views(records: tuple[ExitEventRecord, ...]) -> tuple[ExitEventView, ...]:
+    """Translate machine exit reasons without hiding unknown future values."""
+    return tuple(
+        ExitEventView(
+            ticker=record.ticker,
+            account=record.broker_account_id,
+            reason=record.reason,
+            reason_label=_EXIT_LABELS.get(record.reason, record.reason),
+            quantity=record.quantity,
+            price=record.price,
+            filled_at=record.filled_at,
+        )
+        for record in records
+    )
 
 
 def _duration_ms(record: JobRunRecord) -> int | None:

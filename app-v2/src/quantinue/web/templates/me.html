@@ -39,7 +39,7 @@
   <div class="metric-grid">
     <article class="metric metric--primary">
       <div class="metric__top"><span>총자산</span></div>
-      <strong class="metric__value">${{ '{:,.2f}'.format(view.equity) }}</strong>
+      <strong class="metric__value metric__value--money">${{ '{:,.2f}'.format(view.equity) }}</strong>
       {# 수익률은 기준일이 있을 때만 적는다. 없을 때 0%를 그리면 "안 움직였다"로
          읽히는데, 사실은 아직 비교할 날이 없다는 뜻이다. #}
       {% if view.return_pct is not none %}
@@ -50,7 +50,17 @@
     </article>
     <article class="metric">
       <div class="metric__top"><span>현금</span></div>
-      <strong class="metric__value">${{ '{:,.2f}'.format(view.cash) }}</strong>
+      <strong class="metric__value metric__value--money">${{ '{:,.2f}'.format(view.cash) }}</strong>
+    </article>
+    <article class="metric">
+      <div class="metric__top"><span>SPY 대비</span></div>
+      {% if view.excess_return_pct is not none %}
+      <strong class="metric__value">{% if not view.excess_return_pct.startswith('-') %}+{% endif %}{{ view.excess_return_pct }}%p</strong>
+      <span class="metric__delta">계좌 {{ view.return_pct }}% · SPY {{ view.benchmark_return_pct }}%</span>
+      {% else %}
+      <strong class="metric__value">—</strong>
+      <span class="metric__delta">같은 기준일의 SPY 종가가 더 필요합니다</span>
+      {% endif %}
     </article>
     <article class="metric">
       <div class="metric__top"><span>보유 종목</span></div>
@@ -63,7 +73,7 @@
     <article class="metric">
       <div class="metric__top"><span>평가손익</span></div>
       {% if marked %}
-      <strong class="metric__value">{% if pnl >= 0 %}+{% endif %}${{ '{:,.2f}'.format(pnl) }}</strong>
+      <strong class="metric__value metric__value--money">{% if pnl >= 0 %}+{% endif %}${{ '{:,.2f}'.format(pnl) }}</strong>
       <span class="metric__delta {% if pnl < 0 %}metric__delta--bad{% elif pnl > 0 %}metric__delta--good{% endif %}">보유 {{ marked | length }}종목 종가 기준</span>
       {% else %}
       <strong class="metric__value">—</strong>
@@ -100,7 +110,7 @@
   <div class="panel__head">
     <div>
       <h2 id="holdings-title">보유 종목</h2>
-      <p>평가액은 가장 최근 일봉 종가 기준입니다. 자동 청산은 매수 시점에 걸린 손절·익절 조건이며, 장중이 아니라 일봉 고저로 판정합니다.</p>
+      <p>평가액은 가장 최근 일봉 종가 기준입니다. 자동 청산은 매수 시점에 걸린 손절·익절 조건이며, 장중 감시 가격으로 판정합니다.</p>
     </div>
   </div>
   {% if view.holdings %}

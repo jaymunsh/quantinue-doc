@@ -30,6 +30,7 @@ from quantinue.market_data.sec_daily_index import SecDailyIndexSource
 from quantinue.market_data.sec_ownership import SecOwnershipSource
 from quantinue.market_data.wire_news import WireRssSource, default_wire_feeds
 from quantinue.notify.telegram import build_failure_notifier
+from quantinue.orchestration.benchmark_job import build_benchmark_job
 from quantinue.orchestration.job_runner import JobDefinition, JobRunner
 from quantinue.roles.allocation.job import AllocationJob
 from quantinue.roles.analysis.job import AnalysisJob
@@ -719,6 +720,14 @@ def _collection_jobs(  # noqa: PLR0913 - 협력자 목록이지 옵션 스프롤
                 source=bar_source,
                 domain=domain,
                 tickers=covered_tickers,
+                calendar=calendar,
+                history_days=config.market_data.history_days,
+            )
+        )
+        jobs.append(
+            build_benchmark_job(
+                source=bar_source,
+                ledger=domain,
                 calendar=calendar,
                 history_days=config.market_data.history_days,
             )

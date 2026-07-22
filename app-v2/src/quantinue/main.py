@@ -20,7 +20,7 @@ from quantinue.api.account_roster import AccountRosterView, account_roster_view
 from quantinue.api.admin_accounts import build_admin_accounts_router
 from quantinue.api.auth import session_user
 from quantinue.api.login_routes import build_auth_router
-from quantinue.api.my_account import MyAccountView, my_account_view
+from quantinue.api.my_account import BenchmarkPoint, MyAccountView, my_account_view
 from quantinue.api.ops_log import OpsLogView, build_ops_log
 from quantinue.api.pipeline_day import (
     DEFAULT_CURVE_DAYS,
@@ -229,7 +229,16 @@ async def _my_account(reads: object | None, account: UserAccount) -> MyAccountVi
     )
     macro_reader = getattr(reads, "latest_macro_observation", None)
     macro = None if macro_reader is None else await macro_reader()
-    return my_account_view(account, holdings, curve, timeline, macro)
+    benchmark_reader = getattr(reads, "benchmark_prices", None)
+    benchmark = (
+        ()
+        if benchmark_reader is None or not curve
+        else tuple(
+            BenchmarkPoint(price_date=point.price_date, close=point.close)
+            for point in await benchmark_reader("SPY", curve[0].trade_date, curve[-1].trade_date)
+        )
+    )
+    return my_account_view(account, holdings, curve, timeline, macro, benchmark=benchmark)
 
 
 def create_app(settings: Settings | None = None, *, store: RunStore | None = None) -> FastAPI:
