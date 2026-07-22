@@ -11,7 +11,7 @@ import pytest
 from pydantic import SecretStr
 from pydantic_settings import SettingsConfigDict
 
-from quantinue.core.config import Settings
+from quantinue.core.config import DataMode, Settings
 from quantinue.core.market_calendar import NyseCalendar
 from quantinue.db.domain_records import DailyBarWrite, KnownListing, RawNewsWrite
 from quantinue.llm.provider import DeterministicAnalyzer
@@ -26,9 +26,10 @@ from quantinue.orchestration.job_factory import (
     build_macro_job,
     build_news_job,
     build_universe_job,
-    build_watch_runner,
 )
-from quantinue.orchestration.policy import Mvp2Config, ScreeningConfig
+from quantinue.orchestration.policy import Mvp2Config, ScreeningConfig, WatchConfig
+from quantinue.orchestration.watch_factory import build_watch_runner
+from quantinue.orchestration.watch_policy import WatchStreamConfig
 from quantinue.roles.exits import DailyObservation
 
 if TYPE_CHECKING:
@@ -189,9 +190,7 @@ async def test_the_exit_job_is_a_no_op_without_holdings() -> None:
     # Given
     domain = _Domain()
     inner = _ExitJob()
-    job = build_exit_job(
-        domain=domain, exit_job=inner, tickers=_held(), calendar=NyseCalendar()
-    )
+    job = build_exit_job(domain=domain, exit_job=inner, tickers=_held(), calendar=NyseCalendar())
 
     # When
     detail = await job.run(_MONDAY)
@@ -265,12 +264,26 @@ def test_watch_runner_is_built_with_an_injected_quote_source() -> None:
     store = _Store(_HoldingDomain(()))
 
     # When
-    runner = build_watch_runner(
-        _settings(), Mvp2Config(), store=store, quotes=FixtureMarketData()
-    )
+    runner = build_watch_runner(_settings(), Mvp2Config(), store=store, quotes=FixtureMarketData())
 
     # Then
     assert runner is not None
+
+
+def test_public_watch_builds_a_live_stream_only_when_explicitly_enabled() -> None:
+    # Given
+    store = _Store(_HoldingDomain(()))
+    settings = _settings(key="key", secret="secret").model_copy(
+        update={"data_mode": DataMode.PUBLIC}
+    )
+    config = Mvp2Config(watch=WatchConfig(stream=WatchStreamConfig(enabled=True)))
+
+    # When
+    runner = build_watch_runner(settings, config, store=store)
+
+    # Then
+    assert runner is not None
+    assert runner.has_live_stream is True
 
 
 def test_without_alpaca_credentials_only_the_exit_job_is_registered() -> None:
@@ -300,9 +313,7 @@ def test_with_credentials_collection_is_registered_before_the_exit_job() -> None
     store = _Store(_HoldingDomain(("AAA",)))
 
     # When
-    runner = build_job_runner(
-        _settings(key="k", secret="s"), Mvp2Config(), store=store
-    )
+    runner = build_job_runner(_settings(key="k", secret="s"), Mvp2Config(), store=store)
 
     # Then
     assert runner is not None
@@ -357,9 +368,7 @@ class _UniverseDomain(_HoldingDomain):
     async def save_universe(self, value: UniverseScreenerOutput) -> None:
         self.universes.append(value)
 
-    async def last_known_listings(
-        self, tickers: tuple[str, ...]
-    ) -> dict[str, KnownListing]:
+    async def last_known_listings(self, tickers: tuple[str, ...]) -> dict[str, KnownListing]:
         return {t: self.known[t] for t in tickers if t in self.known}
 
     async def last_job_success(self, job_name: str) -> date | None:
@@ -393,9 +402,7 @@ async def test_the_universe_job_stamps_the_snapshot_with_the_day_it_ran() -> Non
     # Given
     source = _Screener((_snapshot("AAA", 300), _snapshot("BBB", 200)))
     domain = _UniverseDomain()
-    job = build_universe_job(
-        source=source, domain=domain, held=_held(), config=ScreeningConfig()
-    )
+    job = build_universe_job(source=source, domain=domain, held=_held(), config=ScreeningConfig())
 
     # When
     detail = await job.run(_MONDAY)
@@ -412,9 +419,7 @@ async def test_the_universe_job_ranks_by_market_cap() -> None:
     # Given
     source = _Screener((_snapshot("SMALL", 10), _snapshot("BIG", 900)))
     domain = _UniverseDomain()
-    job = build_universe_job(
-        source=source, domain=domain, held=_held(), config=ScreeningConfig()
-    )
+    job = build_universe_job(source=source, domain=domain, held=_held(), config=ScreeningConfig())
 
     # When
     _ = await job.run(_MONDAY)
@@ -448,9 +453,7 @@ async def test_listing_feed_members_are_labelled_listed() -> None:
     # Given
     source = _Screener((_snapshot("AAA", 300),))
     domain = _UniverseDomain()
-    job = build_universe_job(
-        source=source, domain=domain, held=_held(), config=ScreeningConfig()
-    )
+    job = build_universe_job(source=source, domain=domain, held=_held(), config=ScreeningConfig())
 
     # When
     _ = await job.run(_MONDAY)
@@ -560,9 +563,7 @@ async def test_bars_cover_the_universe_snapshot_as_well_as_holdings() -> None:
     _ = await bars.run(_MONDAY)
 
     # Then: 보유가 앞, 유니버스가 뒤, 중복은 한 번만
-    assert source.calls == [
-        (_FRIDAY - timedelta(days=400), _FRIDAY, ("HELD", "UNIA", "UNIB"))
-    ]
+    assert source.calls == [(_FRIDAY - timedelta(days=400), _FRIDAY, ("HELD", "UNIA", "UNIB"))]
 
 
 @pytest.mark.anyio
@@ -675,7 +676,6 @@ def test_insider_scoring_needs_no_credentials() -> None:
     # Then
     assert runner is not None
     assert "insider_scoring" in [job.name for job in runner.jobs]
-
 
 
 class _NewsSource:
@@ -868,9 +868,7 @@ def test_the_daily_note_is_registered_last_when_telegram_is_configured() -> None
     """요약할 것이 있으려면 앞의 잡들이 먼저 끝나야 한다 — 순서가 곧 실행 순서다."""
     # Given
     store = _Store(_HoldingDomain(("AAA",)))
-    settings = _Isolated(
-        telegram_bot_token=SecretStr("token"), telegram_chat_id="chat"
-    )
+    settings = _Isolated(telegram_bot_token=SecretStr("token"), telegram_chat_id="chat")
 
     # When
     runner = build_job_runner(settings, Mvp2Config(), store=store)

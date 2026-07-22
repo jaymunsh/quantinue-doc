@@ -1,7 +1,12 @@
 import pytest
 from pydantic import ValidationError
 
-from quantinue.orchestration.policy import Mvp2Config, RejudgeConfig, WatchConfig
+from quantinue.orchestration.policy import (
+    Mvp2Config,
+    RejudgeConfig,
+    WatchConfig,
+)
+from quantinue.orchestration.watch_policy import WatchStreamConfig
 
 
 def test_watch_config_defaults_to_a_disabled_one_minute_regular_session() -> None:
@@ -13,6 +18,17 @@ def test_watch_config_defaults_to_a_disabled_one_minute_regular_session() -> Non
     assert config.interval_minutes == 1
     assert config.session == "regular"
     assert config.rejudge == RejudgeConfig()
+    assert config.stream == WatchStreamConfig()
+
+
+def test_stream_defaults_fit_the_alpaca_basic_plan() -> None:
+    # Given / When
+    config = WatchStreamConfig()
+
+    # Then
+    assert config.enabled is False
+    assert config.symbol_limit == 30
+    assert config.resubscribe_seconds == 60
 
 
 def test_rejudge_config_owns_the_confirmed_intraday_limits() -> None:

@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
@@ -5,6 +6,7 @@ import pytest
 
 from quantinue.market_data.models import LatestTrade
 from quantinue.orchestration.policy import RejudgeConfig, WatchConfig
+from quantinue.orchestration.watch_policy import WatchStreamConfig
 from quantinue.orchestration.watch_runner import WatchRunner
 from quantinue.roles.exits import ExitDecision, ExitReason, OpenPosition
 
@@ -31,6 +33,11 @@ class _Domain:
         self, tickers: tuple[str, ...], *, before: date
     ) -> dict[str, Decimal]:
         return {ticker: Decimal("100.00") for ticker in tickers}
+
+
+class _ManyPositionsDomain(_Domain):
+    async def open_positions(self) -> tuple[OpenPosition, ...]:
+        return tuple(replace(_position(), ticker=f"TICK{index:02d}") for index in range(35))
 
 
 class _Quotes:
@@ -202,6 +209,80 @@ async def test_new_york_sweep_rejudges_a_small_move_only_once() -> None:
     assert first.rejudged == 1
     assert second.rejudged == 0
     assert len(rejudge.calls) == 1
+
+
+@pytest.mark.anyio
+async def test_stream_subscribes_to_held_tickers_within_the_free_plan_limit() -> None:
+    # Given
+    runner = WatchRunner(
+        WatchConfig(enabled=True, stream=WatchStreamConfig(enabled=True)),
+        domain=_ManyPositionsDomain(),
+        quotes=_Quotes(),
+        exits=_NoExit(),
+    )
+
+    # When
+    tickers = await runner.stream_tickers()
+
+    # Then
+    assert tickers == tuple(f"TICK{index:02d}" for index in range(30))
+
+
+@pytest.mark.anyio
+async def test_stream_trade_triggers_a_protective_exit_without_waiting_for_polling() -> None:
+    # Given
+    exits = _Exits()
+    notify = _Notify()
+    runner = WatchRunner(
+        WatchConfig(enabled=True, stream=WatchStreamConfig(enabled=True)),
+        domain=_Domain(),
+        quotes=_Quotes(),
+        exits=exits,
+        notifier=notify,
+    )
+    trade = LatestTrade(
+        ticker="NVDA",
+        price=Decimal("84.00"),
+        observed_at=datetime(2026, 7, 20, 14, 0, tzinfo=UTC),
+        source="alpaca-iex-stream",
+    )
+
+    # When
+    outcome = await runner.ingest_stream_trade(trade)
+
+    # Then
+    assert (outcome.watched, outcome.closed) == (1, 1)
+    assert exits.calls == [(date(2026, 7, 20), {"NVDA": Decimal("84.00")})]
+    assert len(notify.messages) == 1
+
+
+@pytest.mark.anyio
+async def test_stream_ignores_an_out_of_order_trade_for_the_same_ticker() -> None:
+    # Given
+    exits = _Exits()
+    runner = WatchRunner(
+        WatchConfig(enabled=True, stream=WatchStreamConfig(enabled=True)),
+        domain=_Domain(),
+        quotes=_Quotes(),
+        exits=exits,
+    )
+    recent = LatestTrade(
+        ticker="NVDA",
+        price=Decimal("100.00"),
+        observed_at=datetime(2026, 7, 20, 14, 1, tzinfo=UTC),
+        source="alpaca-iex-stream",
+    )
+    stale = recent.model_copy(
+        update={"price": Decimal("84.00"), "observed_at": recent.observed_at.replace(minute=0)}
+    )
+    await runner.ingest_stream_trade(recent)
+
+    # When
+    outcome = await runner.ingest_stream_trade(stale)
+
+    # Then
+    assert outcome.watched == 0
+    assert exits.calls == [(date(2026, 7, 20), {"NVDA": Decimal("100.00")})]
 
 
 async def _latest_trade(

@@ -44,6 +44,18 @@ class LatestTradeSource(Protocol):
         ...
 
 
+class LiveTradeStream(Protocol):
+    """Push normalized held-position trades into the watch runner."""
+
+    async def run(
+        self,
+        tickers: Callable[[], Awaitable[tuple[str, ...]]],
+        consume: Callable[[LatestTrade], Awaitable[None]],
+    ) -> None:
+        """Keep subscriptions synchronized until application cancellation."""
+        ...
+
+
 class BracketExitExecutor(Protocol):
     """Execute triggered protective legs through the durable exit path."""
 
@@ -84,6 +96,7 @@ class WatchRunner:
         exits: BracketExitExecutor | None = None,
         notifier: Callable[[str], Awaitable[None]] | None = None,
         rejudge: RejudgeExecutor | None = None,
+        stream: LiveTradeStream | None = None,
     ) -> None:
         """Bind the watch policy to the shared NYSE calendar adapter."""
         self._config = config
@@ -93,8 +106,11 @@ class WatchRunner:
         self._exits = exits
         self._notifier = notifier
         self._rejudge = rejudge
+        self._stream = stream
         self._last_rejudged_at: dict[str, datetime] = {}
+        self._last_stream_at: dict[str, datetime] = {}
         self._completed_sweeps: set[tuple[date, str]] = set()
+        self._evaluation_lock = anyio.Lock()
         self._logger: structlog.stdlib.BoundLogger = structlog.get_logger("watch")
 
     async def tick(self, now: datetime) -> WatchOutcome:
@@ -118,18 +134,68 @@ class WatchRunner:
             return WatchOutcome("ready")
         trades = await self._quotes.latest_trades(tickers)
         prices = {trade.ticker: trade.price for trade in trades}
-        closed = await self._exits.run_brackets(as_of=as_of, prices=prices)
+        async with self._evaluation_lock:
+            return await self._evaluate(now, tickers=tickers, prices=prices)
+
+    async def stream_tickers(self) -> tuple[str, ...]:
+        """Prefer held positions and stay inside the configured stream plan."""
+        if self._domain is None:
+            return ()
+        positions = await self._domain.open_positions()
+        return tuple(dict.fromkeys(position.ticker for position in positions))[
+            : self._config.stream.symbol_limit
+        ]
+
+    async def ingest_stream_trade(self, trade: LatestTrade) -> WatchOutcome:
+        """Evaluate one fresh held-position trade without waiting for polling."""
+        if not self._config.enabled or not self._config.stream.enabled:
+            return WatchOutcome("disabled")
+        if not self._calendar.is_market_open(trade.observed_at):
+            return WatchOutcome("market_closed")
+        if self._domain is None or self._exits is None:
+            return WatchOutcome("ready")
+        async with self._evaluation_lock:
+            previous = self._last_stream_at.get(trade.ticker)
+            if previous is not None and trade.observed_at <= previous:
+                return WatchOutcome("ready")
+            positions = await self._domain.open_positions()
+            if trade.ticker not in {position.ticker for position in positions}:
+                return WatchOutcome("ready")
+            self._last_stream_at[trade.ticker] = trade.observed_at
+            return await self._evaluate(
+                trade.observed_at,
+                tickers=(trade.ticker,),
+                prices={trade.ticker: trade.price},
+            )
+
+    @property
+    def has_live_stream(self) -> bool:
+        """Report whether the runner owns an event-driven price source."""
+        return self._stream is not None
+
+    async def _consume_stream_trade(self, trade: LatestTrade) -> None:
+        _ = await self.ingest_stream_trade(trade)
+
+    async def _evaluate(
+        self,
+        now: datetime,
+        *,
+        tickers: tuple[str, ...],
+        prices: Mapping[str, Decimal],
+    ) -> WatchOutcome:
+        exits = self._exits
+        if exits is None:
+            return WatchOutcome("ready")
+        as_of = now.astimezone(NEW_YORK).date()
+        closed = await exits.run_brackets(as_of=as_of, prices=prices)
         if closed and self._notifier is not None:
             await self._notifier(format_exit_alert(as_of, closed))
-        rejudged = await self._rejudge_moves(
-            now,
-            tickers=tuple(
-                ticker
-                for ticker in tickers
-                if ticker not in {decision.position.ticker for decision in closed}
-            ),
-            prices=prices,
+        surviving = tuple(
+            ticker
+            for ticker in tickers
+            if ticker not in {decision.position.ticker for decision in closed}
         )
+        rejudged = await self._rejudge_moves(now, tickers=surviving, prices=prices)
         return WatchOutcome(
             "ready", watched=len(tickers), closed=len(closed) + rejudged, rejudged=rejudged
         )
@@ -183,6 +249,16 @@ class WatchRunner:
 
     async def run_forever(self) -> None:
         """Tick forever while isolating failures from the application lifespan."""
+        if self._config.stream.enabled and self._stream is not None:
+            async with anyio.create_task_group() as task_group:
+                _ = task_group.start_soon(self._poll_forever)
+                _ = task_group.start_soon(
+                    self._stream.run, self.stream_tickers, self._consume_stream_trade
+                )
+            return
+        await self._poll_forever()
+
+    async def _poll_forever(self) -> None:
         while True:
             try:
                 outcome = await self.tick(datetime.now(UTC))

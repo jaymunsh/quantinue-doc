@@ -16,25 +16,21 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING, Final, Protocol, TypeAlias, assert_never
+from typing import TYPE_CHECKING, Final, Protocol, TypeAlias
 
 from quantinue.broker.mock import MockBroker
-from quantinue.core.config import DataMode, LlmMode
+from quantinue.core.config import LlmMode
 from quantinue.core.market_calendar import NyseCalendar
 from quantinue.db.domain_records import DailyPickWrite
 from quantinue.llm.budget import BudgetedAnalyzer, require_pricing_for
 from quantinue.llm.provider import build_llm_analyzer
 from quantinue.market_data.alpaca_bars import AlpacaBarSource
 from quantinue.market_data.alpaca_news import AlpacaNewsSource
-from quantinue.market_data.alpaca_quotes import AlpacaQuoteSource
-from quantinue.market_data.fixture import FixtureMarketData
 from quantinue.market_data.sec_daily_index import SecDailyIndexSource
 from quantinue.market_data.sec_ownership import SecOwnershipSource
 from quantinue.market_data.wire_news import WireRssSource, default_wire_feeds
 from quantinue.notify.telegram import build_failure_notifier
-from quantinue.orchestration.intraday_rejudge import IntradayRejudgeEngine
 from quantinue.orchestration.job_runner import JobDefinition, JobRunner
-from quantinue.orchestration.watch_runner import LatestTradeSource, WatchRunner
 from quantinue.roles.allocation.job import AllocationJob
 from quantinue.roles.analysis.job import AnalysisJob
 from quantinue.roles.disclosure.job import InsiderScoringJob
@@ -157,9 +153,7 @@ class _UniverseSource(Protocol):
 
 
 class _MacroSource(Protocol):
-    async def macro(
-        self, series: str, execution_id: str
-    ) -> tuple[MacroObservation, ...]:
+    async def macro(self, series: str, execution_id: str) -> tuple[MacroObservation, ...]:
         """Fetch a public macro series, oldest first."""
         ...
 
@@ -175,9 +169,7 @@ class _UniverseSink(Protocol):
         """Upsert one universe snapshot."""
         ...
 
-    async def last_known_listings(
-        self, tickers: tuple[str, ...]
-    ) -> dict[str, KnownListing]:
+    async def last_known_listings(self, tickers: tuple[str, ...]) -> dict[str, KnownListing]:
         """Return the newest universe row we ever stored per ticker."""
         ...
 
@@ -273,9 +265,7 @@ class _FilingSource(Protocol):
 
 
 class _FilingSink(Protocol):
-    async def save_raw_disclosures(
-        self, filings: tuple[RawDisclosureWrite, ...]
-    ) -> None:
+    async def save_raw_disclosures(self, filings: tuple[RawDisclosureWrite, ...]) -> None:
         """Upsert the collected filings into the raw ledger."""
         ...
 
@@ -346,10 +336,7 @@ def build_news_job(
         articles = await source.articles(session, as_of)
         await domain.save_raw_news(articles)
         tickers = len({article.ticker for article in articles})
-        return (
-            f"{len(articles)} headlines on {tickers} tickers"
-            f" since {session.isoformat()}"
-        )
+        return f"{len(articles)} headlines on {tickers} tickers since {session.isoformat()}"
 
     return JobDefinition(name=name, run=run)
 
@@ -752,9 +739,7 @@ def _collection_jobs(  # noqa: PLR0913 - 협력자 목록이지 옵션 스프롤
         # 뉴스는 공시 **뒤**, 스크리닝 **앞**이다. 판단(분석 잡)이 오늘의 증거를
         # 보려면 그 전에 수집이 끝나 있어야 하고, 하드 이벤트를 판정하는 것은
         # 공시 쪽이라 순서상 뉴스가 그것을 가로챌 자리에 있으면 안 된다.
-        jobs.append(
-            build_news_job(source=news_source, domain=domain, calendar=calendar)
-        )
+        jobs.append(build_news_job(source=news_source, domain=domain, calendar=calendar))
     # 와이어 보도자료(R11)는 **별도 잡**이다 — Alpaca에 합성하지 않는다. 잡
     # 격리가 이 시스템의 실패 경계라서다: 실측으로 Alpaca 키가 죽은 날에도
     # allow 등급 헤드라인 수집은 계속되어야 한다. SEC처럼 무키라 항상 선다.
@@ -911,75 +896,6 @@ def build_job_runner(
         # 키가 없으면 None이고, 그때 러너는 알림을 아예 시도하지 않는다.
         notifier=notifier,
         ops_alerts=settings.ops_alerts,
-    )
-
-
-def build_watch_runner(
-    settings: Settings,
-    config: Mvp2Config,
-    *,
-    store: object,
-    quotes: LatestTradeSource | None = None,
-    analyzer: LlmAnalyzer | None = None,
-) -> WatchRunner | None:
-    """Assemble intraday bracket watching when a durable portfolio is available."""
-    domain = getattr(store, "domain", None)
-    if domain is None:
-        return None
-    source = quotes
-    if source is None:
-        match settings.data_mode:
-            case DataMode.FIXTURE:
-                source = FixtureMarketData()
-            case DataMode.PUBLIC:
-                key = settings.alpaca_api_key.get_secret_value().strip()
-                secret = settings.alpaca_secret_key.get_secret_value().strip()
-                if key and secret:
-                    source = AlpacaQuoteSource(
-                        key_id=key,
-                        secret_key=secret,
-                        symbols_per_request=config.market_data.symbols_per_request,
-                    )
-            case unreachable:
-                assert_never(unreachable)
-    if source is None:
-        return None
-    exit_job = ExitJob(
-        store=store,
-        broker=MockBroker(),
-        time_exit_bdays=config.exits.time_exit_bdays,
-    )
-    rejudge = None
-    if config.watch.rejudge.enabled and analyzer is not None:
-        rejudge = IntradayRejudgeEngine(
-            domain=domain,
-            jobs=tuple(
-                AnalysisJob(
-                    store=store,
-                    analyzer=analyzer,
-                    gates=config.gates,
-                    profile=profile,
-                    profile_name=name,
-                    headlines_per_ticker=config.news.headlines_per_ticker,
-                )
-                for name, profile in config.profiles.items()
-            ),
-            exits=exit_job,
-            allocation=AllocationJob(
-                store=store,
-                broker=MockBroker(),
-                profiles=config.profiles,
-                gates=config.gates,
-                allocation=config.allocation,
-            ),
-        )
-    return WatchRunner(
-        config.watch,
-        domain=domain,
-        quotes=source,
-        exits=exit_job,
-        notifier=build_failure_notifier(settings),
-        rejudge=rejudge,
     )
 
 

@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 # pydantic이 런타임에 필드 타입을 해석하므로 타입 전용 임포트로 옮길 수 없다.
 from quantinue.llm.budget import ModelPrice  # noqa: TC001
+from quantinue.orchestration.watch_policy import WatchStreamConfig
 from quantinue.roles.disclosure.insider import InsiderPolicy
 
 UTC_ZONE = ZoneInfo("UTC")
@@ -221,6 +222,7 @@ class WatchConfig(BaseModel):
     interval_minutes: int = Field(default=1, gt=0, le=60)
     session: Literal["regular"] = "regular"
     rejudge: RejudgeConfig = RejudgeConfig()
+    stream: WatchStreamConfig = WatchStreamConfig()
 
 
 class BudgetConfig(BaseModel):

@@ -43,9 +43,9 @@ from quantinue.orchestration.job_factory import (
     JobSources,
     build_budgeted_analyzer,
     build_job_runner,
-    build_watch_runner,
 )
 from quantinue.orchestration.policy import load_mvp2_config
+from quantinue.orchestration.watch_factory import build_watch_runner
 from quantinue.web.timefmt import register_filters
 
 if TYPE_CHECKING:
@@ -381,9 +381,7 @@ def create_app(settings: Settings | None = None, *, store: RunStore | None = Non
             },
         )
 
-    _mount_schedule(
-        app, templates, control_room_reads, selected_settings, mvp2_config, job_runner
-    )
+    _mount_schedule(app, templates, control_room_reads, selected_settings, mvp2_config, job_runner)
     _mount_ops_log(app, templates, control_room_reads, selected_settings)
 
     @app.get("/api/accounts", response_model=AccountRosterView)
