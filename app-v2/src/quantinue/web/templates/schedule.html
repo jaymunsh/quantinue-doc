@@ -21,7 +21,7 @@
       <h2 id="runtime-title">이 프로세스의 자동 작업</h2>
       <p>설정값과 이 웹 프로세스가 실제로 붙잡고 있는 작업을 구분합니다.</p>
     </div>
-    <span class="badge {% if schedule.runtime.snapshot.background_workers %}badge--success{% endif %}">
+    <span class="badge {% if schedule.runtime.watch_status == 'attention' %}badge--warning{% elif schedule.runtime.snapshot.background_workers %}badge--success{% endif %}">
       자동 작업 {% if schedule.runtime.snapshot.background_workers %}소유 중{% else %}꺼짐{% endif %}
     </span>
   </div>

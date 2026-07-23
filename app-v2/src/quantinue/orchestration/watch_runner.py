@@ -137,7 +137,7 @@ class WatchRunner:
         """Run one polling boundary and record its observable result."""
         try:
             outcome = await self._tick(now)
-        except BaseException:
+        except Exception:
             self._runtime.record(now, "failed")
             raise
         self._runtime.record(now, outcome.reason)

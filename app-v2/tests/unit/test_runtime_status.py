@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
+import anyio
 import pytest
 from pydantic import ValidationError
 from typing_extensions import override
@@ -14,6 +15,49 @@ class _FailingRunner(WatchRunner):
     async def _tick(self, now: datetime) -> WatchOutcome:
         assert now.tzinfo is not None
         raise TimeoutError
+
+
+class _CancelThenReadyRunner(WatchRunner):
+    def __init__(self, entered: anyio.Event) -> None:
+        super().__init__(WatchConfig(enabled=True))
+        self.entered = entered
+        self.attempts = 0
+
+    @override
+    async def _tick(self, now: datetime) -> WatchOutcome:
+        assert now.tzinfo is not None
+        self.attempts += 1
+        if self.attempts == 1:
+            self.entered.set()
+            await anyio.sleep_forever()
+        return WatchOutcome("ready")
+
+
+@pytest.mark.anyio
+async def test_normal_cancellation_is_not_recorded_as_failure_and_next_tick_resumes() -> None:
+    entered = anyio.Event()
+    runner = _CancelThenReadyRunner(entered)
+    cancelled_at = datetime(2026, 7, 20, 14, 0, tzinfo=UTC)
+
+    async with anyio.create_task_group() as task_group:
+        _ = task_group.start_soon(runner.tick, cancelled_at)
+        await entered.wait()
+        task_group.cancel_scope.cancel()
+
+    cancelled = runner.snapshot()
+    assert cancelled.last_poll_attempt is None
+    assert cancelled.last_ready_poll is None
+    assert cancelled.last_outcome == "never"
+    assert cancelled.consecutive_failures == 0
+
+    resumed_at = cancelled_at + timedelta(minutes=1)
+    outcome = await runner.tick(resumed_at)
+    resumed = runner.snapshot()
+    assert outcome.reason == "ready"
+    assert resumed.last_poll_attempt == resumed_at
+    assert resumed.last_ready_poll == resumed_at
+    assert resumed.last_outcome == "ready"
+    assert resumed.consecutive_failures == 0
 
 
 @pytest.mark.anyio
