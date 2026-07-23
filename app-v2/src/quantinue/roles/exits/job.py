@@ -144,9 +144,9 @@ class ExitJob:
             return False
         broker = self.broker
         if not isinstance(broker, ClosingBroker):
-            # 청산을 못 하는 브로커(실 Alpaca — 로드맵 R1)에 붙었을 때 조용히
-            # 실패하는 대신 명시적으로 건너뛴다. 주문 행은 planned로 남아
-            # 다음 실행에서 다시 시도된다.
+            # close 능력이 없는 어댑터에 붙었을 때 조용히 실패하는 대신
+            # 명시적으로 건너뛴다. 주문 행은 planned로 남아 다음 실행에서
+            # 다시 시도된다.
             return False
         result = await broker.close(
             ClosePlan(

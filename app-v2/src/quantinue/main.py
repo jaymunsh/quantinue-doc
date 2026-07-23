@@ -379,7 +379,8 @@ def create_app(  # noqa: C901 - application composition root owns conditional ad
     )
     # 세션 쿠키는 서명만 되고 암호화되지 않는다(auth.SESSION_KEY 주석). https_only는
     # 켜지 않는다 — 로컬 http로 띄우는 것이 이 단계의 정상 운용이고, 켜면 쿠키가
-    # 조용히 사라져 "로그인이 안 된다"로 보인다. R1(페이퍼 전환) 때 재검토.
+    # 조용히 사라져 "로그인이 안 된다"로 보인다. 공개 배포에서는 AWS의 TLS
+    # 종단과 함께 Secure 쿠키를 켜야 한다.
     app.add_middleware(
         SessionMiddleware,
         secret_key=resolve_session_secret(selected_settings),

@@ -43,7 +43,7 @@ class ClosePlan(BaseModel):
     client_order_id: str = Field(min_length=1, max_length=48)
     quantity: int = Field(gt=0)
     # 매수의 entry_price에 대응하는 "판단 시점 기준가". 시뮬에서는 체결가가 되고,
-    # 실 브로커(로드맵 R1)에서는 지정가 산정의 기준이 된다.
+    # 주문 어댑터에서는 청산 가격 산정의 기준이 된다.
     reference_price: float = Field(gt=0)
     # 어느 진입을 닫는가 — 실현손익의 짝. tb_order.closes_order_id와 같은 뜻이다.
     closes_client_order_id: str = Field(min_length=1, max_length=48)
@@ -61,10 +61,10 @@ class Broker(Protocol):
 class ClosingBroker(Protocol):
     """Optional capability: can this adapter exit a position?
 
-    실 브로커 어댑터는 아직 이걸 구현하지 않는다(로드맵 R1에서 브래킷 leg
-    취소 + 시장가 매도로 구현). 능력 광고 패턴을 쓰면 청산 잡이 "닫을 수 있는
-    브로커에게만" 물어보게 되어, 못 닫는 브로커에 붙었을 때 조용히 실패하는
-    대신 명시적으로 건너뛴다.
+    어댑터마다 브래킷 보호 주문 취소와 청산 주문을 지원하는 범위가 다르다.
+    능력 광고 패턴을 쓰면 청산 잡이 "닫을 수 있는 브로커에게만" 물어보게
+    되어, 못 닫는 브로커에 붙었을 때 조용히 실패하는 대신 명시적으로
+    건너뛴다.
     """
 
     async def close(self, plan: ClosePlan) -> OrderResult:
