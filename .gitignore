@@ -1,5 +1,6 @@
 .DS_Store
 .codegraph
+/.omo/
 # 수동 백업 사본 — git이 이력을 보존하므로 커밋하지 않음 (파일 자체는 로컬 유지)
 docs/Quantinue_통합설계서_v2_2*.html
 docs/*_backup_*.html
