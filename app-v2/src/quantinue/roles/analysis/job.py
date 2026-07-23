@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, time
 from decimal import Decimal
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
 from quantinue.core.market_calendar import NyseCalendar
 from quantinue.db.domain_records import CriticVerdictWrite, StrategistSignalWrite
@@ -48,8 +48,20 @@ if TYPE_CHECKING:
     from quantinue.db.domain_records import MacroSnapshot
     from quantinue.llm.provider import LlmAnalyzer
     from quantinue.orchestration.policy import GatesConfig, ProfileConfig
+    from quantinue.orchestration.work_lease import WorkLease
     from quantinue.roles.analysis.contracts import AnalysisSubject
     from quantinue.roles.screening import RankedCandidate
+
+
+@runtime_checkable
+class IntradayCompletionReader(Protocol):
+    """Typed optional capability for retrying a partially durable sweep."""
+
+    async def completed_intraday_tickers(
+        self, cycle_ts: datetime, inv_type: str
+    ) -> frozenset[str]:
+        """Return persona-ticker work already committed for this cycle."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,7 +110,11 @@ class AnalysisJob:
         )
 
     async def run_intraday(
-        self, *, now: datetime, prices: dict[str, Decimal]
+        self,
+        *,
+        now: datetime,
+        prices: dict[str, Decimal],
+        lease: WorkLease | None = None,
     ) -> AnalysisRun:
         """Rejudge held tickers at current prices through the daily contracts."""
         domain = getattr(self.store, "domain", self.store)
@@ -109,11 +125,10 @@ class AnalysisJob:
             for ticker in prices
             if await domain.ensure_holding_in_scope(as_of, ticker)
         ]
-        completed_reader = getattr(domain, "completed_intraday_tickers", None)
-        completed = (
-            frozenset()
-            if completed_reader is None
-            else await completed_reader(now, self.profile_name)
+        completed: frozenset[str] = (
+            await domain.completed_intraday_tickers(now, self.profile_name)
+            if isinstance(domain, IntradayCompletionReader)
+            else frozenset()
         )
         subjects = await domain.analysis_subjects(as_of, session)
         current = tuple(
@@ -127,10 +142,15 @@ class AnalysisJob:
             if subject.ticker in scoped and subject.ticker not in completed
         )
         return await self._run_subjects(
-            domain, current, as_of=as_of, session=session, cycle_ts=now
+            domain,
+            current,
+            as_of=as_of,
+            session=session,
+            cycle_ts=now,
+            lease=lease,
         )
 
-    async def _run_subjects(
+    async def _run_subjects(  # noqa: PLR0913 - one lease extends the existing analysis context
         self,
         domain: object,
         subjects: tuple[AnalysisSubject, ...],
@@ -138,6 +158,7 @@ class AnalysisJob:
         as_of: date,
         session: date,
         cycle_ts: datetime,
+        lease: WorkLease | None = None,
     ) -> AnalysisRun:
         """Run one already-priced scope through evidence, proposal, and critic."""
         if not subjects:
@@ -162,6 +183,8 @@ class AnalysisJob:
         failures = 0
         for subject in subjects:
             try:
+                if lease is not None:
+                    await lease.renew()
                 outcome = await self._analyse(
                     domain,
                     subject,
@@ -173,6 +196,7 @@ class AnalysisJob:
                     as_of=as_of,
                     cycle_ts=cycle_ts,
                     disclosure_score=disclosure_scores.get(subject.ticker),
+                    lease=lease,
                 )
             except Exception:  # noqa: BLE001 - 종목 하나의 실패를 격리하는 자리다
                 # 종목 하나가 그날 판단 전체를 지우지 않게 한다. 실측: 구조화
@@ -247,6 +271,7 @@ class AnalysisJob:
         as_of: date,
         cycle_ts: datetime,
         disclosure_score: float | None = None,
+        lease: WorkLease | None = None,
     ) -> AnalysisOutcome | None:
         """Run one ticker through evidence synthesis, the gates, and the critic."""
         midnight = datetime.combine(as_of, time(), tzinfo=UTC)
@@ -358,6 +383,8 @@ class AnalysisJob:
                 input_hash=evidence.metadata.input_hash,
             )
         )
+        if lease is not None:
+            await lease.renew()
         verdict = await self._verify(
             subject, decision, signal_id, cycle_ts, run_id, macro, indicators
         )

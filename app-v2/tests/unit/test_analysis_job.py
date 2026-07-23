@@ -172,6 +172,12 @@ class _CompletedDomain(_Domain):
         return frozenset({"HELD"})
 
 
+class _LostLease:
+    async def renew(self) -> None:
+        message = "lease lost"
+        raise RuntimeError(message)
+
+
 class _Store:
     def __init__(self, domain: _Domain) -> None:
         self.domain = domain
@@ -280,6 +286,22 @@ async def test_intraday_retry_skips_already_durable_persona_ticker() -> None:
 
     # Then
     assert result.outcomes == ()
+    assert analyzer.prompts == []
+
+
+@pytest.mark.anyio
+async def test_intraday_lease_loss_stops_before_the_next_paid_call() -> None:
+    # Given
+    domain = _Domain((_subject("HELD", rank=15, score=0.1),), (_position("HELD"),))
+    analyzer = _Analyzer(strategy=0.1)
+
+    # When / Then
+    with pytest.raises(RuntimeError, match="every subject failed"):
+        await _job(domain, analyzer).run_intraday(
+            now=datetime(2026, 7, 17, 15, 5, tzinfo=UTC),
+            prices={"HELD": Decimal("94.00")},
+            lease=_LostLease(),
+        )
     assert analyzer.prompts == []
 
 

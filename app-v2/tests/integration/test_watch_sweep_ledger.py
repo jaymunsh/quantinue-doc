@@ -166,3 +166,69 @@ async def test_terminal_failure_is_retryable_by_the_next_generation(
 
     # Then
     assert retry == 2
+
+
+@pytest.mark.anyio
+async def test_reclaimed_owner_cannot_renew_or_continue_downstream_work(
+    domain: PostgresDomainRepository,
+) -> None:
+    # Given
+    sweep_at = datetime(2026, 7, 20, 14, tzinfo=UTC)
+    owner_a = await domain.reserve_watch_sweep(sweep_at, now=sweep_at)
+    assert owner_a == 1
+    release_owner_a = anyio.Event()
+    owner_a_finished = anyio.Event()
+    analyzer_calls = 0
+    order_calls = 0
+    owner_b = 0
+    renewed = False
+
+    async def stale_owner() -> None:
+        nonlocal analyzer_calls, order_calls
+        await release_owner_a.wait()
+        if await domain.renew_watch_sweep(
+            sweep_at,
+            attempt=owner_a,
+            now=sweep_at + timedelta(minutes=32),
+        ):
+            analyzer_calls += 1
+            order_calls += 1
+        with pytest.raises(WatchSweepStateError, match="transition lost"):
+            await domain.finish_watch_sweep(
+                sweep_at,
+                attempt=owner_a,
+                succeeded=True,
+                detail="stale",
+                now=sweep_at + timedelta(minutes=32),
+            )
+        owner_a_finished.set()
+
+    # When
+    async with anyio.create_task_group() as task_group:
+        task_group.start_soon(stale_owner)
+        claimed = await domain.reserve_watch_sweep(
+            sweep_at, now=sweep_at + timedelta(minutes=31)
+        )
+        assert claimed == 2
+        owner_b = claimed
+        renewed = await domain.renew_watch_sweep(
+            sweep_at,
+            attempt=owner_b,
+            now=sweep_at + timedelta(minutes=31, seconds=1),
+        )
+        if renewed:
+            analyzer_calls += 1
+            order_calls += 1
+        release_owner_a.set()
+        await owner_a_finished.wait()
+
+    # Then
+    assert renewed is True
+    assert (analyzer_calls, order_calls) == (1, 1)
+    await domain.finish_watch_sweep(
+        sweep_at,
+        attempt=owner_b,
+        succeeded=True,
+        detail="current",
+        now=sweep_at + timedelta(minutes=33),
+    )

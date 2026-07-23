@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
     from quantinue.market_data.models import LatestTrade
     from quantinue.orchestration.policy import WatchConfig
+    from quantinue.orchestration.work_lease import WorkLease
     from quantinue.roles.exits import ExitDecision, OpenPosition
 
 
@@ -52,6 +53,12 @@ class WatchDomain(Protocol):
         """Persist the result of a claimed sweep."""
         ...
 
+    async def renew_watch_sweep(
+        self, sweep_at: datetime, *, attempt: int, now: datetime
+    ) -> bool:
+        """Renew only the current running generation."""
+        ...
+
 
 @dataclass(frozen=True, slots=True)
 class WatchSweepClaim:
@@ -59,6 +66,30 @@ class WatchSweepClaim:
 
     sweep_at: datetime
     attempt: int
+
+
+class WatchSweepLeaseLostError(RuntimeError):
+    """Raised when a reclaimed sweep worker no longer owns its generation."""
+
+
+@dataclass(frozen=True, slots=True)
+class WatchSweepLease:
+    """Renewable generation fence shared with paid and order-producing work."""
+
+    domain: WatchDomain
+    claim: WatchSweepClaim
+    clock: Callable[[], datetime]
+
+    async def renew(self) -> None:
+        """Refresh ownership or stop a superseded worker."""
+        renewed = await self.domain.renew_watch_sweep(
+            self.claim.sweep_at,
+            attempt=self.claim.attempt,
+            now=self.clock(),
+        )
+        if not renewed:
+            message = f"watch sweep lease lost: {self.claim.sweep_at.isoformat()}"
+            raise WatchSweepLeaseLostError(message)
 
 
 class LatestTradeSource(Protocol):
@@ -99,7 +130,13 @@ class BracketExitExecutor(Protocol):
 class RejudgeExecutor(Protocol):
     """Re-run the shared proposal and critic path for triggered holdings."""
 
-    async def run(self, *, now: datetime, prices: Mapping[str, Decimal]) -> int:
+    async def run(
+        self,
+        *,
+        now: datetime,
+        prices: Mapping[str, Decimal],
+        lease: WorkLease | None = None,
+    ) -> int:
         """Return how many holdings the refreshed judgement closed."""
         ...
 
@@ -127,6 +164,7 @@ class WatchRunner:
         notifier: Callable[[str], Awaitable[None]] | None = None,
         rejudge: RejudgeExecutor | None = None,
         stream: LiveTradeStream | None = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         """Bind the watch policy to the shared NYSE calendar adapter."""
         self._config = config
@@ -137,6 +175,7 @@ class WatchRunner:
         self._notifier = notifier
         self._rejudge = rejudge
         self._stream = stream
+        self._clock = clock or _utc_now
         self._last_rejudged_at: dict[str, datetime] = {}
         self._last_stream_at: dict[str, datetime] = {}
         self._evaluation_lock = anyio.Lock()
@@ -285,10 +324,7 @@ class WatchRunner:
             await self._finish_sweep(sweep_claim, now, succeeded=True, detail="targets=0")
             return 0
         try:
-            closed = await self._rejudge.run(
-                now=sweep_claim.sweep_at if sweep_claim is not None else now,
-                prices=triggered,
-            )
+            closed = await self._run_rejudge(now, sweep_claim, triggered)
         except (RuntimeError, TimeoutError):
             if sweep_due:
                 with anyio.CancelScope(shield=True):
@@ -311,6 +347,51 @@ class WatchRunner:
             detail=f"targets={len(triggered)} closed={closed}",
         )
         return closed
+
+    async def _run_rejudge(
+        self,
+        now: datetime,
+        claim: WatchSweepClaim | None,
+        prices: Mapping[str, Decimal],
+    ) -> int:
+        rejudge = self._rejudge
+        if rejudge is None:
+            return 0
+        if claim is None or self._domain is None:
+            return await rejudge.run(now=now, prices=prices)
+        lease = WatchSweepLease(self._domain, claim, self._clock)
+        lost = anyio.Event()
+
+        async def heartbeat() -> None:
+            while True:
+                await anyio.sleep(300)
+                try:
+                    await lease.renew()
+                except WatchSweepLeaseLostError:
+                    lost.set()
+                    return
+
+        result = 0
+        failure: RuntimeError | TimeoutError | None = None
+        async with anyio.create_task_group() as task_group:
+            task_group.start_soon(heartbeat)
+            try:
+                await lease.renew()
+                result = await rejudge.run(
+                    now=claim.sweep_at,
+                    prices=prices,
+                    lease=lease,
+                )
+            except (RuntimeError, TimeoutError) as error:
+                failure = error
+            finally:
+                task_group.cancel_scope.cancel()
+        if failure is not None:
+            raise failure
+        if lost.is_set():
+            message = f"watch sweep lease lost: {claim.sweep_at.isoformat()}"
+            raise WatchSweepLeaseLostError(message)
+        return result
 
     def _triggered_prices(  # noqa: PLR0913 - each value is one trigger input
         self,
@@ -391,3 +472,7 @@ class WatchRunner:
             except Exception:  # noqa: BLE001 - 한 틱 실패가 다음 감시 기회를 없애면 안 된다.
                 await self._logger.aexception("watch.tick.failed")
             await anyio.sleep(self._config.interval_minutes * 60)
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)

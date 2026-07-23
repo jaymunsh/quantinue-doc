@@ -2195,6 +2195,23 @@ class PostgresDomainRepository:
                 message = f"watch sweep terminal transition lost: {sweep_at.isoformat()}"
                 raise WatchSweepStateError(message)
 
+    async def renew_watch_sweep(
+        self, sweep_at: datetime, *, attempt: int, now: datetime
+    ) -> bool:
+        """Renew the lease only for the current running generation."""
+        table = self._table("tb_watch_sweep")
+        async with self._engine.begin() as connection:
+            result = await connection.execute(
+                table.update()
+                .where(
+                    table.c.sweep_at == sweep_at,
+                    table.c.status == "running",
+                    table.c.attempts == attempt,
+                )
+                .values(updated_at=now)
+            )
+            return result.rowcount == 1
+
     async def completed_intraday_tickers(
         self, cycle_ts: datetime, inv_type: str
     ) -> frozenset[str]:

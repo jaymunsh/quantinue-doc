@@ -4,6 +4,7 @@ from decimal import Decimal
 import pytest
 
 from quantinue.orchestration.intraday_rejudge import IntradayRejudgeEngine
+from quantinue.orchestration.work_lease import WorkLease
 from quantinue.roles.analysis.job import AnalysisRun
 
 
@@ -20,9 +21,13 @@ class _Job:
         self.skipped = skipped
 
     async def run_intraday(
-        self, *, now: datetime, prices: dict[str, Decimal]
+        self,
+        *,
+        now: datetime,
+        prices: dict[str, Decimal],
+        lease: WorkLease | None = None,
     ) -> AnalysisRun:
-        _ = (now, prices)
+        _ = (now, prices, lease)
         return AnalysisRun((), self.skipped)
 
 

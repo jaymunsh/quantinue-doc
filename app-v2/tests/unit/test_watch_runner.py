@@ -10,6 +10,7 @@ from quantinue.market_data.models import LatestTrade
 from quantinue.orchestration.policy import RejudgeConfig, WatchConfig
 from quantinue.orchestration.watch_policy import WatchStreamConfig
 from quantinue.orchestration.watch_runner import WatchOutcome, WatchRunner
+from quantinue.orchestration.work_lease import WorkLease
 from quantinue.roles.exits import ExitDecision, ExitReason, OpenPosition
 from quantinue.runtime_status import StreamState
 
@@ -65,6 +66,15 @@ class _Domain:
             raise RuntimeError(message)
         self.sweeps[sweep_at] = "succeeded" if succeeded else "failed"
 
+    async def renew_watch_sweep(
+        self, sweep_at: datetime, *, attempt: int, now: datetime
+    ) -> bool:
+        _ = now
+        return (
+            self.sweeps.get(sweep_at) == "running"
+            and self.sweep_attempts.get(sweep_at) == attempt
+        )
+
 
 class _ManyPositionsDomain(_Domain):
     async def open_positions(self) -> tuple[OpenPosition, ...]:
@@ -116,16 +126,26 @@ class _Rejudge:
         self.calls: list[tuple[datetime, dict[str, Decimal]]] = []
 
     async def run(
-        self, *, now: datetime, prices: dict[str, Decimal]
+        self,
+        *,
+        now: datetime,
+        prices: dict[str, Decimal],
+        lease: WorkLease | None = None,
     ) -> int:
+        _ = lease
         self.calls.append((now, prices))
         return 1
 
 
 class _PartialRejudge(_Rejudge):
     async def run(
-        self, *, now: datetime, prices: dict[str, Decimal]
+        self,
+        *,
+        now: datetime,
+        prices: dict[str, Decimal],
+        lease: WorkLease | None = None,
     ) -> int:
+        _ = lease
         self.calls.append((now, prices))
         if len(self.calls) == 1:
             message = "partial analysis failure"
@@ -135,8 +155,13 @@ class _PartialRejudge(_Rejudge):
 
 class _CancelledRejudge(_Rejudge):
     async def run(
-        self, *, now: datetime, prices: dict[str, Decimal]
+        self,
+        *,
+        now: datetime,
+        prices: dict[str, Decimal],
+        lease: WorkLease | None = None,
     ) -> int:
+        _ = lease
         self.calls.append((now, prices))
         raise anyio.get_cancelled_exc_class()
 

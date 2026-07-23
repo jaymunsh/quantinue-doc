@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from datetime import date, datetime
     from decimal import Decimal
 
+    from quantinue.orchestration.work_lease import WorkLease
     from quantinue.roles.analysis.job import AnalysisJob
     from quantinue.roles.exits import ExitDecision
 
@@ -63,12 +64,20 @@ class IntradayRejudgeEngine:
     exits: SoftSellExecutor
     allocation: IntradayBuyExecutor | None = None
 
-    async def run(self, *, now: datetime, prices: Mapping[str, Decimal]) -> int:
+    async def run(
+        self,
+        *,
+        now: datetime,
+        prices: Mapping[str, Decimal],
+        lease: WorkLease | None = None,
+    ) -> int:
         """Refresh triggered tickers and close approved reversals in one tick."""
         mutable_prices = dict(prices)
         skipped = 0
         for job in self.jobs:
-            skipped += (await job.run_intraday(now=now, prices=mutable_prices)).skipped
+            skipped += (
+                await job.run_intraday(now=now, prices=mutable_prices, lease=lease)
+            ).skipped
         if skipped:
             message = f"intraday rejudgement incomplete: skipped={skipped}"
             raise IntradayPartialFailureError(message)
@@ -76,9 +85,13 @@ class IntradayRejudgeEngine:
         profiles = await self.domain.approved_sell_profiles(
             as_of, tuple(mutable_prices)
         )
+        if lease is not None:
+            await lease.renew()
         closed = await self.exits.run_soft_sells(
             as_of=as_of, prices=mutable_prices, profiles=profiles
         )
         if self.allocation is not None:
+            if lease is not None:
+                await lease.renew()
             _ = await self.allocation.run_intraday(now=now, prices=mutable_prices)
         return len(closed)
