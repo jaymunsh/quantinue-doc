@@ -100,6 +100,7 @@ class Settings(BaseSettings):
     # 512에서 0건 · 승인율 동일). 이유 문장이 길어지면 잘리는 값이라 조정이
     # 배포가 되면 안 된다.
     llm_max_output_tokens: int = Field(default=512, ge=64, le=4096)
+    llm_max_input_tokens: int = Field(default=1_000_000, ge=1_024, le=2_000_000)
     broker_mode: BrokerMode = BrokerMode.MOCK
     alpaca_api_key: SecretStr = SecretStr("")
     alpaca_secret_key: SecretStr = SecretStr("")

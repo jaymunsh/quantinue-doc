@@ -12,11 +12,20 @@ from pydantic import BaseModel, ConfigDict, Field
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
-    from quantinue.llm.provider import AnalysisResult, AnalysisTask, LlmAnalyzer
+    from quantinue.llm.provider import (
+        AnalysisResult,
+        AnalysisTask,
+        LlmAnalyzer,
+    )
+    from quantinue.llm.usage_limits import MaximumTokenUsage
 
 
 class LlmBudgetExceededError(RuntimeError):
     """Raised instead of making a call the day's budget cannot pay for."""
+
+
+class LlmUsageBoundExceededError(RuntimeError):
+    """Raised after recording usage that violated its provider-enforced bound."""
 
 
 class ModelPrice(BaseModel):
@@ -93,6 +102,7 @@ class BudgetedAnalyzer:
         self._now = now
         self._spend_lock = anyio.Lock()
         self._reserved_by_day: dict[date, Decimal] = {}
+        self._committed_by_day: dict[date, Decimal] = {}
 
     @property
     def reserved_usd(self) -> Decimal:
@@ -125,20 +135,26 @@ class BudgetedAnalyzer:
     ) -> AnalysisResult:
         called_at = self._now()
         day = called_at.date()
+        maximum = self._inner.maximum_usage(task, prompt, profile=profile)
+        reservation = self._usage_cost(maximum)
         async with self._spend_lock:
-            committed = await self._ledger.llm_spend_on(day)
+            ledger_committed = await self._ledger.llm_spend_on(day)
+            committed = max(
+                ledger_committed, self._committed_by_day.get(day, Decimal(0))
+            )
+            self._committed_by_day[day] = committed
             reserved = self._reserved_by_day.get(day, Decimal(0))
-            available = spending_limit - committed - reserved
-            if available <= 0:
+            if committed + reserved + reservation > spending_limit:
                 # 남은 예산으로 살 수 없으면 **안 산다**. 여기서 중립 결과를
                 # 지어내 돌려주면 판단 없이 주문이 나가는 길이 열린다 —
                 # 분석 잡은 예외를 종목 단위로 격리하므로 이 종목만 건너뛴다.
                 message = (
                     "daily llm budget exhausted: "
-                    f"{committed} committed + {reserved} reserved >= {spending_limit}"
+                    f"{committed} committed + {reserved} reserved + "
+                    f"{reservation} requested > {spending_limit}"
                 )
                 raise LlmBudgetExceededError(message)
-            self._reserved_by_day[day] = reserved + available
+            self._reserved_by_day[day] = reserved + reservation
 
         reservation_active = True
         try:
@@ -160,14 +176,21 @@ class BudgetedAnalyzer:
                             est_cost_usd=cost,
                         )
                     )
-                    self._release(day, available)
+                    self._committed_by_day[day] += cost
+                    self._release(day, reservation)
                     reservation_active = False
+            if cost > reservation:
+                message = (
+                    f"provider usage cost {cost} exceeded reserved maximum "
+                    f"{reservation}"
+                )
+                raise LlmUsageBoundExceededError(message)
             return result
         finally:
             if reservation_active:
                 with anyio.CancelScope(shield=True):
                     async with self._spend_lock:
-                        self._release(day, available)
+                        self._release(day, reservation)
 
     def _release(self, day: date, amount: Decimal) -> None:
         remaining = self._reserved_by_day[day] - amount
@@ -191,3 +214,6 @@ class BudgetedAnalyzer:
             Decimal(input_tokens) * Decimal(str(price.input_usd_per_1m)) / per_million
             + Decimal(output_tokens) * Decimal(str(price.output_usd_per_1m)) / per_million
         )
+
+    def _usage_cost(self, usage: MaximumTokenUsage) -> Decimal:
+        return self._cost(usage.model, usage.input_tokens, usage.output_tokens)

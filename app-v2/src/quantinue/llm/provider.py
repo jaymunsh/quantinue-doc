@@ -4,21 +4,24 @@ from __future__ import annotations
 
 from enum import StrEnum, unique
 from hashlib import sha256
-from typing import Protocol, assert_never
+from typing import TYPE_CHECKING, Protocol, assert_never
 
-import httpx
-from openai import APIConnectionError, APITimeoutError, AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, Field
-from pydantic_ai import Agent
+from pydantic_ai import Agent, RunUsage, UsageLimits
 from pydantic_ai.exceptions import ModelAPIError
-from pydantic_ai.models.openai import OpenAIChatModel, OpenAIChatModelSettings
-from pydantic_ai.profiles.openai import OpenAIModelProfile
-from pydantic_ai.providers.openai import OpenAIProvider
 
-from quantinue.core.config import LlmMode, Settings
 from quantinue.core.errors import TransientFailureError
 from quantinue.core.ontology import ModelProvider
 from quantinue.llm.prompts import SystemPrompt, load_system_prompt
+from quantinue.llm.transport import has_transient_transport_cause
+from quantinue.llm.usage_limits import (
+    AnalyzerProviderConfig,
+    MaximumTokenUsage,
+    TokenUsage,
+)
+
+if TYPE_CHECKING:
+    from pydantic_ai.models import Model
 
 
 @unique
@@ -42,21 +45,6 @@ class AnalysisMetadata(BaseModel):
     prompt_version: str
     policy_version: str
     input_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-
-
-class TokenUsage(BaseModel):
-    """What one call actually consumed, as the provider reported it.
-
-    추정치가 아니라 응답이 말한 값이다. 비용을 우리가 세는 대신 제공자가
-    센 것을 받아 적는 이유는, 토큰 계산을 우리가 재현하려는 순간 모델·
-    템플릿이 바뀔 때마다 조용히 틀리기 때문이다. 못 받으면 None이고,
-    그때는 비용을 0으로 적지 않고 **적지 않는다**(§budget).
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    input_tokens: int = Field(ge=0)
-    output_tokens: int = Field(ge=0)
 
 
 class AnalysisResult(BaseModel):
@@ -114,6 +102,12 @@ def _narrative(field: str) -> str | None:
 class LlmAnalyzer(Protocol):
     """Narrow analysis capability used by LLM-backed roles."""
 
+    def maximum_usage(
+        self, task: AnalysisTask, prompt: str, *, profile: str | None = None
+    ) -> MaximumTokenUsage:
+        """Return the provider-enforced aggregate usage ceiling for this call."""
+        ...
+
     async def analyze(
         self, task: AnalysisTask, prompt: str, *, profile: str | None = None
     ) -> AnalysisResult:
@@ -145,6 +139,15 @@ class DeterministicAnalyzer:
     def __init__(self, model_name: str = "deterministic-mock-v1") -> None:
         """Configure the model identifier recorded in result lineage."""
         self._model_name = model_name
+
+    def maximum_usage(
+        self, task: AnalysisTask, prompt: str, *, profile: str | None = None
+    ) -> MaximumTokenUsage:
+        """Report that the deterministic provider cannot incur token charges."""
+        _ = (task, prompt, profile)
+        return MaximumTokenUsage(
+            model=str(self._model_name), input_tokens=0, output_tokens=0
+        )
 
     async def analyze(
         self, task: AnalysisTask, prompt: str, *, profile: str | None = None
@@ -199,16 +202,24 @@ class PydanticAiAnalyzer:
 
     def __init__(
         self,
-        model: OpenAIChatModel,
-        model_name: str,
-        retries: int,
-        provider: ModelProvider = ModelProvider.LOCAL,
+        model: Model,
+        config: AnalyzerProviderConfig,
     ) -> None:
         """Store the provider model and bounded structured-output retry policy."""
         self._model = model
-        self._model_name = model_name
-        self._retries = retries
-        self._provider = provider
+        self._config = config
+        self._retries = config.retries
+
+    def maximum_usage(
+        self, task: AnalysisTask, prompt: str, *, profile: str | None = None
+    ) -> MaximumTokenUsage:
+        """Return the token ceiling enforced by this provider adapter."""
+        _ = (task, prompt, profile)
+        if self._config.usage_limit is None:
+            return MaximumTokenUsage(
+                model=self._config.model_name, input_tokens=0, output_tokens=0
+            )
+        return self._config.usage_limit.maximum_usage(self._config.model_name)
 
     async def analyze(
         self, task: AnalysisTask, prompt: str, *, profile: str | None = None
@@ -222,11 +233,27 @@ class PydanticAiAnalyzer:
             retries=self._retries,
         )
         try:
-            result = await agent.run(ModelInput(external_data=prompt).model_dump_json())
+            usage_limits = None
+            if self._config.usage_limit is not None:
+                usage_limits = UsageLimits(
+                    request_limit=self._config.usage_limit.max_requests,
+                    input_tokens_limit=self._config.usage_limit.max_input_tokens,
+                    output_tokens_limit=(
+                        self._config.usage_limit.max_output_tokens
+                        * self._config.usage_limit.max_requests
+                    ),
+                    count_tokens_before_request=(
+                        self._config.usage_limit.count_input_before_request
+                    ),
+                )
+            result = await agent.run(
+                ModelInput(external_data=prompt).model_dump_json(),
+                usage_limits=usage_limits,
+            )
         except ModelAPIError as error:
-            if _has_transient_transport_cause(error):
+            if has_transient_transport_cause(error):
                 raise TransientFailureError(
-                    provider=self._provider.value,
+                    provider=self._config.provider.value,
                     reason="model transport unavailable",
                 ) from error
             raise
@@ -242,11 +269,21 @@ class PydanticAiAnalyzer:
             if isinstance(output, StrategyModelOutput)
             else None,
             usage=_usage(result),
-            metadata=_metadata(self._model_name, self._provider, system_prompt, prompt),
+            metadata=_metadata(
+                self._config.model_name,
+                self._config.provider,
+                system_prompt,
+                prompt,
+            ),
         )
 
 
-def _usage(result: object) -> TokenUsage | None:
+class _UsageResult(Protocol):
+    @property
+    def usage(self) -> RunUsage | None: ...
+
+
+def _usage(result: _UsageResult) -> TokenUsage | None:
     """Read what the provider said this run consumed, if it said anything.
 
     재시도가 있었으면 그 시도들까지 합산된 값이 온다 — 지갑이 실제로 치른
@@ -254,7 +291,7 @@ def _usage(result: object) -> TokenUsage | None:
     0은 "공짜였다"는 주장이고, 모르는 것을 그렇게 적으면 예산이 샌다.
     """
     # pydantic-ai 2.9에서 ``usage``는 메서드가 아니라 속성이다(실측).
-    usage = getattr(result, "usage", None)
+    usage = result.usage
     if usage is None:
         return None
     return TokenUsage(
@@ -269,92 +306,3 @@ class ModelInput(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     external_data: str
-
-
-def _has_transient_transport_cause(error: ModelAPIError) -> bool:
-    current: BaseException | None = error.__cause__
-    while current is not None:
-        if isinstance(
-            current,
-            (
-                APITimeoutError,
-                APIConnectionError,
-                httpx.TimeoutException,
-                httpx.TransportError,
-                TimeoutError,
-            ),
-        ):
-            return True
-        current = current.__cause__ or current.__context__
-    return False
-
-
-def build_llm_analyzer(settings: Settings, openai_client: AsyncOpenAI | None = None) -> LlmAnalyzer:
-    """Select an LLM adapter exhaustively from validated configuration."""
-    match settings.llm_mode:
-        case LlmMode.MOCK:
-            return DeterministicAnalyzer(settings.mock_model)
-        case LlmMode.OPENAI:
-            model_name = settings.openai_model
-            provider = ModelProvider.OPENAI
-            client = openai_client or AsyncOpenAI(
-                api_key=settings.openai_api_key.get_secret_value(),
-                timeout=settings.llm_timeout_seconds,
-                max_retries=0,
-            )
-        case LlmMode.LOCAL:
-            model_name = settings.local_llm_model
-            provider = ModelProvider.LOCAL
-            client = openai_client or AsyncOpenAI(
-                base_url=str(settings.local_llm_base_url),
-                api_key=settings.local_llm_api_key.get_secret_value(),
-                timeout=settings.llm_timeout_seconds,
-                max_retries=0,
-            )
-            model_settings = OpenAIChatModelSettings(
-                max_tokens=settings.llm_max_output_tokens,
-                temperature=0,
-                parallel_tool_calls=False,
-                openai_reasoning_effort="none",
-                # Local reasoning models (Qwen3.6 via omlx) ignore reasoning_effort
-                # and dump chain-of-thought prose into `content`, which then fails
-                # structured JSON parsing. The omlx/vLLM chat template honours
-                # enable_thinking=false to suppress the <think> phase entirely.
-                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
-            )
-            model = OpenAIChatModel(
-                model_name,
-                provider=OpenAIProvider(openai_client=client),
-                profile=OpenAIModelProfile(
-                    openai_chat_supports_max_completion_tokens=False,
-                ),
-                settings=model_settings,
-            )
-            # 재시도 예산은 openai 경로와 같이 config 소유다. 여기 0이 굳어
-            # 있어서, 모델이 구조화 출력을 **한 번** 놓친 순간 그 성향의 남은
-            # 종목이 전부 날아갔다(2026-07-20 실행: conservative 22종목).
-            # 로컬이라 재시도가 공짜에 가깝다는 점에서도 0을 고집할 이유가 없다.
-            return PydanticAiAnalyzer(
-                model, model_name, settings.llm_max_retries, provider
-            )
-        case unreachable:
-            assert_never(unreachable)
-    return PydanticAiAnalyzer(
-        OpenAIChatModel(
-            model_name,
-            provider=OpenAIProvider(openai_client=client),
-            # 과금 경로의 유일한 고정값은 출력 상한이다 — 무한 출력은 곧 무한
-            # 비용이고, 예산 원장은 이미 쓴 돈만 막는다.
-            #
-            # ⚠️ 추론 모델(o-계열)로 바꾸면 이 상한을 올려야 한다. 추론 토큰이
-            # 이 예산에서 함께 빠져나가므로, 로컬에서 512로 겪은 것과 같은
-            # 구조화 출력 절단이 여기서 재현된다(``QUANTINUE_LLM_MAX_OUTPUT_TOKENS``).
-            #
-            # temperature·reasoning_effort는 일부러 안 건다: 추론 모델에서는
-            # 그 파라미터가 곧 판단의 질이고, o-계열은 temperature를 거부한다.
-            settings=OpenAIChatModelSettings(max_tokens=settings.llm_max_output_tokens),
-        ),
-        model_name,
-        settings.llm_max_retries,
-        provider,
-    )

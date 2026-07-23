@@ -23,7 +23,7 @@ from quantinue.core.config import LlmMode
 from quantinue.core.market_calendar import NyseCalendar
 from quantinue.db.domain_records import DailyPickWrite
 from quantinue.llm.budget import BudgetedAnalyzer, require_pricing_for
-from quantinue.llm.provider import build_llm_analyzer
+from quantinue.llm.provider_factory import build_llm_analyzer
 from quantinue.market_data.alpaca_bars import AlpacaBarSource
 from quantinue.market_data.alpaca_news import AlpacaNewsSource
 from quantinue.market_data.sec_daily_index import SecDailyIndexSource
