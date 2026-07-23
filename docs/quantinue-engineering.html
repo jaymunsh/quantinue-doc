@@ -56,11 +56,12 @@
   html{scroll-behavior:smooth;scroll-padding-top:24px}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
     font-size:15.5px;line-height:1.68;-webkit-font-smoothing:antialiased;word-break:keep-all;overflow-wrap:break-word;
-    overflow-x:hidden;transition:background .2s,color .2s}
+    transition:background .2s,color .2s}
   a{color:var(--teal);text-decoration:none}
   a:hover{text-decoration:underline}
   .muted{color:var(--ink-faint)}
   .small{font-size:13px}
+  .nowrap{white-space:nowrap}
   h1,h2,h3,h4{line-height:1.28;letter-spacing:-.012em;font-weight:700}
   code,.mono{font-family:var(--mono)}
   code{background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:.06em .38em;font-size:.86em}
@@ -306,13 +307,13 @@
   <div class="wrap">
 
   <header class="hero">
-    <div class="eyebrow">Quantinue MVP-2 · 기술 부록 v1.3 · 2026-07-23</div>
+    <div class="eyebrow">Quantinue MVP-2 · 기술 부록 v1.3 · <span class="nowrap">2026-07-23</span></div>
     <h1>어떻게 여기까지 왔고,<br><span class="hl">내부는 어떻게</span> 생겼나</h1>
     <p class="lede">
       <a href="quantinue-integrated-design.html">설계 정본</a>이 "현재의 시스템"이라면, 이 문서는
       <b>과정과 내부</b>다 — 10일 281커밋의 연대기, 실행에서만 잡힌 <b>결함 통산 27건</b>의 전체 기록,
       코드 구조 맵, 28테이블 전체 ERD, 그리고 운영 런북. 개발을 이어받는 사람이 읽는 문서다.
-      켜고 보고 끄는 <b>운영 방법의 정본은 <code>docs/operations-runbook.md</code></b>다 — 여기 런북 절은 개발용 명령만 담는다.
+      켜고 보고 끄는 <b>운영 방법의 정본은 <code class="nowrap">docs/operations-runbook.md</code></b>다 — 여기 런북 절은 개발용 명령만 담는다.
     </p>
     <div class="chips">
       <span class="chip">기간 <b>10일</b> (07-12 ~ 07-21)</span>
@@ -333,27 +334,27 @@
     <div class="twrap"><table>
       <thead><tr><th>날짜</th><th>커밋</th><th>무슨 일이 있었나</th></tr></thead>
       <tbody>
-        <tr><td class="mono">07-12~13</td><td class="mono">22</td>
+        <tr><td class="mono nowrap">07-12~13</td><td class="mono">22</td>
           <td><b>MVP-1 개발.</b> 1차 코드베이스 <code>app/</code> — 종목 하나가 역할 01~11을 통과하는
           선형 러너. 설계 문서 v2.5부터 형상관리 시작.</td></tr>
-        <tr><td class="mono">07-17</td><td class="mono">1</td>
+        <tr><td class="mono nowrap">07-17</td><td class="mono">1</td>
           <td><b>1차 동결.</b> v3.8 스냅샷을 <code>quantinue-integrated-design-mvp1.html</code>로 분리(<code>8ebc1c0</code>).
           1차에서 배운 결함 T1~T13은 <a href="#lessons">§교훈</a> 참조.</td></tr>
-        <tr><td class="mono">07-18</td><td class="mono">53</td>
+        <tr><td class="mono nowrap">07-18</td><td class="mono">53</td>
           <td><b>MVP-2 기획과 마일스톤 전반전.</b> Phase 0 as-built 감사 + 결정 R1~R8 — "2차 = AI 페이퍼
           펀드 서비스" 확정(<code>e54e124</code>) · 마스터 계획 M1~M11(<code>baf6e79</code>) ·
           M1 스케줄러(슬롯 멱등·NYSE 캘린더) · M2 스키마 확장 · M3 깔때기 복원(50→2,000).</td></tr>
-        <tr><td class="mono">07-19 오전</td><td class="mono" rowspan="2">92</td>
+        <tr><td class="mono nowrap">07-19 오전</td><td class="mono" rowspan="2">92</td>
           <td><b>M4 판단 방어선</b>(8+2건 — CIK 하드코딩 발견, 공시 부재=기권, 갭 가드, 유령 설정 전수 감사)
           · M6 계좌 구조(계좌별 자본 — 그 전엔 $5K와 $150K 계좌가 같은 크기로 주문).</td></tr>
-        <tr><td class="mono">07-19 오후</td>
+        <tr><td class="mono nowrap">07-19 오후</td>
           <td><b>⚡ 파이프라인 재설계.</b> M5 착수 실사에서 구조 결함 4종(50→1 절벽 · NVDA 하드코딩
           트리거 · 배분 단계 부재 · 재개 전제 오류) → M5~M11 폐기, JOB 기반 전환 + D1~D8 확정
           (<code>1763335</code>, 15:09). 이어서 같은 날에 —
           <b>Phase 1</b> 청산(장부 결함 a1~a6 수리 → 시뮬 체결 엔진 → 청산 JOB 3층 판정) ·
           <b>Phase 2</b> 데이터층(<code>tb_daily_bar</code> 원장, Alpaca 배치 어댑터 500콜→1~2콜,
           JOB 러너·주기 원장, 시가평가 D8) · <b>Phase 3</b> 착수(스크리닝 DB 랭킹, 성향 페르소나 정박).</td></tr>
-        <tr><td class="mono">07-20</td><td class="mono">48</td>
+        <tr><td class="mono nowrap">07-20</td><td class="mono">48</td>
           <td><b>Phase 3 마무리</b>(승인율 붕괴 추적 — 4갈래 수리, 매도 산술 결함 <code>a15b8d8</code>) ·
           <b>Phase 4</b> 배분 JOB(실 스모크 33매수/24보류, 현금 오차 0) ·
           <b>Phase 5</b> 관제실 JOB 기반 전환 + <b>구 러너 삭제</b>(<code>1a48aea</code> — role_01~11
@@ -361,7 +362,7 @@
           <b>잔여 작업 A~E</b>(런 저장소 절반 삭제 −3,667줄, 판단 서사 원장 착지,
           <code>jobs.enabled=true</code>, 캘린더 통합, 와이어 RSS) ·
           <b>투표권 기각 2건</b>(와이어·폼종류) · <b>R8 인사이더 채점</b> 완성 · 정본 문서 v6.0.</td></tr>
-        <tr><td class="mono">07-20 후반<br>~07-21</td><td class="mono">49</td>
+        <tr><td class="mono nowrap">07-20 후반<br>~07-21</td><td class="mono">49</td>
           <td><b>웹 완성 + 알림 + 관측 시작.</b> 웹 W1 인증·role 가드(미들웨어, 구역 밖 404) ·
           W3-2 계좌 총람(유령 계좌 읽기·쓰기 동시 삭제 <code>91169dd</code>) ·
           W2-1 내 계좌 홈(원장 대조 테스트 탄생, 오차 0 · <code>125ef74</code>) ·
@@ -371,7 +372,7 @@
           <b>텔레그램 알림 2종</b>(실패 즉시 <code>404545e</code> · 일일 안내 <code>3cbd142</code>) ·
           운영 매뉴얼(<code>operations-runbook.md</code>) 신설 · <b>무인 완주 관측 시작(07-21 카운트 0일)</b> ·
           AWS 이전 검토와 LLM 사용처 전수(<code>llm-usage-guide.md</code>).</td></tr>
-        <tr><td class="mono">07-21 저녁</td><td class="mono">13</td>
+        <tr><td class="mono nowrap">07-21 저녁</td><td class="mono">13</td>
           <td><b>openai 전환 + 관리자 화면 정비.</b> <b>LLM 예산 배선(⑨)</b> — 모든 판단 콜이
           <code>tb_llm_usage</code>를 통과하고 상한 초과 시 "안 사는" 쪽으로 멈춘다. 요율은
           config 소유이고 <b>미선언 모델이면 기동을 거부</b>한다(fail-closed).
@@ -381,7 +382,7 @@
           <code>attempts</code> 신설) · <code>/admin/schedule</code>(운영 기준 + 용어집) ·
           LLM 지출 카드 · KST 시각과 3도시 시계 · 사이드바 공용 내비와 위계 ·
           <b>결함 27</b>(평가액 곡선의 min/max 정규화가 −0.01%를 절벽으로 그림).</td></tr>
-        <tr><td class="mono">07-22~23</td><td class="mono">운영 보강</td>
+        <tr><td class="mono nowrap">07-22~23</td><td class="mono">운영 보강</td>
           <td><b>장중 감시 후보 설정 + 외부 dead-man 구현.</b> 8020을 guarded 단일 작업 소유자로,
           8021을 web-only 개발 인스턴스로 분리했다. 1분 poll과 WatchRunner 원장을 붙이고,
           앱이 죽어 내부 텔레그램조차 못 보내는 구간은 Healthchecks.io가 맡는다. 8020 owner만
