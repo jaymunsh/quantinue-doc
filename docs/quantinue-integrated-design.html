@@ -926,8 +926,9 @@ erDiagram
         <tr class="r-chg"><td class="mono">tb_order</td><td>주문 — 매수(bracket)와 청산(close)이 별도 행 (D7)</td><td class="mono">bracket 삼중 CHECK · close는 closes_order_id 필수</td></tr>
         <tr><td class="mono">tb_fill</td><td>체결</td><td class="mono">FK → tb_order</td></tr>
         <tr class="r-new"><td class="mono">tb_order_plan</td><td>배분의 관측 로그 — 샀으면 수량, <b>못 샀으면 사유</b></td><td class="mono">planned XOR skipped CHECK</td></tr>
-        <tr><td rowspan="3">운영</td><td class="mono r-new" style="background:var(--buy-bg)">tb_job_run</td><td>JOB 실행 원장 — 멱등의 근거</td><td class="mono">PK(job_name,slot_date) · running=미종료 CHECK</td></tr>
+        <tr><td rowspan="4">운영</td><td class="mono r-new" style="background:var(--buy-bg)">tb_job_run</td><td>JOB 실행 원장 — 멱등의 근거</td><td class="mono">PK(job_name,slot_date) · running=미종료 CHECK</td></tr>
         <tr class="r-new"><td class="mono">tb_watch_sweep</td><td>장중 정기 재판단 실행 원장 — 재시작·재시도 멱등의 근거</td><td class="mono">PK(sweep_at) · attempts 세대 펜싱 · running=미종료 CHECK</td></tr>
+        <tr class="r-new"><td class="mono">tb_watch_sweep_item</td><td>유료 재판단 디스패치 원장 — 불확실한 호출의 중복 차단</td><td class="mono">PK(sweep_at,ticker,persona) · dispatched는 재시도 금지</td></tr>
         <tr class="r-new"><td class="mono">tb_account_equity_daily</td><td>당일 시작 평가액 — daily_loss_limit의 분모</td><td>하루 첫 기록이 이긴다 (ON CONFLICT DO NOTHING)</td></tr>
         <tr><td rowspan="2">회고</td><td class="mono">tb_review_price_snapshots</td><td>판단 후 T+1~5 가격 추적</td><td class="mono">FK → signals</td></tr>
         <tr><td class="mono">tb_review</td><td>판단 채점 (적중 여부 · 교훈)</td><td class="mono">PK = signal_id</td></tr>
@@ -1446,6 +1447,25 @@ erDiagram
         </tbody></table></div>
     </details>
     <details class="schema">
+      <summary><code>tb_watch_sweep_item</code> <span class="b b-new">2차 신규</span> <span class="sd">유료 재판단 디스패치 원장</span><span class="cnt">9 컬럼</span></summary>
+      <div class="inner"><p class="small" style="margin:6px 0">종목·성향별 provider 호출 직전에 <code>dispatched</code>를 먼저 기록한다. 호출 도중 lease를 잃으면 결과는 버리되 이 상태는 되돌리지 않아, 회수한 다음 attempt가 비용과 주문 효과를 중복 생성하지 않는다. provider를 부르기 전 취소된 <code>claimed</code>만 삭제해 재시도할 수 있다.</p></div>
+      <div class="twrap"><table>
+        <thead><tr><th>컬럼</th><th>정의 (DDL 원문)</th><th>설명</th></tr></thead><tbody>
+        <tr><td>sweep_at</td><td class="mono">TIMESTAMPTZ NOT NULL REFERENCES tb_watch_sweep(sweep_at)</td><td>부모 정기 sweep</td></tr>
+        <tr><td>ticker</td><td class="mono">TEXT NOT NULL</td><td>재판단 종목</td></tr>
+        <tr><td>persona</td><td class="mono">TEXT NOT NULL</td><td>투자 성향</td></tr>
+        <tr><td>status</td><td class="mono">TEXT NOT NULL CHECK (status IN ('claimed','dispatched','completed'))</td><td>호출 전 예약·호출 불확실 경계·로컬 완료</td></tr>
+        <tr><td>attempt</td><td class="mono">INT NOT NULL CHECK (attempt &gt; 0)</td><td>이 항목을 처음 소유한 sweep 세대</td></tr>
+        <tr><td>claimed_at</td><td class="mono">TIMESTAMPTZ NOT NULL</td><td>호출 전 예약 시각</td></tr>
+        <tr><td>dispatched_at</td><td class="mono">TIMESTAMPTZ</td><td>provider 호출 직전 영속화한 시각</td></tr>
+        <tr><td>completed_at</td><td class="mono">TIMESTAMPTZ</td><td>판단 저장 완료 시각</td></tr>
+        <tr><td>updated_at</td><td class="mono">TIMESTAMPTZ NOT NULL</td><td>마지막 상태 전이 시각</td></tr>
+        <tr><td class="muted">제약</td><td class="mono" colspan="2">PRIMARY KEY (sweep_at, ticker, persona)</td></tr>
+        <tr><td class="muted">제약</td><td class="mono" colspan="2">CHECK ((status = 'claimed') = (dispatched_at IS NULL))</td></tr>
+        <tr><td class="muted">제약</td><td class="mono" colspan="2">CHECK ((status = 'completed') = (completed_at IS NOT NULL))</td></tr>
+        </tbody></table></div>
+    </details>
+    <details class="schema">
       <summary><code>tb_llm_usage</code> <span class="b b-new">2차 신규</span> <span class="sd">LLM 호출 기록 (소비자 0 — 배선 미착수)</span><span class="cnt">8 컬럼</span></summary>
       <div class="twrap"><table>
         <thead><tr><th>컬럼</th><th>정의 (DDL 원문)</th><th>설명</th></tr></thead><tbody>
@@ -1604,6 +1624,7 @@ erDiagram
         <tr><td class="mono">order_submissions</td><td class="mono">state</td><td class="mono">'claimed','submitted','completed','failed'</td></tr>
         <tr><td class="mono">tb_job_run</td><td class="mono">status</td><td class="mono">'running','succeeded','failed'</td></tr>
         <tr><td class="mono">tb_watch_sweep</td><td class="mono">status</td><td class="mono">'running','succeeded','failed'</td></tr>
+        <tr><td class="mono">tb_watch_sweep_item</td><td class="mono">status</td><td class="mono">'claimed','dispatched','completed'</td></tr>
         </tbody></table></div>
     </details>
 

@@ -19,6 +19,21 @@ CREATE TABLE IF NOT EXISTS tb_watch_sweep (
   CHECK ((status = 'running') = (finished_at IS NULL))
 );
 
+CREATE TABLE IF NOT EXISTS tb_watch_sweep_item (
+  sweep_at TIMESTAMPTZ NOT NULL REFERENCES tb_watch_sweep(sweep_at),
+  ticker TEXT NOT NULL,
+  persona TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('claimed','dispatched','completed')),
+  attempt INT NOT NULL CHECK (attempt > 0),
+  claimed_at TIMESTAMPTZ NOT NULL,
+  dispatched_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (sweep_at, ticker, persona),
+  CHECK ((status = 'claimed') = (dispatched_at IS NULL)),
+  CHECK ((status = 'completed') = (completed_at IS NOT NULL))
+);
+
 -- 1. reason TEXT -> JSONB (4 tables). Legacy prose is preserved under "legacy".
 DO $$
 DECLARE

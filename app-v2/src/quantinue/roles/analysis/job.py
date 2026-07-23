@@ -21,6 +21,8 @@ from datetime import UTC, datetime, time
 from decimal import Decimal
 from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
+import anyio
+
 from quantinue.core.market_calendar import NyseCalendar
 from quantinue.db.domain_records import CriticVerdictWrite, StrategistSignalWrite
 from quantinue.llm.provider import AnalysisTask
@@ -150,7 +152,7 @@ class AnalysisJob:
             lease=lease,
         )
 
-    async def _run_subjects(  # noqa: PLR0913 - one lease extends the existing analysis context
+    async def _run_subjects(  # noqa: C901, PLR0913 - lease fencing adds one branch
         self,
         domain: object,
         subjects: tuple[AnalysisSubject, ...],
@@ -182,9 +184,13 @@ class AnalysisJob:
         outcomes: list[AnalysisOutcome] = []
         failures = 0
         for subject in subjects:
+            claimed = lease is None
             try:
                 if lease is not None:
                     await lease.renew()
+                    claimed = await lease.claim_item(subject.ticker, self.profile_name)
+                    if not claimed:
+                        continue
                 outcome = await self._analyse(
                     domain,
                     subject,
@@ -198,7 +204,14 @@ class AnalysisJob:
                     disclosure_score=disclosure_scores.get(subject.ticker),
                     lease=lease,
                 )
+            except anyio.get_cancelled_exc_class():
+                if lease is not None and claimed:
+                    with anyio.CancelScope(shield=True):
+                        await lease.release_item(subject.ticker, self.profile_name)
+                raise
             except Exception:  # noqa: BLE001 - 종목 하나의 실패를 격리하는 자리다
+                if lease is not None and claimed:
+                    await lease.release_item(subject.ticker, self.profile_name)
                 # 종목 하나가 그날 판단 전체를 지우지 않게 한다. 실측: 구조화
                 # 출력을 한 번 놓친 종목 때문에 그 성향 22종목이 통째로 날아갔다.
                 # 이미 원장에 앉은 판단은 유효하고, 못 본 종목은 다음 슬롯이 본다.
@@ -280,9 +293,9 @@ class AnalysisJob:
             if cycle_ts == midnight
             else f"rejudge:{cycle_ts.isoformat()}:{self.profile_name}"
         )
-        strategy_prompt = analysis_prompt(
-            subject, holding, filings, headlines, indicators
-        )
+        strategy_prompt = analysis_prompt(subject, holding, filings, headlines, indicators)
+        if lease is not None:
+            await lease.mark_dispatched(subject.ticker, self.profile_name)
         reserved_analyze = getattr(self.analyzer, "analyze_reserved", None)
         if holding.quantity > 0 and reserved_analyze is not None:
             evidence = await reserved_analyze(
@@ -400,6 +413,8 @@ class AnalysisJob:
                 skipped_rules=verdict.skipped_rules,
             )
         )
+        if lease is not None:
+            await lease.complete_item(subject.ticker, self.profile_name)
         return AnalysisOutcome(
             ticker=subject.ticker,
             side=decision.side,

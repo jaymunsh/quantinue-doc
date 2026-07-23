@@ -2212,9 +2212,147 @@ class PostgresDomainRepository:
             )
             return result.rowcount == 1
 
-    async def completed_intraday_tickers(
-        self, cycle_ts: datetime, inv_type: str
-    ) -> frozenset[str]:
+    async def claim_watch_sweep_item(
+        self,
+        sweep_at: datetime,
+        *,
+        attempt: int,
+        ticker: str,
+        persona: str,
+        now: datetime,
+    ) -> bool:
+        """Claim provider work only while this sweep generation is current."""
+        statement = text(
+            """
+            INSERT INTO tb_watch_sweep_item
+              (sweep_at,ticker,persona,status,attempt,claimed_at,updated_at)
+            SELECT :sweep_at,:ticker,:persona,'claimed',:attempt,:now,:now
+            FROM tb_watch_sweep
+            WHERE sweep_at=:sweep_at AND status='running' AND attempts=:attempt
+            ON CONFLICT (sweep_at,ticker,persona) DO UPDATE
+            SET attempt=:attempt, claimed_at=:now, updated_at=:now
+            WHERE tb_watch_sweep_item.status='claimed'
+              AND EXISTS (
+                SELECT 1 FROM tb_watch_sweep
+                WHERE sweep_at=:sweep_at AND status='running' AND attempts=:attempt
+              )
+            RETURNING 1
+            """
+        )
+        async with self._engine.begin() as connection:
+            return (
+                await connection.scalar(
+                    statement,
+                    {
+                        "sweep_at": sweep_at,
+                        "attempt": attempt,
+                        "ticker": ticker,
+                        "persona": persona,
+                        "now": now,
+                    },
+                )
+                == 1
+            )
+
+    async def dispatch_watch_sweep_item(
+        self,
+        sweep_at: datetime,
+        *,
+        attempt: int,
+        ticker: str,
+        persona: str,
+        now: datetime,
+    ) -> bool:
+        """Make the provider boundary durable before sending the request."""
+        statement = text(
+            """
+            UPDATE tb_watch_sweep_item AS item
+            SET status='dispatched', dispatched_at=:now, updated_at=:now
+            WHERE item.sweep_at=:sweep_at AND item.ticker=:ticker
+              AND item.persona=:persona AND item.status='claimed'
+              AND item.attempt=:attempt
+              AND EXISTS (
+                SELECT 1 FROM tb_watch_sweep
+                WHERE sweep_at=:sweep_at AND status='running' AND attempts=:attempt
+              )
+            """
+        )
+        async with self._engine.begin() as connection:
+            result = await connection.execute(
+                statement,
+                {
+                    "sweep_at": sweep_at,
+                    "attempt": attempt,
+                    "ticker": ticker,
+                    "persona": persona,
+                    "now": now,
+                },
+            )
+            return result.rowcount == 1
+
+    async def complete_watch_sweep_item(
+        self,
+        sweep_at: datetime,
+        *,
+        attempt: int,
+        ticker: str,
+        persona: str,
+        now: datetime,
+    ) -> bool:
+        """Complete only a dispatched item owned by the current generation."""
+        statement = text(
+            """
+            UPDATE tb_watch_sweep_item AS item
+            SET status='completed', completed_at=:now, updated_at=:now
+            WHERE item.sweep_at=:sweep_at AND item.ticker=:ticker
+              AND item.persona=:persona AND item.status='dispatched'
+              AND item.attempt=:attempt
+              AND EXISTS (
+                SELECT 1 FROM tb_watch_sweep
+                WHERE sweep_at=:sweep_at AND status='running' AND attempts=:attempt
+              )
+            """
+        )
+        async with self._engine.begin() as connection:
+            result = await connection.execute(
+                statement,
+                {
+                    "sweep_at": sweep_at,
+                    "attempt": attempt,
+                    "ticker": ticker,
+                    "persona": persona,
+                    "now": now,
+                },
+            )
+            return result.rowcount == 1
+
+    async def release_watch_sweep_item(
+        self,
+        sweep_at: datetime,
+        *,
+        attempt: int,
+        ticker: str,
+        persona: str,
+    ) -> None:
+        """Release only work proven not to have crossed the provider boundary."""
+        async with self._engine.begin() as connection:
+            _ = await connection.execute(
+                text(
+                    """
+                    DELETE FROM tb_watch_sweep_item
+                    WHERE sweep_at=:sweep_at AND ticker=:ticker AND persona=:persona
+                      AND status='claimed' AND attempt=:attempt
+                    """
+                ),
+                {
+                    "sweep_at": sweep_at,
+                    "attempt": attempt,
+                    "ticker": ticker,
+                    "persona": persona,
+                },
+            )
+
+    async def completed_intraday_tickers(self, cycle_ts: datetime, inv_type: str) -> frozenset[str]:
         """Return persona signals already durable for one intraday cycle."""
         table = self._table("tb_strategist_signals")
         async with self._engine.begin() as connection:

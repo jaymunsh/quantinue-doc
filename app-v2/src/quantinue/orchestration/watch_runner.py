@@ -53,10 +53,55 @@ class WatchDomain(Protocol):
         """Persist the result of a claimed sweep."""
         ...
 
-    async def renew_watch_sweep(
-        self, sweep_at: datetime, *, attempt: int, now: datetime
-    ) -> bool:
+    async def renew_watch_sweep(self, sweep_at: datetime, *, attempt: int, now: datetime) -> bool:
         """Renew only the current running generation."""
+        ...
+
+    async def claim_watch_sweep_item(
+        self,
+        sweep_at: datetime,
+        *,
+        attempt: int,
+        ticker: str,
+        persona: str,
+        now: datetime,
+    ) -> bool:
+        """Claim one provider dispatch item."""
+        ...
+
+    async def dispatch_watch_sweep_item(
+        self,
+        sweep_at: datetime,
+        *,
+        attempt: int,
+        ticker: str,
+        persona: str,
+        now: datetime,
+    ) -> bool:
+        """Persist the provider boundary."""
+        ...
+
+    async def complete_watch_sweep_item(
+        self,
+        sweep_at: datetime,
+        *,
+        attempt: int,
+        ticker: str,
+        persona: str,
+        now: datetime,
+    ) -> bool:
+        """Complete one dispatched item."""
+        ...
+
+    async def release_watch_sweep_item(
+        self,
+        sweep_at: datetime,
+        *,
+        attempt: int,
+        ticker: str,
+        persona: str,
+    ) -> None:
+        """Release one item before dispatch."""
         ...
 
 
@@ -90,6 +135,51 @@ class WatchSweepLease:
         if not renewed:
             message = f"watch sweep lease lost: {self.claim.sweep_at.isoformat()}"
             raise WatchSweepLeaseLostError(message)
+
+    async def claim_item(self, ticker: str, persona: str) -> bool:
+        """Claim an undispatched item under this generation."""
+        return await self.domain.claim_watch_sweep_item(
+            self.claim.sweep_at,
+            attempt=self.claim.attempt,
+            ticker=ticker,
+            persona=persona,
+            now=self.clock(),
+        )
+
+    async def mark_dispatched(self, ticker: str, persona: str) -> None:
+        """Cross the durable boundary before provider invocation."""
+        dispatched = await self.domain.dispatch_watch_sweep_item(
+            self.claim.sweep_at,
+            attempt=self.claim.attempt,
+            ticker=ticker,
+            persona=persona,
+            now=self.clock(),
+        )
+        if not dispatched:
+            message = f"watch sweep item dispatch lost: {ticker}:{persona}"
+            raise WatchSweepLeaseLostError(message)
+
+    async def complete_item(self, ticker: str, persona: str) -> None:
+        """Complete a dispatched item only while still current."""
+        completed = await self.domain.complete_watch_sweep_item(
+            self.claim.sweep_at,
+            attempt=self.claim.attempt,
+            ticker=ticker,
+            persona=persona,
+            now=self.clock(),
+        )
+        if not completed:
+            message = f"watch sweep item completion lost: {ticker}:{persona}"
+            raise WatchSweepLeaseLostError(message)
+
+    async def release_item(self, ticker: str, persona: str) -> None:
+        """Release only the pre-dispatch state."""
+        await self.domain.release_watch_sweep_item(
+            self.claim.sweep_at,
+            attempt=self.claim.attempt,
+            ticker=ticker,
+            persona=persona,
+        )
 
 
 class LatestTradeSource(Protocol):
@@ -165,6 +255,7 @@ class WatchRunner:
         rejudge: RejudgeExecutor | None = None,
         stream: LiveTradeStream | None = None,
         clock: Callable[[], datetime] | None = None,
+        heartbeat_wait: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         """Bind the watch policy to the shared NYSE calendar adapter."""
         self._config = config
@@ -176,6 +267,7 @@ class WatchRunner:
         self._rejudge = rejudge
         self._stream = stream
         self._clock = clock or _utc_now
+        self._heartbeat_wait = heartbeat_wait or _wait_for_watch_heartbeat
         self._last_rejudged_at: dict[str, datetime] = {}
         self._last_stream_at: dict[str, datetime] = {}
         self._evaluation_lock = anyio.Lock()
@@ -364,11 +456,12 @@ class WatchRunner:
 
         async def heartbeat() -> None:
             while True:
-                await anyio.sleep(300)
+                await self._heartbeat_wait()
                 try:
                     await lease.renew()
                 except WatchSweepLeaseLostError:
                     lost.set()
+                    task_group.cancel_scope.cancel()
                     return
 
         result = 0
@@ -476,3 +569,7 @@ class WatchRunner:
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+async def _wait_for_watch_heartbeat() -> None:
+    await anyio.sleep(300)
