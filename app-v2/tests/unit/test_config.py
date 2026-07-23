@@ -30,6 +30,36 @@ def test_public_data_mode_needs_no_credentials() -> None:
     assert settings.data_mode is DataMode.PUBLIC
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("1", True), ("true", True), ("0", False), ("false", False)],
+)
+def test_background_workers_parses_only_its_environment_value(
+    monkeypatch: pytest.MonkeyPatch, raw: str, *, expected: bool
+) -> None:
+    # Given
+    monkeypatch.setenv("QUANTINUE_BACKGROUND_WORKERS", raw)
+    monkeypatch.setenv("QUANTINUE_OPS_ALERTS", "0")
+
+    # When
+    settings = IsolatedSettings()
+
+    # Then
+    assert settings.background_workers is expected
+    assert not settings.ops_alerts
+
+
+def test_background_workers_rejects_a_malformed_environment_boolean(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given
+    monkeypatch.setenv("QUANTINUE_BACKGROUND_WORKERS", "sometimes")
+
+    # When / Then
+    with pytest.raises(ValidationError):
+        _ = IsolatedSettings()
+
+
 def test_selected_openai_mode_rejects_empty_key_without_echoing_secret() -> None:
     with pytest.raises(ValidationError) as captured:
         _ = Settings.model_validate({"llm_mode": LlmMode.OPENAI, "openai_api_key": ""})

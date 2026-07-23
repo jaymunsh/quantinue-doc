@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 import anyio
 from fastapi import FastAPI, HTTPException, Request, status
@@ -55,7 +55,6 @@ if TYPE_CHECKING:
     from quantinue.db.contracts import RunStore
     from quantinue.db.users import UserAccount
     from quantinue.orchestration.job_runner import JobRunner
-    from quantinue.orchestration.watch_runner import WatchRunner
 
 # 타임라인에 몇 건을 보여줄지. 판단 문턱이 아니라 표시용 창이라 config가
 # 아니라 여기 산다 — 어떤 매매 결정에도 들어가지 않는다.
@@ -65,13 +64,16 @@ PACKAGE_DIR = Path(__file__).parent
 DASHBOARD_CSS = (PACKAGE_DIR / "web" / "static" / "dashboard.css").read_text(encoding="utf-8")
 
 
+class _BackgroundTask(Protocol):
+    async def run_forever(self) -> None: ...
+
+
 def _lifespan_factory(
     *,
     store: RunStore,
     review_runtime: ReviewRuntime | None,
-    market_data: object,
-    job_runner: JobRunner | None,
-    watch_runner: WatchRunner | None,
+    market_data: object | None,
+    background_tasks: tuple[_BackgroundTask, ...],
 ) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
     """Own every application-lifetime resource, including the ones jobs collect through.
 
@@ -86,10 +88,8 @@ def _lifespan_factory(
             await store.initialize()
             if review_runtime is not None:
                 await review_runtime.initialize()
-            if job_runner is not None:
-                task_group.start_soon(job_runner.run_forever)
-            if watch_runner is not None:
-                task_group.start_soon(watch_runner.run_forever)
+            for background_task in background_tasks:
+                _ = task_group.start_soon(background_task.run_forever)
             try:
                 yield
             finally:
@@ -101,7 +101,7 @@ def _lifespan_factory(
                 task_group.cancel_scope.cancel()
         if review_runtime is not None:
             await review_runtime.close()
-        closer = getattr(market_data, "aclose", None)
+        closer = getattr(market_data, "aclose", None) if market_data is not None else None
         if closer is not None:
             await closer()
         await store.close()
@@ -192,7 +192,6 @@ def _mount_ops_log(
             },
         )
 
-
 async def _account_roster(reads: object | None) -> AccountRosterView:
     """Read every account, or report none when the store has no ledger.
 
@@ -241,7 +240,9 @@ async def _my_account(reads: object | None, account: UserAccount) -> MyAccountVi
     return my_account_view(account, holdings, curve, timeline, macro, benchmark=benchmark)
 
 
-def create_app(settings: Settings | None = None, *, store: RunStore | None = None) -> FastAPI:
+def create_app(  # noqa: C901 - application composition root owns conditional adapters
+    settings: Settings | None = None, *, store: RunStore | None = None
+) -> FastAPI:
     """Create one application with adapters fixed for its lifetime."""
     selected_settings = settings or Settings()
     configure_logging(debug=selected_settings.debug)
@@ -260,51 +261,59 @@ def create_app(settings: Settings | None = None, *, store: RunStore | None = Non
         if selected_settings.trading_enabled
         else None
     )
-    review_runtime = (
-        ReviewRuntime.build(
-            str(selected_settings.database_url), build_market_data(selected_settings)
-        )
+    market_data = (
+        build_market_data(selected_settings)
         if selected_settings.database_mode is DatabaseMode.POSTGRES
+        or selected_settings.background_workers
         else None
     )
-    # 어댑터를 한 번만 만든다. 예전에는 유니버스용·매크로용으로 두 번 만들어
-    # 하나는 아무도 닫지 않았다 — 러너가 자기 것만 소유했기 때문이다.
-    market_data = build_market_data(selected_settings)
-    analyzer = build_budgeted_analyzer(
-        selected_settings,
-        mvp2_config,
-        ledger=getattr(selected_store, "domain", None),
+    review_runtime = (
+        ReviewRuntime.build(str(selected_settings.database_url), market_data)
+        if selected_settings.database_mode is DatabaseMode.POSTGRES and market_data is not None
+        else None
     )
-    job_runner = build_job_runner(
-        selected_settings,
-        mvp2_config,
-        store=selected_store,
-        sources=JobSources(
-            market_data=market_data,
-            # 같은 어댑터가 유니버스와 매크로를 모두 구현한다 — 필드가 갈라져
-            # 있는 것은 테스트 조립의 타입 정직성 때문이다(JobSources 주석).
-            macro=market_data,
-            # 판단 콜은 예산 원장을 통과한다. 원장은 도메인 저장소가 들고
-            # 있으므로(메모리 스토어에는 없다) 여기서 넘긴다 — 없으면 감싸지
-            # 않고, 그건 잡도 안 도는 설치라 예산을 지킬 대상 자체가 없다.
+    job_runner = None
+    watch_runner = None
+    if selected_settings.background_workers and market_data is not None:
+        analyzer = build_budgeted_analyzer(
+            selected_settings,
+            mvp2_config,
+            ledger=getattr(selected_store, "domain", None),
+        )
+        job_runner = build_job_runner(
+            selected_settings,
+            mvp2_config,
+            store=selected_store,
+            sources=JobSources(
+                market_data=market_data,
+                macro=market_data,
+                analyzer=analyzer,
+            ),
+        )
+        watch_runner = build_watch_runner(
+            selected_settings,
+            mvp2_config,
+            store=selected_store,
             analyzer=analyzer,
-        ),
-    )
-    watch_runner = build_watch_runner(
-        selected_settings,
-        mvp2_config,
-        store=selected_store,
-        analyzer=analyzer,
-    )
+        )
 
+    attached_job_runner = job_runner if mvp2_config.jobs.enabled else None
+    attached_watch_runner = watch_runner if mvp2_config.watch.enabled else None
+    control_room_reads = getattr(selected_store, "domain", None)
     app = FastAPI(
         title=selected_settings.app_name,
         lifespan=_lifespan_factory(
             store=selected_store,
             review_runtime=review_runtime,
             market_data=market_data,
-            job_runner=job_runner if mvp2_config.jobs.enabled else None,
-            watch_runner=watch_runner if mvp2_config.watch.enabled else None,
+            background_tasks=tuple(
+                task
+                for task in (
+                    attached_job_runner,
+                    attached_watch_runner,
+                )
+                if task is not None
+            ),
         ),
     )
     # 잡 원장은 RunStore 프로토콜 밖에 산다(도메인 저장소 소유). 메모리
@@ -312,8 +321,6 @@ def create_app(settings: Settings | None = None, *, store: RunStore | None = Non
     # 켠 설치도 정상 상태이고 그때 화면이 500으로 죽으면 안 된다.
     # 같은 저장소가 유저 원장도 들고 있다(tb_user). 없으면 로그인할 계정이
     # 없다는 뜻이고, 그건 부트스트랩 상태다(W-D2).
-    control_room_reads = getattr(selected_store, "domain", None)
-
     # ⚠️ 미들웨어는 **나중에 더한 것이 바깥**이다. 세션이 가드보다 바깥에 있어야
     # 가드가 request.session을 읽을 수 있으므로 가드를 먼저 더한다. 순서를
     # 뒤집으면 가드가 늘 "로그인 안 됨"으로 보고 전부 막힌다.

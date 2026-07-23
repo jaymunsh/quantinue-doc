@@ -16,10 +16,119 @@ cd "$(dirname "$0")/.."
 
 PORT="${QUANTINUE_OBS_PORT:-8020}"
 LOG="${QUANTINUE_OBS_LOG:-$PWD/observation.log}"
+LOCK_DIR="${QUANTINUE_OBSERVATION_LOCK_DIR:-$PWD/.runtime/observation-owner.lock}"
+CLAIM_DIR="$LOCK_DIR.claim"
+CLAIM_HELD=0
+CHILD_PID=""
+CHILD_PGID=""
 
+mkdir -p "$(dirname "$LOCK_DIR")"
+
+release_claim() {
+  if [[ "$CLAIM_HELD" == "1" ]]; then
+    rmdir "$CLAIM_DIR" 2>/dev/null || true
+    CLAIM_HELD=0
+  fi
+}
+
+acquire_lock() {
+  if ! mkdir "$CLAIM_DIR" 2>/dev/null; then
+    printf 'observation owner claim contention: %s\n' "$CLAIM_DIR" >&2
+    exit 1
+  fi
+  CLAIM_HELD=1
+
+  if mkdir "$LOCK_DIR" 2>/dev/null; then
+    printf '%s\n' "$$" > "$LOCK_DIR/pid"
+    ps -o lstart= -p "$$" | xargs > "$LOCK_DIR/start_identity"
+    release_claim
+    return
+  fi
+
+  if [[ ! -f "$LOCK_DIR/pid" ]]; then
+    printf 'observation owner lock has no PID: %s\n' "$LOCK_DIR" >&2
+    exit 1
+  fi
+
+  owner_pid="$(cat "$LOCK_DIR/pid")"
+  if [[ ! "$owner_pid" =~ ^[0-9]+$ ]]; then
+    printf 'observation owner lock has an invalid PID: %s\n' "$LOCK_DIR" >&2
+    exit 1
+  fi
+  if kill -0 "$owner_pid" 2>/dev/null; then
+    printf 'observation owner already running (PID %s)\n' "$owner_pid" >&2
+    exit 1
+  fi
+
+  rm -rf "$LOCK_DIR"
+  if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+    printf 'observation owner lock contention: %s\n' "$LOCK_DIR" >&2
+    exit 1
+  fi
+  printf '%s\n' "$$" > "$LOCK_DIR/pid"
+  ps -o lstart= -p "$$" | xargs > "$LOCK_DIR/start_identity"
+  release_claim
+}
+
+release_lock() {
+  if [[ -f "$LOCK_DIR/pid" ]] && [[ "$(cat "$LOCK_DIR/pid")" == "$$" ]]; then
+    rm -rf "$LOCK_DIR"
+  fi
+}
+
+stop_owned_group() {
+  local attempt=0
+
+  if [[ -z "$CHILD_PGID" ]] || [[ "$CHILD_PGID" != "$CHILD_PID" ]]; then
+    return
+  fi
+  kill -TERM -- "-$CHILD_PGID" 2>/dev/null || true
+  while kill -0 -- "-$CHILD_PGID" 2>/dev/null && (( attempt < 20 )); do
+    sleep 0.05
+    attempt=$((attempt + 1))
+  done
+  if kill -0 -- "-$CHILD_PGID" 2>/dev/null; then
+    kill -KILL -- "-$CHILD_PGID" 2>/dev/null || true
+  fi
+}
+
+stop_child() {
+  trap '' INT TERM HUP
+  stop_owned_group
+  if [[ -n "$CHILD_PID" ]]; then
+    wait "$CHILD_PID" 2>/dev/null || true
+  fi
+  exit 143
+}
+
+trap release_claim EXIT
+acquire_lock
+trap release_lock EXIT
+trap stop_child INT TERM HUP
+
+set -m
 QUANTINUE_DATA_MODE=public \
 QUANTINUE_DATABASE_MODE=postgres \
 QUANTINUE_DATABASE_URL="postgresql+asyncpg://quantinue:quantinue@127.0.0.1:5445/quantinue" \
 QUANTINUE_LLM_MODE="${QUANTINUE_LLM_MODE:-local}" \
 QUANTINUE_OPS_ALERTS="${QUANTINUE_OPS_ALERTS:-1}" \
-  exec uv run uvicorn quantinue.main:app --port "$PORT" 2>&1 | tee -a "$LOG"
+QUANTINUE_BACKGROUND_WORKERS="${QUANTINUE_BACKGROUND_WORKERS:-1}" \
+  uv run uvicorn quantinue.main:app --port "$PORT" > >(tee -a "$LOG") 2>&1 &
+CHILD_PID=$!
+set +m
+CHILD_PGID="$(ps -o pgid= -p "$CHILD_PID" | tr -d ' ')"
+if [[ "$CHILD_PGID" != "$CHILD_PID" ]]; then
+  printf 'observation child did not enter an isolated process group (PID %s, PGID %s)\n' \
+    "$CHILD_PID" "$CHILD_PGID" >&2
+  kill -TERM "$CHILD_PID" 2>/dev/null || true
+  wait "$CHILD_PID" 2>/dev/null || true
+  exit 1
+fi
+
+if wait "$CHILD_PID"; then
+  child_exit=0
+else
+  child_exit=$?
+fi
+stop_owned_group
+exit "$child_exit"
